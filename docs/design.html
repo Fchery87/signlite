@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SignLite Design System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root, :root[data-theme="light"] {
+    --color-background: #F7F7F5;
+    --color-surface: #FFFFFF;
+    --color-surface-sunken: #EFEFED;
+    --color-on-surface: #1A1A18;
+    --color-on-surface-muted: #6E6E69;
+    --color-border: #E2E2DF;
+    --color-border-strong: #C9C9C4;
+    --color-primary: #3B5BCC;
+    --color-on-primary: #FFFFFF;
+    --color-primary-hover: #3350B4;
+    --color-accent-subtle: #EDF1FC;
+    --color-success: #1F7A45;
+    --color-warning: #8F6400;
+    --color-error: #B3261E;
+    --shadow-page: 0 1px 3px rgba(0,0,0,.10);
+    --shadow-modal: 0 8px 24px rgba(0,0,0,.14);
+  }
+  :root[data-theme="dark"] {
+    --color-background: #161615;
+    --color-surface: #1E1E1C;
+    --color-surface-sunken: #111110;
+    --color-on-surface: #ECECEA;
+    --color-on-surface-muted: #9A9A94;
+    --color-border: #2E2E2B;
+    --color-border-strong: #44443F;
+    --color-primary: #7B93E8;
+    --color-on-primary: #0E1633;
+    --color-primary-hover: #93A7EE;
+    --color-accent-subtle: #1E2540;
+    --color-success: #5BBF86;
+    --color-warning: #D9A93F;
+    --color-error: #E5726B;
+    --shadow-page: 0 1px 3px rgba(0,0,0,.45);
+    --shadow-modal: 0 8px 24px rgba(0,0,0,.55);
+  }
+  :root {
+    --font-ui: 'Inter', -apple-system, system-ui, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --type-display: 600 24px/1.25 var(--font-ui);
+    --type-h1: 600 18px/1.3 var(--font-ui);
+    --type-h2: 600 15px/1.4 var(--font-ui);
+    --type-body: 400 13px/1.5 var(--font-ui);
+    --type-body-strong: 500 13px/1.5 var(--font-ui);
+    --type-caption: 400 11px/1.45 var(--font-ui);
+    --type-mono: 400 12px/1.5 var(--font-mono);
+    --rounded-none: 0px; --rounded-sm: 4px; --rounded-md: 6px; --rounded-lg: 10px; --rounded-full: 999px;
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px; --space-7: 48px;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font: var(--type-body); color: var(--color-on-surface);
+    background: var(--color-background);
+    max-width: 880px; margin: 0 auto; padding: var(--space-6) var(--space-5) 120px;
+    transition: background .12s ease-out, color .12s ease-out;
+  }
+  header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4); margin-bottom: var(--space-6); }
+  h1 { font: var(--type-display); letter-spacing: -0.01em; }
+  h2 { font: var(--type-h1); letter-spacing: -0.01em; margin: var(--space-7) 0 var(--space-2); padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
+  h3 { font: var(--type-h2); margin: var(--space-5) 0 var(--space-2); }
+  p.note { color: var(--color-on-surface-muted); max-width: 60ch; }
+  .toggle {
+    font: var(--type-body-strong); color: var(--color-on-surface);
+    background: var(--color-surface); border: 1px solid var(--color-border-strong);
+    border-radius: var(--rounded-md); height: 30px; padding: 6px 14px; cursor: pointer;
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--space-3); margin-top: var(--space-3); }
+  .swatch { border: 1px solid var(--color-border); border-radius: var(--rounded-md); overflow: hidden; background: var(--color-surface); }
+  .swatch .chip { height: 56px; display: flex; align-items: center; padding: 0 var(--space-3); font: var(--type-body-strong); }
+  .swatch .meta { padding: var(--space-2) var(--space-3); }
+  .swatch .meta .name { font: var(--type-body-strong); }
+  .swatch .meta .hex { font: var(--type-mono); color: var(--color-on-surface-muted); }
+  .specimen { display: grid; grid-template-columns: 1fr 220px; gap: var(--space-4); align-items: baseline; padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); }
+  .specimen .spec { font: var(--type-mono); color: var(--color-on-surface-muted); }
+  .bar-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-1) 0; }
+  .bar-row .label { font: var(--type-mono); width: 130px; color: var(--color-on-surface-muted); }
+  .bar { background: var(--color-primary); height: 14px; border-radius: 2px; }
+  .radius-row { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-top: var(--space-3); }
+  .radius-box { width: 110px; height: 72px; background: var(--color-surface); border: 1px solid var(--color-border-strong); display: flex; align-items: flex-end; padding: var(--space-2); font: var(--type-mono); color: var(--color-on-surface-muted); }
+  .elev-row { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-top: var(--space-3); }
+  .elev-card { width: 190px; padding: var(--space-4); background: var(--color-surface); border-radius: var(--rounded-md); }
+  .elev-card .t { font: var(--type-body-strong); } .elev-card .d { font: var(--type-caption); color: var(--color-on-surface-muted); margin-top: var(--space-1); }
+  .comp-group { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--rounded-md); padding: var(--space-4); margin-top: var(--space-3); }
+  .comp-row { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; margin-top: var(--space-2); }
+  .comp-label { font: var(--type-caption); color: var(--color-on-surface-muted); width: 100%; margin-top: var(--space-3); }
+
+  /* Components — styled only from tokens */
+  .btn-primary { font: var(--type-body-strong); color: var(--color-on-primary); background: var(--color-primary); border: none; border-radius: var(--rounded-md); height: 30px; padding: 6px 14px; cursor: pointer; transition: background .12s ease-out; }
+  .btn-primary.hover, .btn-primary:hover { background: var(--color-primary-hover); }
+  .btn-primary:disabled { background: var(--color-surface-sunken); color: var(--color-on-surface-muted); cursor: default; }
+  .btn-secondary { font: var(--type-body-strong); color: var(--color-on-surface); background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--rounded-md); height: 30px; padding: 6px 14px; cursor: pointer; transition: background .12s ease-out; }
+  .btn-secondary.hover, .btn-secondary:hover { background: var(--color-surface-sunken); }
+  .input { font: var(--type-body); color: var(--color-on-surface); background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--rounded-md); height: 30px; padding: 6px 10px; width: 220px; }
+  .input.focus, .input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-accent-subtle); }
+  .tray-demo { width: 264px; background: var(--color-surface); border: 1px solid var(--color-border); padding: var(--space-4); }
+  .tray-demo .h { font: var(--type-h2); margin-bottom: var(--space-2); }
+  .tray-demo .empty { font: var(--type-body); color: var(--color-on-surface-muted); }
+  .modal-demo { width: 320px; background: var(--color-surface); border-radius: var(--rounded-lg); padding: var(--space-5); box-shadow: var(--shadow-modal); }
+  .modal-demo .h { font: var(--type-h1); letter-spacing: -0.01em; margin-bottom: var(--space-2); }
+  .toast-demo { display: inline-block; font: var(--type-body); color: var(--color-surface); background: var(--color-on-surface); border-radius: var(--rounded-md); padding: 8px 12px; box-shadow: var(--shadow-modal); }
+  .chip { display: inline-flex; align-items: center; font: var(--type-caption); background: var(--color-surface-sunken); color: var(--color-on-surface-muted); border-radius: var(--rounded-full); padding: 2px 8px; height: 18px; }
+  .chip.success { background: var(--color-accent-subtle); color: var(--color-success); }
+  .chip.error { background: var(--color-accent-subtle); color: var(--color-error); }
+  .chip.warning { background: var(--color-accent-subtle); color: var(--color-warning); }
+  .drop-demo { font: var(--type-display); letter-spacing: -0.01em; color: var(--color-on-surface-muted); background: var(--color-background); border: 1px dashed var(--color-border-strong); padding: var(--space-7); text-align: center; }
+  .drop-demo.active { color: var(--color-primary); background: var(--color-accent-subtle); border-color: var(--color-primary); }
+  .restore-demo { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); height: 40px; background: var(--color-accent-subtle); color: var(--color-on-surface); padding: 8px 16px; }
+  .page-demo { position: relative; width: 240px; height: 170px; background: #FFFFFF; box-shadow: var(--shadow-page); margin: var(--space-3); }
+  .canvas-well { background: var(--color-surface-sunken); padding: var(--space-2); display: inline-block; }
+  .selection { position: absolute; top: 46px; left: 44px; width: 120px; height: 44px; border: 1.5px solid var(--color-primary); }
+  .handle { position: absolute; width: 8px; height: 8px; background: var(--color-surface); border: 1px solid var(--color-primary); border-radius: var(--rounded-sm); }
+  .dodont { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-top: var(--space-3); }
+  .dodont ul { list-style: none; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--rounded-md); background: var(--color-surface); }
+  .dodont li { padding: var(--space-1) 0; }
+  .dodont .do li::before { content: "✓ "; color: var(--color-success); font-weight: 600; }
+  .dodont .dont li::before { content: "✗ "; color: var(--color-error); font-weight: 600; }
+  @media (max-width: 700px) { .dodont, .specimen { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>SignLite Design System</h1>
+    <p class="note" style="margin-top:8px">Quiet-utility design system for a client-side document signer — dense, calm, chrome-free, with one ink-blue accent.<br>
+    <span style="font: var(--type-caption); color: var(--color-on-surface-muted)">This file is the human-readable mirror of <code style="font: var(--type-mono)">docs/design.md</code> (the source of truth). Same tokens, rendered live.</span></p>
+  </div>
+  <button class="toggle" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'">Toggle dark mode</button>
+</header>
+
+<h2>Colors</h2>
+<p class="note">Warm-neutral grays plus one rationed ink-blue accent. Toggle the theme above — the dark set swaps in via the same token names.</p>
+<h3>Surfaces & text</h3>
+<div class="grid">
+  <div class="swatch"><div class="chip" style="background:var(--color-background); color:var(--color-on-surface)">App chrome</div><div class="meta"><div class="name">background</div><div class="hex">#F7F7F5 / #161615</div></div></div>
+  <div class="swatch"><div class="chip" style="background:var(--color-surface); color:var(--color-on-surface)">Panels, trays</div><div class="meta"><div class="name">surface</div><div class="hex">#FFFFFF / #1E1E1C</div></div></div>
+  <div class="swatch"><div class="chip" style="background:var(--color-surface-sunken); color:var(--color-on-surface)">Canvas well</div><div class="meta"><div class="name">surface-sunken</div><div class="hex">#EFEFED / #111110</div></div></div>
+  <div class="swatch"><div class="chip" style="background:var(--color-on-surface); color:var(--color-surface)">Primary text</div><div class="meta"><div class="name">on-surface</div><div class="hex">#1A1A18 / #ECECEA</div></div></div>
+  <div class="swatch"><div class="chip" style="background:var(--color-surface); color:var(--color-on-surface-muted)">Secondary text</div><div class="meta"><div class="name">on-surface-muted</div><div class="hex">#6E6E69 / #9A9A94</div></div></div>
+  <div class="swatch"><div class="chip" style="background:var(--color-surface); color:var(--color-on-surface); border-bottom: 3px solid var(--color-border)">1px separators</div><div class="meta"><div class="name">border / border-strong</div><div class="hex">#E2E2DF · #C9C9C4</div></div></div>
+</div>
+<h3>Accent</h3>
+<div class="grid">
+  <div class="swatch"><div class="chip" style="background:var(--color-primary); color:var(--color-on-primary)">Ink blue</div><div class="meta"><div class="name">primary / on-primary</div><div class="hex">#3B5BCC / #7B93E8</div></div></div>
+  <div class="swatch"><div class="chip" style="background:var(--color-primary-hover); color:var(--color-on-primary)">Hover</div><div class="meta"><div class="name">primary-hover</div><div class="hex">#3350B4 / #93A7EE</div></div></div>
+  <div class="swatch"><div class="chip" style="background:var(--color-accent-subtle); color:var(--color-primary)">Selection tint</div><div class="meta"><div class="name">accent-subtle</div><div class="hex">#EDF1FC / #1E2540</div></div></div>
+</div>
+<h3>Semantic</h3>
+<div class="grid">
+  <div class="swatch"><div class="chip" style="background:var(--color-surface); color:var(--color-success)">Signed</div><div class="meta"><div class="name">success</div><div class="hex">#1F7A45 / #5BBF86</div></div></div>
+  <div class="swatch"><div class="chip" style="background:var(--color-surface); color:var(--color-warning)">Needs review</div><div class="meta"><div class="name">warning</div><div class="hex">#8F6400 / #D9A93F</div></div></div>
+  <div class="swatch"><div class="chip" style="background:var(--color-surface); color:var(--color-error)">Failed</div><div class="meta"><div class="name">error</div><div class="hex">#B3261E / #E5726B</div></div></div>
+</div>
+
+<h2>Typography</h2>
+<p class="note">Inter, bundled locally in the app (this reference page may load it from Google Fonts; the app never does). Compressed scale — 13px body is the workhorse.</p>
+<div class="specimen"><div style="font:var(--type-display); letter-spacing:-0.01em">Drop a PDF anywhere.</div><div class="spec">display · 24/600 · -0.01em</div></div>
+<div class="specimen"><div style="font:var(--type-h1); letter-spacing:-0.01em">Draw a signature</div><div class="spec">h1 · 18/600 · -0.01em</div></div>
+<div class="specimen"><div style="font:var(--type-h2)">Signatures</div><div class="spec">h2 · 15/600</div></div>
+<div class="specimen"><div style="font:var(--type-body)">Your saved signature and initials appear in the side tray.</div><div class="spec">body · 13/400</div></div>
+<div class="specimen"><div style="font:var(--type-body-strong)">Apply to all</div><div class="spec">body-strong · 13/500</div></div>
+<div class="specimen"><div style="font:var(--type-caption); letter-spacing:0.01em; color:var(--color-on-surface-muted)">Page 3 of 12 · last backed up June 30</div><div class="spec">caption · 11/400 · +0.01em</div></div>
+<div class="specimen"><div style="font:var(--type-mono)">lease-renewal-signed.pdf · ⌘S</div><div class="spec">mono · 12/400 · system mono</div></div>
+
+<h2>Spacing</h2>
+<p class="note">Base-4 scale, comfortable-tight density. Components breathe at 8–12px, sections at 16–24px, the drop zone alone at 48px.</p>
+<div class="bar-row"><span class="label">space-1 · 4px</span><div class="bar" style="width:4px"></div></div>
+<div class="bar-row"><span class="label">space-2 · 8px</span><div class="bar" style="width:8px"></div></div>
+<div class="bar-row"><span class="label">space-3 · 12px</span><div class="bar" style="width:12px"></div></div>
+<div class="bar-row"><span class="label">space-4 · 16px</span><div class="bar" style="width:16px"></div></div>
+<div class="bar-row"><span class="label">space-5 · 24px</span><div class="bar" style="width:24px"></div></div>
+<div class="bar-row"><span class="label">space-6 · 32px</span><div class="bar" style="width:32px"></div></div>
+<div class="bar-row"><span class="label">space-7 · 48px</span><div class="bar" style="width:48px"></div></div>
+
+<h2>Radius</h2>
+<p class="note">Slight rounding, varied by class. Panels and bars are square — they're architecture, not objects.</p>
+<div class="radius-row">
+  <div class="radius-box" style="border-radius:var(--rounded-none)">none · 0</div>
+  <div class="radius-box" style="border-radius:var(--rounded-sm)">sm · 4px</div>
+  <div class="radius-box" style="border-radius:var(--rounded-md)">md · 6px</div>
+  <div class="radius-box" style="border-radius:var(--rounded-lg)">lg · 10px</div>
+  <div class="radius-box" style="border-radius:var(--rounded-full); width:72px">full</div>
+</div>
+
+<h2>Elevation &amp; Depth</h2>
+<p class="note">Borders and surface shifts, not shadows. Exactly two shadows exist in the whole product.</p>
+<div class="elev-row">
+  <div class="elev-card" style="border:1px solid var(--color-border)"><div class="t">Level 0 — border</div><div class="d">Panels, trays, bars. 1px border, no shadow.</div></div>
+  <div class="elev-card" style="box-shadow:var(--shadow-page)"><div class="t">Paper — PDF pages</div><div class="d">0 1px 3px · pages sit on the sunken canvas.</div></div>
+  <div class="elev-card" style="box-shadow:var(--shadow-modal)"><div class="t">Floating — modals, toasts</div><div class="d">0 8px 24px · the only floating layer.</div></div>
+</div>
+
+<h2>Components</h2>
+
+<div class="comp-group">
+  <h3 style="margin-top:0">Buttons</h3>
+  <div class="comp-row">
+    <button class="btn-primary">Download</button>
+    <button class="btn-primary hover">Download (hover)</button>
+    <button class="btn-primary" disabled>Download (disabled)</button>
+  </div>
+  <div class="comp-row">
+    <button class="btn-secondary">Start fresh</button>
+    <button class="btn-secondary hover">Start fresh (hover)</button>
+  </div>
+  <div class="comp-label">button-primary / -hover / -disabled · button-secondary / -hover — one primary per screen region; disabled goes gray, never faded blue.</div>
+</div>
+
+<div class="comp-group">
+  <h3 style="margin-top:0">Input</h3>
+  <div class="comp-row">
+    <input class="input" value="Signature" aria-label="default input">
+    <input class="input focus" value="Signature (focus)" aria-label="focused input">
+  </div>
+  <div class="comp-label">input-text / -focus — focus swaps the border to primary with a 2px accent-subtle ring.</div>
+</div>
+
+<div class="comp-group">
+  <h3 style="margin-top:0">Library tray</h3>
+  <div class="comp-row">
+    <div class="tray-demo">
+      <div class="h">Signatures</div>
+      <div class="empty">No saved signatures. Draw one to get started.</div>
+    </div>
+  </div>
+  <div class="comp-label">tray — 264px flat column, border-separated, empty state carries the instruction (no onboarding chrome).</div>
+</div>
+
+<div class="comp-group">
+  <h3 style="margin-top:0">Modal & toast</h3>
+  <div class="comp-row" style="align-items:flex-start">
+    <div class="modal-demo">
+      <div class="h">Delete this signature?</div>
+      <p>This can't be undone. Export a backup first if you're not sure.</p>
+      <div class="comp-row"><button class="btn-secondary">Cancel</button><button class="btn-primary">Delete</button></div>
+    </div>
+    <div class="toast-demo">Done. 12 documents signed.</div>
+  </div>
+  <div class="comp-label">modal — the only centered floating element, lg radius, focus-trapped. toast — inverted palette, bottom-center, 4s.</div>
+</div>
+
+<div class="comp-group">
+  <h3 style="margin-top:0">Status chips</h3>
+  <div class="comp-row">
+    <span class="chip">pending</span>
+    <span class="chip">placed</span>
+    <span class="chip warning">needs review</span>
+    <span class="chip success">signed</span>
+    <span class="chip error">failed</span>
+  </div>
+  <div class="comp-label">status-chip / -success / -error (warning shown for completeness) — the batch panel's vocabulary; lowercase, terse.</div>
+</div>
+
+<div class="comp-group">
+  <h3 style="margin-top:0">Drop target</h3>
+  <div class="drop-demo">Drop a PDF anywhere.</div>
+  <div style="height:var(--space-3)"></div>
+  <div class="drop-demo active">Drop a PDF anywhere.</div>
+  <div class="comp-label">drop-target / -active — the whole window is the target; active floods accent-subtle with a primary dashed border.</div>
+</div>
+
+<div class="comp-group">
+  <h3 style="margin-top:0">Restore bar</h3>
+  <div class="restore-demo">
+    <span>Resume last session?</span>
+    <span style="display:flex; gap:var(--space-2)"><button class="btn-primary">Resume</button><button class="btn-secondary">Start fresh</button></span>
+  </div>
+  <div class="comp-label">restore-bar — square, full-width, accent-subtle background; appears only when a saved session exists.</div>
+</div>
+
+<div class="comp-group">
+  <h3 style="margin-top:0">Canvas, page & placement selection</h3>
+  <div class="canvas-well">
+    <div class="page-demo">
+      <div class="selection">
+        <div class="handle" style="top:-4px; left:-4px"></div>
+        <div class="handle" style="top:-4px; right:-4px"></div>
+        <div class="handle" style="bottom:-4px; left:-4px"></div>
+        <div class="handle" style="bottom:-4px; right:-4px"></div>
+      </div>
+    </div>
+  </div>
+  <div class="comp-label">placement-handle — 8px surface squares with primary border at selection corners; 1.5px primary selection outline; the white page casts the paper shadow on the sunken canvas.</div>
+</div>
+
+<h2>Do's and Don'ts</h2>
+<div class="dodont">
+  <ul class="do">
+    <li>Ration ink blue to interaction: one primary button per region, selection, focus.</li>
+    <li>Let the PDF page be the brightest, most contrasted object on screen.</li>
+    <li>Snap every dimension to the 4px grid; every string to the voice guide.</li>
+    <li>Use borders and surface shifts for hierarchy; only pages and modals cast shadows.</li>
+    <li>Show state with the chip vocabulary — color-coded, terse, lowercase.</li>
+  </ul>
+  <ul class="dont">
+    <li>No gradients, glassmorphism, glows, or decorative illustration.</li>
+    <li>No celebration: no confetti, animated checkmarks, or exclamation marks.</li>
+    <li>No onboarding chrome: no tours, first-run tooltips, or "pro tip" cards.</li>
+    <li>No new colors — a need for one means the need is misdiagnosed.</li>
+    <li>No motion beyond 120ms color/opacity eases.</li>
+    <li>No CDN assets in the app — fonts and icons ship bundled or not at all.</li>
+  </ul>
+</div>
+
+</body>
+</html>
