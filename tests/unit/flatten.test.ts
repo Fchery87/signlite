@@ -24,6 +24,21 @@ async function makeDocument(placements: SessionDocument['placements']): Promise<
   };
 }
 
+function inflateContentStreams(output: Uint8Array) {
+  // Node's latin1 preserves bytes 1:1 so compressed stream data survives
+  // the decode (TextDecoder's utf-8 and windows-1252 both corrupt it).
+  const outputText = Buffer.from(output).toString('latin1');
+  return Array.from(outputText.matchAll(/stream\r?\n([\s\S]*?)endstream/g))
+    .map((match) => {
+      try {
+        return inflateSync(Buffer.from(match[1] ?? '', 'binary')).toString('latin1');
+      } catch {
+        return '';
+      }
+    })
+    .join('\n');
+}
+
 describe('flattenDocument', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -75,6 +90,30 @@ describe('flattenDocument', () => {
     expect(inflatedStreams).not.toContain('(   )');
     expect(output.byteLength).toBeGreaterThan(document.pdfBytes.byteLength);
     expect(document.pdfBytes).toEqual(originalBytes);
+  });
+
+  it('draws signatures at the placement size, not the image natural size', async () => {
+    const document = await makeDocument([
+      {
+        id: 'sig-1',
+        type: 'signature',
+        assetPngBytes: PNG_BYTES,
+        pageIndex: 0,
+        x: 0.1,
+        y: 0.1,
+        w: 0.3,
+        h: 0.2
+      }
+    ]);
+
+    const output = await flattenDocument(document, { dateFormat: 'yyyy-MM-dd' });
+
+    // Placement 0.3x0.2 on a 200x200 page must scale the image to 60x40
+    // points at x=20, y=140 — not fall back to the PNG's natural size.
+    // pdf-lib emits translation and scale as separate cm operators.
+    const stream = inflateContentStreams(output);
+    expect(stream).toMatch(/\b1 0 0 1 20 140 cm\b/);
+    expect(stream).toMatch(/\b60 0 0 40 0 0 cm\b/);
   });
 
   it('falls back to cached placement png bytes when the library asset is gone', async () => {

@@ -54,7 +54,9 @@ export async function flattenDocument(document: SessionDocument, options: Flatte
         const pngBytes = await resolveAssetBytes(placement, options);
         if (!pngBytes) continue;
         const image = await pdf.embedPng(pngBytes);
-        page.drawImage(image, rect);
+        // drawImage expects width/height; passing the Rect's w/h keys would be
+        // silently ignored and the image drawn at its natural size.
+        page.drawImage(image, { x: rect.x, y: rect.y, width: rect.w, height: rect.h });
         continue;
       }
 
