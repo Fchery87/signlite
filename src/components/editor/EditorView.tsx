@@ -7,6 +7,7 @@ import { STRINGS } from '../../lib/strings';
 import { loadDocument, type LoadedPdf } from '../../pdf/render';
 import { PageCanvas } from './PageCanvas';
 import { PageThumbnails } from './PageThumbnails';
+import { useActivePage } from './useActivePage';
 import { LibraryTray } from '../library/LibraryTray';
 import { getDateFormat, hydrateSignaturePrefs } from '../../db/signatures';
 import { downloadBlob, signedPdfFileName } from '../../lib/files';
@@ -71,22 +72,22 @@ export function EditorView({ onToast }: EditorViewProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [zoom, setZoom] = useState<ZoomOption>('fit');
   const [viewerWidth, setViewerWidth] = useState(0);
-  const [visibility, setVisibility] = useState<Record<number, number>>({ 0: 1 });
-  const [pinnedPage, setPinnedPage] = useState<number | null>(null);
   const [dateFormat, setDateFormat] = useState(() => getDateFormat());
   const [shortcutOpen, setShortcutOpen] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
-  const pageElementsRef = useRef<Record<number, HTMLDivElement | null>>({});
 
   // Key the load effect on docId + pdfBytes (both stable across placement edits)
   // rather than the document object, which the store recreates on every mutation.
   const selectedDocId = selectedDocument?.docId ?? null;
   const selectedPdfBytes = selectedDocument?.pdfBytes ?? null;
 
+  const { activePage, onVisibilityChange, onPageElement, selectPage } = useActivePage(scrollRootRef, selectedDocId);
+
   useEffect(() => {
     if (!selectedDocId || !selectedPdfBytes) return;
+    const pdfBytes = selectedPdfBytes;
 
     let cancelled = false;
     let loadedPdf: LoadedPdf | null = null;
@@ -94,7 +95,7 @@ export function EditorView({ onToast }: EditorViewProps) {
 
     async function load() {
       try {
-        loadedPdf = await loadDocument(selectedPdfBytes!.slice(0));
+        loadedPdf = await loadDocument(pdfBytes.slice(0));
         if (!cancelled) {
           setPdfState({ status: 'ready', pdf: loadedPdf });
         }
@@ -109,8 +110,6 @@ export function EditorView({ onToast }: EditorViewProps) {
     }
 
     void load();
-    setVisibility({ 0: 1 });
-    setPinnedPage(null);
     setSelection(selectedDocId, null);
 
     return () => {
@@ -150,47 +149,7 @@ export function EditorView({ onToast }: EditorViewProps) {
   }, [selectedDocument, viewerWidth]);
 
   const scale = zoom === 'fit' ? fitScale : zoom;
-  const visiblePage = useMemo(() => {
-    const entries = Object.entries(visibility);
-    if (entries.length === 0) return 0;
-    return Number(entries.sort((left, right) => right[1] - left[1])[0]?.[0] ?? 0);
-  }, [visibility]);
-  // A clicked thumbnail pins the placement target until scrolling arrives
-  // there or the user scrolls manually.
-  const activePage = pinnedPage ?? visiblePage;
   const hasPlacements = (selectedDocument?.placements.length ?? 0) > 0;
-
-  useEffect(() => {
-    if (pinnedPage !== null && visiblePage === pinnedPage) {
-      setPinnedPage(null);
-    }
-  }, [pinnedPage, visiblePage]);
-
-  useEffect(() => {
-    const element = scrollRootRef.current;
-    if (!element) return;
-
-    const clearPin = () => setPinnedPage(null);
-    element.addEventListener('wheel', clearPin, { passive: true });
-    element.addEventListener('touchmove', clearPin, { passive: true });
-    return () => {
-      element.removeEventListener('wheel', clearPin);
-      element.removeEventListener('touchmove', clearPin);
-    };
-  }, []);
-
-  const handleVisibilityChange = useCallback((pageIndex: number, ratio: number) => {
-    setVisibility((current) => ({ ...current, [pageIndex]: ratio }));
-  }, []);
-
-  const handlePageElement = useCallback((pageIndex: number, element: HTMLDivElement | null) => {
-    pageElementsRef.current[pageIndex] = element;
-  }, []);
-
-  const handleSelectPage = useCallback((pageIndex: number) => {
-    setPinnedPage(pageIndex);
-    pageElementsRef.current[pageIndex]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
 
   const announcePlacement = useCallback((type: SignatureAsset['kind'] | 'date' | 'text', pageIndex: number) => {
     setAnnouncement(STRINGS.announcements.placedOnPage(placementLabel(type), pageIndex + 1));
@@ -316,7 +275,7 @@ export function EditorView({ onToast }: EditorViewProps) {
                 documentId={selectedDocument.docId}
                 pageCount={selectedDocument.pageCount}
                 pdf={pdfState.status === 'ready' ? pdfState.pdf : null}
-                onSelectPage={handleSelectPage}
+                onSelectPage={selectPage}
               />
             </div>
           </div>
@@ -376,8 +335,8 @@ export function EditorView({ onToast }: EditorViewProps) {
                     scale={scale}
                     selectedPlacementId={selectedPlacementId}
                     scrollRootRef={scrollRootRef}
-                    onVisibilityChange={handleVisibilityChange}
-                    onPageElement={handlePageElement}
+                    onVisibilityChange={onVisibilityChange}
+                    onPageElement={onPageElement}
                     onToast={onToast}
                     loading={pdfState.status === 'loading'}
                     onAnnouncePlacement={announcePlacement}
