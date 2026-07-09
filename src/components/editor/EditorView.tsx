@@ -72,6 +72,7 @@ export function EditorView({ onToast }: EditorViewProps) {
   const [zoom, setZoom] = useState<ZoomOption>('fit');
   const [viewerWidth, setViewerWidth] = useState(0);
   const [visibility, setVisibility] = useState<Record<number, number>>({ 0: 1 });
+  const [pinnedPage, setPinnedPage] = useState<number | null>(null);
   const [dateFormat, setDateFormat] = useState(() => getDateFormat());
   const [shortcutOpen, setShortcutOpen] = useState(false);
   const [announcement, setAnnouncement] = useState('');
@@ -109,6 +110,7 @@ export function EditorView({ onToast }: EditorViewProps) {
 
     void load();
     setVisibility({ 0: 1 });
+    setPinnedPage(null);
     setSelection(selectedDocId, null);
 
     return () => {
@@ -148,12 +150,34 @@ export function EditorView({ onToast }: EditorViewProps) {
   }, [selectedDocument, viewerWidth]);
 
   const scale = zoom === 'fit' ? fitScale : zoom;
-  const activePage = useMemo(() => {
+  const visiblePage = useMemo(() => {
     const entries = Object.entries(visibility);
     if (entries.length === 0) return 0;
     return Number(entries.sort((left, right) => right[1] - left[1])[0]?.[0] ?? 0);
   }, [visibility]);
+  // A clicked thumbnail pins the placement target until scrolling arrives
+  // there or the user scrolls manually.
+  const activePage = pinnedPage ?? visiblePage;
   const hasPlacements = (selectedDocument?.placements.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (pinnedPage !== null && visiblePage === pinnedPage) {
+      setPinnedPage(null);
+    }
+  }, [pinnedPage, visiblePage]);
+
+  useEffect(() => {
+    const element = scrollRootRef.current;
+    if (!element) return;
+
+    const clearPin = () => setPinnedPage(null);
+    element.addEventListener('wheel', clearPin, { passive: true });
+    element.addEventListener('touchmove', clearPin, { passive: true });
+    return () => {
+      element.removeEventListener('wheel', clearPin);
+      element.removeEventListener('touchmove', clearPin);
+    };
+  }, []);
 
   const handleVisibilityChange = useCallback((pageIndex: number, ratio: number) => {
     setVisibility((current) => ({ ...current, [pageIndex]: ratio }));
@@ -164,6 +188,7 @@ export function EditorView({ onToast }: EditorViewProps) {
   }, []);
 
   const handleSelectPage = useCallback((pageIndex: number) => {
+    setPinnedPage(pageIndex);
     pageElementsRef.current[pageIndex]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 

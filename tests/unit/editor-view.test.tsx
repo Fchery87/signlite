@@ -106,6 +106,31 @@ describe('editor view', () => {
     expect(placements[1]?.pageIndex).toBe(1);
   });
 
+  it('places elements on a clicked thumbnail page before scrolling arrives', async () => {
+    render(<EditorView onToast={() => {}} />);
+    await waitFor(() => expect(intersectionObservers.length).toBeGreaterThanOrEqual(2));
+
+    // Click the page 2 thumbnail; no visibility change has happened yet.
+    fireEvent.click(screen.getByRole('button', { name: /page 2/i }));
+    fireEvent.click(screen.getByRole('button', { name: STRINGS.library.text }));
+
+    // Scroll arrives at page 2, releasing the pin; then the user scrolls back to page 1.
+    act(() => {
+      emitVisibility(0, 0);
+      emitVisibility(1, 1);
+    });
+    act(() => {
+      emitVisibility(1, 0);
+      emitVisibility(0, 1);
+    });
+    fireEvent.click(screen.getByRole('button', { name: STRINGS.library.date }));
+
+    const placements = useSessionStore.getState().session.documents[0]?.placements ?? [];
+    expect(placements).toHaveLength(2);
+    expect(placements[0]?.pageIndex).toBe(1);
+    expect(placements[1]?.pageIndex).toBe(0);
+  });
+
   it('lets the user type more than one character into a text placement', async () => {
     render(<EditorView onToast={() => {}} />);
     await waitFor(() => expect(intersectionObservers.length).toBeGreaterThanOrEqual(2));
