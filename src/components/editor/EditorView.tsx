@@ -79,8 +79,13 @@ export function EditorView({ onToast }: EditorViewProps) {
   const viewerRef = useRef<HTMLDivElement>(null);
   const pageElementsRef = useRef<Record<number, HTMLDivElement | null>>({});
 
+  // Key the load effect on docId + pdfBytes (both stable across placement edits)
+  // rather than the document object, which the store recreates on every mutation.
+  const selectedDocId = selectedDocument?.docId ?? null;
+  const selectedPdfBytes = selectedDocument?.pdfBytes ?? null;
+
   useEffect(() => {
-    if (!selectedDocument) return;
+    if (!selectedDocId || !selectedPdfBytes) return;
 
     let cancelled = false;
     let loadedPdf: LoadedPdf | null = null;
@@ -88,7 +93,7 @@ export function EditorView({ onToast }: EditorViewProps) {
 
     async function load() {
       try {
-        loadedPdf = await loadDocument(selectedDocument.pdfBytes.slice(0));
+        loadedPdf = await loadDocument(selectedPdfBytes!.slice(0));
         if (!cancelled) {
           setPdfState({ status: 'ready', pdf: loadedPdf });
         }
@@ -104,13 +109,13 @@ export function EditorView({ onToast }: EditorViewProps) {
 
     void load();
     setVisibility({ 0: 1 });
-    setSelection(selectedDocument.docId, null);
+    setSelection(selectedDocId, null);
 
     return () => {
       cancelled = true;
       void loadedPdf?.destroy();
     };
-  }, [selectedDocument, setSelection]);
+  }, [selectedDocId, selectedPdfBytes, setSelection]);
 
   useEffect(() => {
     void hydrateSignaturePrefs().then(() => setDateFormat(getDateFormat()));
