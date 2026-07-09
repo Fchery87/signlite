@@ -239,44 +239,39 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
         )}
 
         {selected && (placement.type === 'text' || placement.type === 'date') ? (
-          <div className="absolute -top-10 left-0 flex items-center gap-2 border border-line bg-surface px-2 py-1 text-caption shadow-panel">
+          <div
+            className="absolute -top-10 left-0 flex items-center gap-2 border border-line bg-surface px-2 py-1 text-caption shadow-panel"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
             {placement.type === 'text' ? (
-              <>
-                <button
-                  type="button"
-                  className="focus-ring rounded-sm px-2 py-1 hover:bg-mist"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setIsEditingText(true);
-                  }}
-                >
-                  {STRINGS.buttons.edit}
-                </button>
-                <label className="flex items-center gap-1">
-                  <span>Size</span>
-                  <input
-                    type="number"
-                    min={8}
-                    max={72}
-                    value={placement.fontSize ?? 12}
-                    onClick={(event) => event.stopPropagation()}
-                    onChange={(event) => updatePlacement(documentId, placement.id, { fontSize: Number(event.target.value) || 12 })}
-                    className="focus-ring w-14 border border-line px-1 py-0.5"
-                  />
-                </label>
-              </>
+              <button
+                type="button"
+                className="focus-ring rounded-sm px-2 py-1 hover:bg-mist"
+                onClick={() => setIsEditingText(true)}
+              >
+                {STRINGS.buttons.edit}
+              </button>
             ) : (
               <button
                 type="button"
                 className="focus-ring rounded-sm px-2 py-1 hover:bg-mist"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void cycleDateFormat();
-                }}
+                onClick={() => void cycleDateFormat()}
               >
                 Cycle format
               </button>
             )}
+            <label className="flex items-center gap-1">
+              <span>Size</span>
+              <input
+                type="number"
+                min={8}
+                max={72}
+                value={placement.fontSize ?? 12}
+                onChange={(event) => updatePlacement(documentId, placement.id, { fontSize: Number(event.target.value) || 12 })}
+                className="focus-ring w-14 border border-line px-1 py-0.5"
+              />
+            </label>
           </div>
         ) : null}
 

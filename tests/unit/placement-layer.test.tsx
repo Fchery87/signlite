@@ -202,8 +202,41 @@ describe('placement layer', () => {
     fireEvent.change(input, { target: { value: 'Signer name' } });
     expect(useSessionStore.getState().session.documents[0]?.placements.find((item) => item.id === 'text-1')?.value).toBe('Signer name');
 
-    const sizeInput = screen.getByDisplayValue('12');
+    // Both the date and text placements render a size input; the text one is second.
+    const sizeInput = screen.getAllByRole('spinbutton')[1]!;
     fireEvent.change(sizeInput, { target: { value: '18' } });
     expect(useSessionStore.getState().session.documents[0]?.placements.find((item) => item.id === 'text-1')?.fontSize).toBe(18);
+  });
+
+  it('adjusts date font size from the toolbar without starting a drag', () => {
+    useSessionStore.getState().addPlacement('doc-1', {
+      id: 'date-1',
+      type: 'date',
+      pageIndex: 0,
+      x: 0.1,
+      y: 0.1,
+      w: 0.2,
+      h: 0.1,
+      value: 'MMM d, yyyy',
+      fontSize: 12
+    });
+
+    const datePlacement = useSessionStore.getState().session.documents[0]?.placements[0];
+    if (!datePlacement) {
+      throw new Error('Expected placement to exist');
+    }
+
+    render(<PlacedElement documentId="doc-1" pageSize={{ w: 200, h: 100 }} placement={datePlacement} scale={1} selected />);
+
+    const sizeInput = screen.getByRole('spinbutton');
+
+    // Pointer-down on the size input must not be captured by the move-drag
+    // handler, which would preventDefault and block focusing the input.
+    const notPrevented = fireEvent.pointerDown(sizeInput, { pointerId: 1 });
+    expect(notPrevented).toBe(true);
+
+    fireEvent.change(sizeInput, { target: { value: '16' } });
+    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.fontSize).toBe(16);
+    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.value).toBe('MMM d, yyyy');
   });
 });
