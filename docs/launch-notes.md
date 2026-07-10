@@ -10,6 +10,8 @@ This repository now includes a static-hosting workflow skeleton in `.github/work
 
 Cloudflare Pages remains the recommended free host from the roadmap. This repo-local slice adds a GitHub Pages workflow because it is fully expressible in-repo and gives the project a working deployment skeleton without requiring account access from this environment.
 
+Hostinger shared hosting is also a viable deployment target for this project because SignLite builds to a pure static `dist/` directory with no backend, no server runtime, and no environment variables.
+
 ## Build settings
 
 - Build command: `npm run build`
@@ -28,16 +30,46 @@ Cloudflare Pages remains the recommended free host from the roadmap. This repo-l
 
 - Pending: add the live URL after the first deployment.
 
+## Hostinger shared hosting manual setup
+
+1. Run `npm run build` locally.
+2. Open the generated `dist/` directory.
+3. Upload the **contents of `dist/`** to your Hostinger web root, typically `public_html/`.
+4. Ensure HTTPS is enabled for the site.
+5. Verify that static assets load correctly, especially:
+   - `assets/*.js`
+   - `assets/*.mjs`
+   - `assets/*.css`
+   - `fonts/*`
+   - `cmaps/*`
+   - `standard_fonts/*`
+6. Open the deployed URL and run the manual verification checklist below before marking TASK-039 complete.
+
+### Production URL
+
+- Pending: add the live Hostinger URL after deployment.
+
 ## Cloudflare Pages manual setup
 
-1. Create a new Cloudflare Pages project connected to this repository.
-2. Configure:
-   - Framework preset: `None`
+1. Push the repository to GitHub.
+2. In the Cloudflare dashboard, open **Workers & Pages**.
+3. Select **Create application** → **Pages** → **Connect to Git**.
+4. Authorize GitHub and select this repository.
+5. Configure the project with these exact values:
+   - Production branch: `main`
+   - Framework preset: `React (Vite)` (or `None` if entering values manually)
    - Build command: `npm run build`
    - Build output directory: `dist`
-3. Leave environment variables empty.
-4. Deploy the site and record the public URL below.
-5. Run the manual verification checklist before marking TASK-039 complete.
+   - Deploy command: leave blank
+   - Non-production branch builds: enable if you want preview deploys
+   - Non-production branch deploy command: leave blank (or `npm run build` only if the UI requires a value)
+   - Root path / Path: leave blank because this app is in the repository root
+   - Environment variables: none required by default
+6. Optional fallback only if the build fails due to a Node version mismatch:
+   - Variable name: `NODE_VERSION`
+   - Variable value: `20`
+7. Deploy the site and record the public URL below.
+8. Run the manual verification checklist before marking TASK-039 complete.
 
 ### Production URL
 

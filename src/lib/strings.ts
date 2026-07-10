@@ -28,7 +28,12 @@ export const STRINGS = {
     removeSelection: 'Remove selected placement',
     nudge: 'Nudge selected placement',
     clearSelection: 'Clear selection',
-    closeDialog: 'Close dialog'
+    closeDialog: 'Close dialog',
+    copySelection: 'Copy selected placement',
+    pasteOnPage: 'Paste on current page',
+    duplicateSelection: 'Duplicate selected placement',
+    undo: 'Undo',
+    redo: 'Redo'
   },
   dropZone: {
     title: 'Drop a PDF anywhere.',
@@ -54,7 +59,11 @@ export const STRINGS = {
     applyToAll: 'Apply to all',
     replaceAndApply: 'Replace and apply',
     remove: 'Remove',
-    place: 'Place'
+    place: 'Place',
+    duplicate: 'Duplicate',
+    copy: 'Copy',
+    undo: 'Undo',
+    redo: 'Redo'
   },
   tooltips: {
     nothingPlacedYet: 'Nothing placed yet.'
@@ -81,7 +90,12 @@ export const STRINGS = {
     writeFailed: (fileName: string) => `Couldn't write ${fileName}. Try re-saving the PDF from its source.`,
     pdfLoadFallback: 'Could not load this PDF.',
     pagePreviewUnavailable: 'Preview unavailable',
-    removeFromSession: 'Remove from session'
+    removeFromSession: 'Remove from session',
+    elementsTitle: 'Elements',
+    elementsEmpty: 'Nothing placed yet.',
+    elementPageLabel: (pageNumber: number) => `Page ${pageNumber}`,
+    deleteElement: (label: string, pageNumber: number) => `Delete ${label} on page ${pageNumber}`,
+    copiedHint: 'Copied. Press Ctrl+V to paste on the page you are viewing.'
   },
   loading: {
     editor: 'Loading editor…',

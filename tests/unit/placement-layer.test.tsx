@@ -25,6 +25,8 @@ function resetStore() {
     },
     selectedDocumentId: 'doc-1',
     selectedPlacementId: null,
+    copiedPlacement: null,
+    history: { past: [], future: [] },
     view: 'editor'
   });
 }
@@ -206,6 +208,63 @@ describe('placement layer', () => {
     const sizeInput = screen.getAllByRole('spinbutton')[1]!;
     fireEvent.change(sizeInput, { target: { value: '18' } });
     expect(useSessionStore.getState().session.documents[0]?.placements.find((item) => item.id === 'text-1')?.fontSize).toBe(18);
+  });
+
+  it('offers duplicate, copy, and delete on any selected element', () => {
+    useSessionStore.getState().addPlacement('doc-1', {
+      id: 'sig-1',
+      type: 'signature',
+      assetId: 'asset-1',
+      pageIndex: 0,
+      x: 0.1,
+      y: 0.1,
+      w: 0.2,
+      h: 0.1
+    });
+    const placement = useSessionStore.getState().session.documents[0]?.placements[0];
+
+    render(<PlacedElement documentId="doc-1" pageSize={{ w: 200, h: 100 }} placement={placement!} scale={1} selected />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }));
+    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    expect(useSessionStore.getState().copiedPlacement?.id).toBe('sig-1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(useSessionStore.getState().session.documents[0]?.placements.map((item) => item.id)).not.toContain('sig-1');
+  });
+
+  it('copies and duplicates the selected placement from the keyboard', () => {
+    useSessionStore.getState().addPlacement('doc-1', {
+      id: 'sig-1',
+      type: 'signature',
+      assetId: 'asset-1',
+      pageIndex: 0,
+      x: 0.1,
+      y: 0.1,
+      w: 0.2,
+      h: 0.1
+    });
+
+    render(
+      <div className="relative" style={{ width: 200, height: 100 }}>
+        <PlacementLayer
+          documentId="doc-1"
+          pageIndex={0}
+          pageSize={{ w: 200, h: 100 }}
+          placements={useSessionStore.getState().session.documents[0]?.placements ?? []}
+          scale={1}
+          selectedPlacementId="sig-1"
+        />
+      </div>
+    );
+
+    fireEvent.keyDown(window, { key: 'c', ctrlKey: true });
+    expect(useSessionStore.getState().copiedPlacement?.id).toBe('sig-1');
+
+    fireEvent.keyDown(window, { key: 'd', ctrlKey: true });
+    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(2);
   });
 
   it('adjusts date font size from the toolbar without starting a drag', () => {

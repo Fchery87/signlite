@@ -7,7 +7,9 @@ import { STRINGS } from '../../lib/strings';
 import { loadDocument, type LoadedPdf } from '../../pdf/render';
 import { PageCanvas } from './PageCanvas';
 import { PageThumbnails } from './PageThumbnails';
+import { ElementsPanel } from './ElementsPanel';
 import { useActivePage } from './useActivePage';
+import { placementLabel } from '../../lib/placements';
 import { LibraryTray } from '../library/LibraryTray';
 import { getDateFormat, hydrateSignaturePrefs } from '../../db/signatures';
 import { downloadBlob, signedPdfFileName } from '../../lib/files';
@@ -31,6 +33,11 @@ const MIN_PLACEMENT_HEIGHT = 0.08;
 const shortcutRows = [
   { key: 'Cmd/Ctrl+S', action: STRINGS.shortcuts.currentDownload },
   { key: 'Cmd/Ctrl+Shift+S', action: STRINGS.shortcuts.batchDownload },
+  { key: 'Cmd/Ctrl+C', action: STRINGS.shortcuts.copySelection },
+  { key: 'Cmd/Ctrl+V', action: STRINGS.shortcuts.pasteOnPage },
+  { key: 'Cmd/Ctrl+D', action: STRINGS.shortcuts.duplicateSelection },
+  { key: 'Cmd/Ctrl+Z', action: STRINGS.shortcuts.undo },
+  { key: 'Cmd/Ctrl+Y', action: STRINGS.shortcuts.redo },
   { key: 'Delete', action: STRINGS.shortcuts.removeSelection },
   { key: 'Arrows', action: STRINGS.shortcuts.nudge },
   { key: 'Esc', action: STRINGS.shortcuts.clearSelection },
@@ -45,24 +52,16 @@ function isEditableTarget(target: EventTarget | null) {
   return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
 }
 
-function placementLabel(type: SignatureAsset['kind'] | 'date' | 'text') {
-  switch (type) {
-    case 'initials':
-      return 'Initials';
-    case 'date':
-      return 'Date';
-    case 'text':
-      return 'Text';
-    default:
-      return 'Signature';
-  }
-}
-
 export function EditorView({ onToast }: EditorViewProps) {
   const documents = useSessionStore((state) => state.session.documents);
   const selectedDocumentId = useSessionStore((state) => state.selectedDocumentId);
   const selectedPlacementId = useSessionStore((state) => state.selectedPlacementId);
   const addPlacement = useSessionStore((state) => state.addPlacement);
+  const pastePlacement = useSessionStore((state) => state.pastePlacement);
+  const undo = useSessionStore((state) => state.undo);
+  const redo = useSessionStore((state) => state.redo);
+  const canUndo = useSessionStore((state) => state.history.past.length > 0);
+  const canRedo = useSessionStore((state) => state.history.future.length > 0);
   const setSelection = useSessionStore((state) => state.setSelection);
   const updateDocumentStatus = useSessionStore((state) => state.updateDocumentStatus);
   const removeDocument = useSessionStore((state) => state.removeDocument);
@@ -203,6 +202,15 @@ export function EditorView({ onToast }: EditorViewProps) {
     [activePage, addPlacement, announcePlacement, onToast, selectedDocument]
   );
 
+  const handlePaste = useCallback(() => {
+    if (!selectedDocId) return;
+    const pasted = pastePlacement(selectedDocId, activePage);
+    if (pasted) {
+      announcePlacement(pasted.type, pasted.pageIndex);
+      onToast(STRINGS.announcements.placedOnPage(placementLabel(pasted.type), pasted.pageIndex + 1));
+    }
+  }, [activePage, announcePlacement, onToast, pastePlacement, selectedDocId]);
+
   const handleDownload = useCallback(async () => {
     if (!selectedDocument || isDownloading) return;
     setIsDownloading(true);
@@ -240,6 +248,27 @@ export function EditorView({ onToast }: EditorViewProps) {
         return;
       }
 
+      if (isPrimaryModifier && event.key.toLowerCase() === 'v') {
+        handlePaste();
+        return;
+      }
+
+      if (isPrimaryModifier && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+        return;
+      }
+
+      if (isPrimaryModifier && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        redo();
+        return;
+      }
+
       if (event.key === '?') {
         event.preventDefault();
         setShortcutOpen((current) => !current);
@@ -248,7 +277,7 @@ export function EditorView({ onToast }: EditorViewProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleDownload]);
+  }, [handleDownload, handlePaste, redo, undo]);
 
   if (!selectedDocument) {
     return null;
@@ -279,6 +308,14 @@ export function EditorView({ onToast }: EditorViewProps) {
               />
             </div>
           </div>
+          <ElementsPanel
+            document={selectedDocument}
+            selectedPlacementId={selectedPlacementId}
+            onSelect={(placement) => {
+              setSelection(selectedDocument.docId, placement.id);
+              selectPage(placement.pageIndex);
+            }}
+          />
         </aside>
 
         <main className="surface-card flex min-h-0 flex-col shadow-panel">
@@ -290,6 +327,12 @@ export function EditorView({ onToast }: EditorViewProps) {
             <div className="flex items-center gap-2">
               <Button variant="ghost" onClick={() => setShortcutOpen(true)}>
                 ?
+              </Button>
+              <Button variant="ghost" onClick={undo} disabled={!canUndo}>
+                {STRINGS.buttons.undo}
+              </Button>
+              <Button variant="ghost" onClick={redo} disabled={!canRedo}>
+                {STRINGS.buttons.redo}
               </Button>
               {zoomOptions.map((option) => (
                 <Button

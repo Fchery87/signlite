@@ -74,6 +74,8 @@ function resetStore() {
     },
     selectedDocumentId: 'doc-1',
     selectedPlacementId: null,
+    copiedPlacement: null,
+    history: { past: [], future: [] },
     view: 'editor'
   });
 }
@@ -133,6 +135,39 @@ describe('editor view', () => {
     expect(placements).toHaveLength(2);
     expect(placements[0]?.pageIndex).toBe(1);
     expect(placements[1]?.pageIndex).toBe(0);
+  });
+
+  it('pastes a copied element onto the active page with Ctrl+V', async () => {
+    render(<EditorView onToast={() => {}} />);
+    await waitFor(() => expect(intersectionObservers.length).toBeGreaterThanOrEqual(2));
+
+    fireEvent.click(screen.getByRole('button', { name: STRINGS.library.text }));
+    fireEvent.keyDown(window, { key: 'c', ctrlKey: true });
+
+    act(() => {
+      emitVisibility(0, 0);
+      emitVisibility(1, 1);
+    });
+    fireEvent.keyDown(window, { key: 'v', ctrlKey: true });
+
+    const placements = useSessionStore.getState().session.documents[0]?.placements ?? [];
+    expect(placements).toHaveLength(2);
+    expect(placements[1]?.pageIndex).toBe(1);
+    expect(placements[1]?.id).not.toBe(placements[0]?.id);
+  });
+
+  it('undoes and redoes placement changes from the header buttons', async () => {
+    render(<EditorView onToast={() => {}} />);
+    await waitFor(() => expect(intersectionObservers.length).toBeGreaterThanOrEqual(2));
+
+    fireEvent.click(screen.getByRole('button', { name: STRINGS.library.text }));
+    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.undo }));
+    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.redo }));
+    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(1);
   });
 
   it('lets the user type more than one character into a text placement', async () => {

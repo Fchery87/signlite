@@ -23,9 +23,22 @@ function resetStore() {
     },
     selectedDocumentId: null,
     selectedPlacementId: null,
+    copiedPlacement: null,
+    history: { past: [], future: [] },
     view: 'dropzone'
   });
 }
+
+const basePlacement = {
+  id: 'placement-1',
+  type: 'signature' as const,
+  assetId: 'asset-1',
+  pageIndex: 0,
+  x: 0.1,
+  y: 0.2,
+  w: 0.2,
+  h: 0.1
+};
 
 describe('session store', () => {
   beforeEach(resetStore);
@@ -109,5 +122,89 @@ describe('session store', () => {
     expect(documents[2]?.batchError).toBe('Needs review — this document is missing a template page.');
     expect(documents[3]?.status).toBe('needs-review');
     expect(documents[3]?.batchError).toBe('Differs from template — review.');
+  });
+
+  it('duplicates a placement with a fresh id, small offset, and selection', () => {
+    useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
+    useSessionStore.getState().addPlacement('doc-1', { ...basePlacement });
+
+    useSessionStore.getState().duplicatePlacement('doc-1', 'placement-1');
+
+    const state = useSessionStore.getState();
+    const placements = state.session.documents[0]?.placements ?? [];
+    expect(placements).toHaveLength(2);
+    const clone = placements[1]!;
+    expect(clone.id).not.toBe('placement-1');
+    expect(clone.x).toBeCloseTo(basePlacement.x + 0.02);
+    expect(clone.y).toBeCloseTo(basePlacement.y + 0.02);
+    expect(clone.pageIndex).toBe(0);
+    expect(state.selectedPlacementId).toBe(clone.id);
+  });
+
+  it('copies a placement and pastes it onto another page with a fresh id', () => {
+    useSessionStore.getState().addDocuments([makeDocument('doc-1', 2)]);
+    useSessionStore.getState().addPlacement('doc-1', { ...basePlacement });
+
+    useSessionStore.getState().copyPlacement('doc-1', 'placement-1');
+    expect(useSessionStore.getState().copiedPlacement?.id).toBe('placement-1');
+
+    const pasted = useSessionStore.getState().pastePlacement('doc-1', 1);
+
+    const state = useSessionStore.getState();
+    const placements = state.session.documents[0]?.placements ?? [];
+    expect(pasted).not.toBeNull();
+    expect(placements).toHaveLength(2);
+    expect(placements[1]?.id).not.toBe('placement-1');
+    expect(placements[1]?.pageIndex).toBe(1);
+    expect(placements[1]?.x).toBeCloseTo(basePlacement.x);
+    expect(state.selectedPlacementId).toBe(placements[1]?.id);
+  });
+
+  it('returns null when pasting with an empty clipboard', () => {
+    useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
+    expect(useSessionStore.getState().pastePlacement('doc-1', 0)).toBeNull();
+  });
+
+  it('undoes and redoes placement changes', () => {
+    useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
+    useSessionStore.getState().addPlacement('doc-1', { ...basePlacement });
+    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(1);
+
+    useSessionStore.getState().undo();
+    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(0);
+    expect(useSessionStore.getState().selectedPlacementId).toBeNull();
+
+    useSessionStore.getState().redo();
+    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(1);
+  });
+
+  it('coalesces history pushes that share a key within the window', () => {
+    useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
+    useSessionStore.getState().addPlacement('doc-1', { ...basePlacement, type: 'text', value: '' });
+
+    // Simulate typing: one coalesced push per keystroke, then value updates.
+    useSessionStore.getState().pushHistory('text:placement-1');
+    useSessionStore.getState().updatePlacement('doc-1', 'placement-1', { value: 'H' });
+    useSessionStore.getState().pushHistory('text:placement-1');
+    useSessionStore.getState().updatePlacement('doc-1', 'placement-1', { value: 'Hi' });
+
+    useSessionStore.getState().undo();
+    // One undo reverses the whole typing burst, not one character.
+    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.value).toBe('');
+  });
+
+  it('clears history and clipboard when documents change', () => {
+    useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
+    useSessionStore.getState().addPlacement('doc-1', { ...basePlacement });
+    useSessionStore.getState().copyPlacement('doc-1', 'placement-1');
+
+    useSessionStore.getState().removeDocument('doc-1');
+
+    const state = useSessionStore.getState();
+    expect(state.history.past).toHaveLength(0);
+    expect(state.history.future).toHaveLength(0);
+    expect(state.copiedPlacement).toBeNull();
+    state.undo();
+    expect(useSessionStore.getState().session.documents).toHaveLength(0);
   });
 });

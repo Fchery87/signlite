@@ -15,6 +15,7 @@ type PlacedElementProps = {
   placement: Placement;
   scale: number;
   selected: boolean;
+  onToast?: (message: string) => void;
 };
 
 type ResizeHandle = 'nw' | 'ne' | 'se' | 'sw';
@@ -50,13 +51,19 @@ function normalizeRect(rect: { x: number; y: number; w: number; h: number }) {
   return { x, y, w, h };
 }
 
-export function PlacedElement({ documentId, pageSize, placement, scale, selected }: PlacedElementProps) {
+export function PlacedElement({ documentId, pageSize, placement, scale, selected, onToast }: PlacedElementProps) {
   const updatePlacement = useSessionStore((state) => state.updatePlacement);
+  const removePlacement = useSessionStore((state) => state.removePlacement);
+  const duplicatePlacement = useSessionStore((state) => state.duplicatePlacement);
+  const copyPlacement = useSessionStore((state) => state.copyPlacement);
+  const pushHistory = useSessionStore((state) => state.pushHistory);
   const setSelection = useSessionStore((state) => state.setSelection);
   const [src, setSrc] = useState('');
   const [dateFormatValue, setDateFormatValue] = useState(() => getDateFormat());
   const [isEditingText, setIsEditingText] = useState(false);
   const pointerStateRef = useRef<PointerState | null>(null);
+  // One history entry per drag/resize gesture, captured before the first move.
+  const gestureHistoryPushedRef = useRef(false);
   const textInputRef = useRef<HTMLInputElement>(null);
 
   const screenRect = useMemo(() => normalizedToScreen(placement, pageSize, scale), [pageSize, placement, scale]);
@@ -105,6 +112,11 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
   const handlePointerMove = (event: PointerEvent) => {
     const pointerState = pointerStateRef.current;
     if (!pointerState || event.pointerId !== pointerState.pointerId) return;
+
+    if (!gestureHistoryPushedRef.current) {
+      gestureHistoryPushedRef.current = true;
+      pushHistory();
+    }
 
     const dx = event.clientX - pointerState.startX;
     const dy = event.clientY - pointerState.startY;
@@ -176,6 +188,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
     event.preventDefault();
     event.stopPropagation();
     setSelection(documentId, placement.id);
+    gestureHistoryPushedRef.current = false;
     pointerStateRef.current =
       mode === 'move'
         ? { mode, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, rect: screenRect }
@@ -188,6 +201,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
     const current = placement.value || dateFormatValue;
     const index = DATE_FORMATS.indexOf(current as (typeof DATE_FORMATS)[number]);
     const next = DATE_FORMATS[(index + 1 + DATE_FORMATS.length) % DATE_FORMATS.length];
+    pushHistory();
     updatePlacement(documentId, placement.id, { value: next });
     setDateFormatValue(next);
     await setDateFormat(next);
@@ -222,7 +236,10 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
           <input
             ref={textInputRef}
             value={placement.value ?? ''}
-            onChange={(event) => updatePlacement(documentId, placement.id, { value: event.target.value })}
+            onChange={(event) => {
+              pushHistory(`text:${placement.id}`);
+              updatePlacement(documentId, placement.id, { value: event.target.value });
+            }}
             onBlur={() => setIsEditingText(false)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
@@ -238,7 +255,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
           </span>
         )}
 
-        {selected && (placement.type === 'text' || placement.type === 'date') ? (
+        {selected ? (
           <div
             className="absolute -top-10 left-0 flex items-center gap-2 border border-line bg-surface px-2 py-1 text-caption shadow-panel"
             onPointerDown={(event) => event.stopPropagation()}
@@ -252,7 +269,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
               >
                 {STRINGS.buttons.edit}
               </button>
-            ) : (
+            ) : placement.type === 'date' ? (
               <button
                 type="button"
                 className="focus-ring rounded-sm px-2 py-1 hover:bg-mist"
@@ -260,18 +277,47 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
               >
                 Cycle format
               </button>
-            )}
-            <label className="flex items-center gap-1">
-              <span>Size</span>
-              <input
-                type="number"
-                min={8}
-                max={72}
-                value={placement.fontSize ?? 12}
-                onChange={(event) => updatePlacement(documentId, placement.id, { fontSize: Number(event.target.value) || 12 })}
-                className="focus-ring w-14 border border-line px-1 py-0.5"
-              />
-            </label>
+            ) : null}
+            {placement.type === 'text' || placement.type === 'date' ? (
+              <label className="flex items-center gap-1">
+                <span>Size</span>
+                <input
+                  type="number"
+                  min={8}
+                  max={72}
+                  value={placement.fontSize ?? 12}
+                  onChange={(event) => {
+                    pushHistory(`fontSize:${placement.id}`);
+                    updatePlacement(documentId, placement.id, { fontSize: Number(event.target.value) || 12 });
+                  }}
+                  className="focus-ring w-14 border border-line px-1 py-0.5"
+                />
+              </label>
+            ) : null}
+            <button
+              type="button"
+              className="focus-ring rounded-sm px-2 py-1 hover:bg-mist"
+              onClick={() => duplicatePlacement(documentId, placement.id)}
+            >
+              {STRINGS.buttons.duplicate}
+            </button>
+            <button
+              type="button"
+              className="focus-ring rounded-sm px-2 py-1 hover:bg-mist"
+              onClick={() => {
+                copyPlacement(documentId, placement.id);
+                onToast?.(STRINGS.editor.copiedHint);
+              }}
+            >
+              {STRINGS.buttons.copy}
+            </button>
+            <button
+              type="button"
+              className="focus-ring rounded-sm px-2 py-1 text-danger hover:bg-mist"
+              onClick={() => removePlacement(documentId, placement.id)}
+            >
+              {STRINGS.buttons.delete}
+            </button>
           </div>
         ) : null}
 
