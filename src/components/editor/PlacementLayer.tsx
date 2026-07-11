@@ -66,7 +66,6 @@ export function PlacementLayer({
   const removePlacement = useSessionStore((state) => state.removePlacement);
   const duplicatePlacement = useSessionStore((state) => state.duplicatePlacement);
   const copyPlacement = useSessionStore((state) => state.copyPlacement);
-  const pushHistory = useSessionStore((state) => state.pushHistory);
   const setSelection = useSessionStore((state) => state.setSelection);
 
   useEffect(() => {
@@ -110,7 +109,6 @@ export function PlacementLayer({
       }
 
       event.preventDefault();
-      pushHistory(`nudge:${selectedPlacement.id}`);
       const next = clampRect(
         {
           ...selectedPlacement,
@@ -132,12 +130,12 @@ export function PlacementLayer({
           minH: MIN_PLACEMENT_PX / (pageSize.h * scale)
         }
       );
-      updatePlacement(documentId, selectedPlacement.id, next);
+      updatePlacement(documentId, selectedPlacement.id, next, `nudge:${selectedPlacement.id}`);
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [copyPlacement, documentId, duplicatePlacement, onToast, pageSize.h, pageSize.w, placements, pushHistory, removePlacement, scale, selectedPlacementId, setSelection, updatePlacement]);
+  }, [copyPlacement, documentId, duplicatePlacement, onToast, pageSize.h, pageSize.w, placements, removePlacement, scale, selectedPlacementId, setSelection, updatePlacement]);
 
   const placeAsset = async (event: DragEvent<HTMLDivElement>) => {
     const asset = parseDragAsset(event);

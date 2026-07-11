@@ -59,14 +59,13 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
   const removePlacement = useSessionStore((state) => state.removePlacement);
   const duplicatePlacement = useSessionStore((state) => state.duplicatePlacement);
   const copyPlacement = useSessionStore((state) => state.copyPlacement);
-  const pushHistory = useSessionStore((state) => state.pushHistory);
   const setSelection = useSessionStore((state) => state.setSelection);
   const [src, setSrc] = useState('');
   const [dateFormatValue, setDateFormatValue] = useState(() => getDateFormat());
   const [isEditingText, setIsEditingText] = useState(false);
   const pointerStateRef = useRef<PointerState | null>(null);
-  // One history entry per drag/resize gesture, captured before the first move.
-  const gestureHistoryPushedRef = useRef(false);
+  // One coalesce key per gesture so WorkSessionEditor creates one undo entry.
+  const gestureKeyRef = useRef('');
   const textInputRef = useRef<HTMLInputElement>(null);
 
   const screenRect = useMemo(() => normalizedToScreen(placement, pageSize, scale), [pageSize, placement, scale]);
@@ -112,17 +111,12 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
   );
 
   const commitRect = (nextRect: { x: number; y: number; w: number; h: number }) => {
-    updatePlacement(documentId, placement.id, screenToNormalized(nextRect, pageSize, scale, 1, minClamp));
+    updatePlacement(documentId, placement.id, screenToNormalized(nextRect, pageSize, scale, 1, minClamp), gestureKeyRef.current || undefined, 'gesture');
   };
 
   const handlePointerMove = (event: PointerEvent) => {
     const pointerState = pointerStateRef.current;
     if (!pointerState || event.pointerId !== pointerState.pointerId) return;
-
-    if (!gestureHistoryPushedRef.current) {
-      gestureHistoryPushedRef.current = true;
-      pushHistory();
-    }
 
     const dx = event.clientX - pointerState.startX;
     const dy = event.clientY - pointerState.startY;
@@ -143,7 +137,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
         ),
         minClamp
       );
-      updatePlacement(documentId, placement.id, nextNormalized);
+      updatePlacement(documentId, placement.id, nextNormalized, gestureKeyRef.current || undefined, 'gesture');
       return;
     }
 
@@ -194,7 +188,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
     event.preventDefault();
     event.stopPropagation();
     setSelection(documentId, placement.id);
-    gestureHistoryPushedRef.current = false;
+    gestureKeyRef.current = `gesture-${placement.id}-${Date.now()}`;
     pointerStateRef.current =
       mode === 'move'
         ? { mode, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, rect: screenRect }
@@ -207,8 +201,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
     const current = placement.value || dateFormatValue;
     const index = DATE_FORMATS.indexOf(current as (typeof DATE_FORMATS)[number]);
     const next = DATE_FORMATS[(index + 1 + DATE_FORMATS.length) % DATE_FORMATS.length];
-    pushHistory();
-    updatePlacement(documentId, placement.id, { value: next });
+    updatePlacement(documentId, placement.id, { value: next }, `date-cycle:${placement.id}`);
     setDateFormatValue(next);
     await setDateFormat(next);
   };
@@ -243,8 +236,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
             ref={textInputRef}
             value={placement.value ?? ''}
             onChange={(event) => {
-              pushHistory(`text:${placement.id}`);
-              updatePlacement(documentId, placement.id, { value: event.target.value });
+              updatePlacement(documentId, placement.id, { value: event.target.value }, `text:${placement.id}`);
             }}
             onBlur={() => setIsEditingText(false)}
             onKeyDown={(event) => {
@@ -293,8 +285,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
                   max={72}
                   value={placement.fontSize ?? 12}
                   onChange={(event) => {
-                    pushHistory(`fontSize:${placement.id}`);
-                    updatePlacement(documentId, placement.id, { fontSize: Number(event.target.value) || 12 });
+                    updatePlacement(documentId, placement.id, { fontSize: Number(event.target.value) || 12 }, `fontSize:${placement.id}`);
                   }}
                   className="focus-ring w-14 border border-line px-1 py-0.5"
                 />

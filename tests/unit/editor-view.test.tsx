@@ -175,6 +175,7 @@ describe('editor view', () => {
     await waitFor(() => expect(intersectionObservers.length).toBeGreaterThanOrEqual(2));
 
     fireEvent.click(screen.getByRole('button', { name: STRINGS.library.text }));
+    useSessionStore.setState({ history: { past: [], future: [] } });
 
     const placed = await screen.findByText('Text', { selector: 'span' });
     const placedButton = placed.closest('[role="button"]')!;
@@ -188,5 +189,8 @@ describe('editor view', () => {
 
     const placement = useSessionStore.getState().session.documents[0]?.placements[0];
     expect(placement?.value).toBe('Hello');
+    expect(useSessionStore.getState().history.past).toHaveLength(1);
+    useSessionStore.getState().undo();
+    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.value).toBe('Text');
   });
 });

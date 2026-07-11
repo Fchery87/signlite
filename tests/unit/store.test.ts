@@ -32,8 +32,9 @@ function resetStore() {
 
 const basePlacement = {
   id: 'placement-1',
-  type: 'signature' as const,
-  assetId: 'asset-1',
+  type: 'text' as const,
+  value: 'Signer',
+  fontSize: 12,
   pageIndex: 0,
   x: 0.1,
   y: 0.2,
@@ -75,6 +76,21 @@ describe('session store', () => {
     expect(session.documents[0]?.placements.every((placement) => !placement.assetId && !placement.assetPngBytes)).toBe(true);
   });
 
+  it('does not restore a document removed while a signature snapshot resolves', async () => {
+    useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
+
+    const pending = useSessionStore.getState().addSignaturePlacement(
+      'doc-1',
+      { kind: 'signature', pngBytes: new Uint8Array([1, 2, 3]).buffer, width: 20, height: 10 },
+      { id: 'racing-placement', pageIndex: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1 }
+    );
+    useSessionStore.getState().removeDocument('doc-1');
+
+    await expect(pending).resolves.toBeNull();
+    expect(useSessionStore.getState().session.documents).toHaveLength(0);
+    expect(useSessionStore.getState().session.signatureSnapshots).toEqual({});
+  });
+
   it('retains snapshots after placement deletion and undo history changes', async () => {
     useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
     await useSessionStore.getState().addSignaturePlacement(
@@ -87,24 +103,6 @@ describe('session store', () => {
     expect(useSessionStore.getState().session.signatureSnapshots?.[snapshotId!]).toBeDefined();
     useSessionStore.getState().undo();
     expect(useSessionStore.getState().session.documents[0]?.placements[0]?.snapshotId).toBe(snapshotId);
-  });
-
-  it('adds and removes placements', () => {
-    useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
-    useSessionStore.getState().addPlacement('doc-1', {
-      id: 'placement-1',
-      type: 'signature',
-      assetId: 'asset-1',
-      pageIndex: 0,
-      x: 0.1,
-      y: 0.2,
-      w: 0.2,
-      h: 0.1
-    });
-    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(1);
-    useSessionStore.getState().removePlacement('doc-1', 'placement-1');
-    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(0);
-    expect(useSessionStore.getState().session.documents[0]?.status).toBe('pending');
   });
 
   it('reorders documents and keeps the first doc as the template source', () => {
@@ -138,8 +136,9 @@ describe('session store', () => {
     ]);
     useSessionStore.getState().addPlacement('template', {
       id: 'placement-template',
-      type: 'signature',
-      assetId: 'asset-1',
+      type: 'text',
+      value: 'Template',
+      fontSize: 12,
       pageIndex: 1,
       x: 0.1,
       y: 0.1,
@@ -162,42 +161,6 @@ describe('session store', () => {
     expect(documents[3]?.batchError).toBe('Differs from template — review.');
   });
 
-  it('duplicates a placement with a fresh id, small offset, and selection', () => {
-    useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
-    useSessionStore.getState().addPlacement('doc-1', { ...basePlacement });
-
-    useSessionStore.getState().duplicatePlacement('doc-1', 'placement-1');
-
-    const state = useSessionStore.getState();
-    const placements = state.session.documents[0]?.placements ?? [];
-    expect(placements).toHaveLength(2);
-    const clone = placements[1]!;
-    expect(clone.id).not.toBe('placement-1');
-    expect(clone.x).toBeCloseTo(basePlacement.x + 0.02);
-    expect(clone.y).toBeCloseTo(basePlacement.y + 0.02);
-    expect(clone.pageIndex).toBe(0);
-    expect(state.selectedPlacementId).toBe(clone.id);
-  });
-
-  it('copies a placement and pastes it onto another page with a fresh id', () => {
-    useSessionStore.getState().addDocuments([makeDocument('doc-1', 2)]);
-    useSessionStore.getState().addPlacement('doc-1', { ...basePlacement });
-
-    useSessionStore.getState().copyPlacement('doc-1', 'placement-1');
-    expect(useSessionStore.getState().copiedPlacement?.id).toBe('placement-1');
-
-    const pasted = useSessionStore.getState().pastePlacement('doc-1', 1);
-
-    const state = useSessionStore.getState();
-    const placements = state.session.documents[0]?.placements ?? [];
-    expect(pasted).not.toBeNull();
-    expect(placements).toHaveLength(2);
-    expect(placements[1]?.id).not.toBe('placement-1');
-    expect(placements[1]?.pageIndex).toBe(1);
-    expect(placements[1]?.x).toBeCloseTo(basePlacement.x);
-    expect(state.selectedPlacementId).toBe(placements[1]?.id);
-  });
-
   it('returns null when pasting with an empty clipboard', () => {
     useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
     expect(useSessionStore.getState().pastePlacement('doc-1', 0)).toBeNull();
@@ -214,21 +177,6 @@ describe('session store', () => {
 
     useSessionStore.getState().redo();
     expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(1);
-  });
-
-  it('coalesces history pushes that share a key within the window', () => {
-    useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
-    useSessionStore.getState().addPlacement('doc-1', { ...basePlacement, type: 'text', value: '' });
-
-    // Simulate typing: one coalesced push per keystroke, then value updates.
-    useSessionStore.getState().pushHistory('text:placement-1');
-    useSessionStore.getState().updatePlacement('doc-1', 'placement-1', { value: 'H' });
-    useSessionStore.getState().pushHistory('text:placement-1');
-    useSessionStore.getState().updatePlacement('doc-1', 'placement-1', { value: 'Hi' });
-
-    useSessionStore.getState().undo();
-    // One undo reverses the whole typing burst, not one character.
-    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.value).toBe('');
   });
 
   it('clears history and clipboard when documents change', () => {

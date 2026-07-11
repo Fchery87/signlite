@@ -19,9 +19,15 @@ export function emptyHistory(): History {
   return { past: [], future: [] };
 }
 
-function pushHistoryEntry(history: History, session: WorkSession, coalesceKey?: string): History {
+function pushHistoryEntry(
+  history: History,
+  session: WorkSession,
+  coalesceKey?: string,
+  historyMode: 'burst' | 'gesture' = 'burst'
+): History {
   const previous = history.past[history.past.length - 1];
-  if (coalesceKey && previous?.coalesceKey === coalesceKey && Date.now() - previous.at < COALESCE_WINDOW_MS) {
+  const canCoalesce = history.future.length === 0 && coalesceKey && previous?.coalesceKey === coalesceKey;
+  if (canCoalesce && (historyMode === 'gesture' || Date.now() - previous.at < COALESCE_WINDOW_MS)) {
     return history;
   }
   const entry: HistoryEntry = {
@@ -36,10 +42,33 @@ function pushHistoryEntry(history: History, session: WorkSession, coalesceKey?: 
   };
 }
 
+function restoreHistoryEntry(session: WorkSession, entry: HistoryEntry): Partial<RestoredState> {
+  const documents = entry.documents;
+  return {
+    session: {
+      ...session,
+      updatedAt: Date.now(),
+      documents,
+      templatePlacements: entry.templatePlacements
+    },
+    selectedPlacementId: null
+  };
+}
+
 // ─── Errors ──────────────────────────────────────────────────────────
 
 export type WorkSessionEditorError = {
-  reason: 'document-not-found' | 'page-not-found' | 'invalid-geometry' | 'unsupported-dimensions';
+  reason:
+    | 'document-not-found'
+    | 'page-not-found'
+    | 'placement-not-found'
+    | 'duplicate-placement-id'
+    | 'invalid-geometry'
+    | 'unsupported-dimensions'
+    | 'unsupported-placement'
+    | 'invalid-value'
+    | 'missing-snapshot'
+    | 'empty-clipboard';
   message: string;
 };
 
@@ -67,11 +96,39 @@ export type AddSignaturePlacementRequest = {
   placement: SignaturePlacementInput;
 };
 
+export type PlacementChanges = Partial<Pick<Placement, 'pageIndex' | 'x' | 'y' | 'w' | 'h' | 'value' | 'fontSize'>>;
+
+export type UpdatePlacementRequest = {
+  docId: string;
+  placementId: string;
+  changes: PlacementChanges;
+  coalesceKey?: string;
+  historyMode?: 'burst' | 'gesture';
+};
+
+export type AddTextPlacementRequest = {
+  docId: string;
+  placement: Placement;
+};
+
 // ─── Results ─────────────────────────────────────────────────────────
 
-export type AddSignaturePlacementResult =
-  | { ok: true; session: WorkSession; history: History; placement: Placement }
-  | { ok: false; error: WorkSessionEditorError };
+type RestoredState = {
+  session: WorkSession;
+  selectedPlacementId: string | null;
+};
+
+export type OkResult = {
+  ok: true;
+  session: WorkSession;
+  history: History;
+  selectedPlacementId?: string | null;
+};
+
+export type ErrResult = { ok: false; error: WorkSessionEditorError };
+
+export type EditorResult = OkResult | ErrResult;
+export type AddSignaturePlacementResult = (OkResult & { placement: Placement }) | ErrResult;
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -79,25 +136,62 @@ function syncTemplatePlacements(documents: SessionDocument[]): Placement[] {
   return documents[0]?.placements.map((p) => ({ ...p })) ?? [];
 }
 
-function validatePlacementInput(session: WorkSession, request: AddSignaturePlacementRequest): WorkSessionEditorError | null {
-  const doc = session.documents.find((d) => d.docId === request.docId);
-  if (!doc) {
-    return { reason: 'document-not-found', message: `Document ${request.docId} not found` };
-  }
+function clonePlacement(placement: Placement): Placement {
+  return { ...placement, id: crypto.randomUUID() };
+}
 
-  if (request.placement.pageIndex < 0 || request.placement.pageIndex >= doc.pageCount) {
-    return { reason: 'page-not-found', message: `Page index ${request.placement.pageIndex} not found in ${request.docId}` };
-  }
+function isValidGeometry(p: { x: number; y: number; w: number; h: number }): boolean {
+  return [p.x, p.y, p.w, p.h].every(Number.isFinite)
+    && p.x >= 0 && p.y >= 0 && p.w > 0 && p.h > 0
+    && p.x + p.w <= 1.01 && p.y + p.h <= 1.01;
+}
 
-  const { x, y, w, h } = request.placement;
-  if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > 1.01 || y + h > 1.01) {
-    return { reason: 'invalid-geometry', message: `Invalid normalized geometry: x=${x}, y=${y}, w=${w}, h=${h}` };
+function validateTextValue(placement: Placement): WorkSessionEditorError | null {
+  if ((placement.type === 'text' || placement.type === 'date')
+      && placement.fontSize !== undefined
+      && (!Number.isFinite(placement.fontSize) || placement.fontSize < 8 || placement.fontSize > 72)) {
+    return { reason: 'invalid-value', message: `Font size ${placement.fontSize} is out of range` };
   }
+  return null;
+}
 
-  if (request.asset.width <= 0 || request.asset.height <= 0) {
-    return { reason: 'unsupported-dimensions', message: `Unsupported asset dimensions: ${request.asset.width}x${request.asset.height}` };
+function validateRequiredSnapshot(session: WorkSession, placement: Placement): WorkSessionEditorError | null {
+  if (placement.type !== 'signature' && placement.type !== 'initials') return null;
+  if (!placement.snapshotId || !session.signatureSnapshots?.[placement.snapshotId]) {
+    return { reason: 'missing-snapshot', message: `Placement ${placement.id} has no available snapshot` };
   }
+  return null;
+}
 
+function findPlacement(session: WorkSession, docId: string, placementId: string): { doc: SessionDocument; placement: Placement } | null {
+  const doc = session.documents.find((d) => d.docId === docId);
+  if (!doc) return null;
+  const placement = doc.placements.find((p) => p.id === placementId);
+  if (!placement) return null;
+  return { doc, placement };
+}
+
+function placementExists(documents: SessionDocument[], placementId: string | null): boolean {
+  return placementId !== null && documents.some((doc) => doc.placements.some((placement) => placement.id === placementId));
+}
+
+function validateFreshPlacementId(session: WorkSession, placementId: string): WorkSessionEditorError | null {
+  return session.documents.some((doc) => doc.placements.some((placement) => placement.id === placementId))
+    ? { reason: 'duplicate-placement-id', message: `Placement ${placementId} already exists` }
+    : null;
+}
+
+// ─── Validation ──────────────────────────────────────────────────────
+
+function validateDocAndPage(session: WorkSession, docId: string, pageIndex: number): WorkSessionEditorError | null {
+  const doc = session.documents.find((d) => d.docId === docId);
+  if (!doc) return { reason: 'document-not-found', message: `Document ${docId} not found` };
+  if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= doc.pageCount) return { reason: 'page-not-found', message: `Page index ${pageIndex} out of range` };
+  return null;
+}
+
+function validateAssetDimensions(width: number, height: number): WorkSessionEditorError | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return { reason: 'unsupported-dimensions', message: `Unsupported dimensions: ${width}x${height}` };
   return null;
 }
 
@@ -106,50 +200,270 @@ function validatePlacementInput(session: WorkSession, request: AddSignaturePlace
 /**
  * Creates a signature or initials Placement with full snapshot resolution,
  * validation, history, selection, and template consequences.
- *
- * Validation runs synchronously before any async work. If validation fails,
- * nothing changes. On success, a complete immutable snapshot is resolved and
- * the new state is returned for the store to commit atomically.
  */
 export async function addSignaturePlacement(
   session: WorkSession,
   history: History,
   request: AddSignaturePlacementRequest
 ): Promise<AddSignaturePlacementResult> {
-  const error = validatePlacementInput(session, request);
-  if (error) {
-    return { ok: false, error };
+  const error = validateDocAndPage(session, request.docId, request.placement.pageIndex)
+    ?? validateAssetDimensions(request.asset.width, request.asset.height)
+    ?? validateFreshPlacementId(session, request.placement.id)
+    ?? (request.asset.pngBytes.byteLength === 0
+      ? { reason: 'missing-snapshot' as const, message: 'Signature image bytes are required' }
+      : null);
+  if (error) return { ok: false, error };
+
+  if (!isValidGeometry(request.placement)) {
+    return { ok: false, error: { reason: 'invalid-geometry', message: `Invalid geometry: ${JSON.stringify(request.placement)}` } };
   }
 
   const snapshot = await createSignatureSnapshot(request.asset);
 
-  const nextPlacement: Placement = {
-    ...request.placement,
-    type: request.asset.kind,
-    snapshotId: snapshot.id
-  };
-
-  const documents: SessionDocument[] = session.documents.map((doc) =>
+  const nextPlacement: Placement = { ...request.placement, type: request.asset.kind, snapshotId: snapshot.id };
+  const documents = session.documents.map((doc) =>
     doc.docId === request.docId
-      ? { ...doc, placements: [...doc.placements, nextPlacement], status: 'placed', batchError: undefined }
+      ? { ...doc, placements: [...doc.placements, nextPlacement], status: 'placed' as const, batchError: undefined }
       : doc
   );
 
-  const nextSession: WorkSession = {
-    ...session,
-    updatedAt: Date.now(),
-    documents,
-    templatePlacements: syncTemplatePlacements(documents),
-    signatureSnapshots: {
-      ...(session.signatureSnapshots ?? {}),
-      [snapshot.id]: session.signatureSnapshots?.[snapshot.id] ?? snapshot
-    }
+  return {
+    ok: true,
+    session: {
+      ...session,
+      updatedAt: Date.now(),
+      documents,
+      templatePlacements: syncTemplatePlacements(documents),
+      signatureSnapshots: { ...(session.signatureSnapshots ?? {}), [snapshot.id]: session.signatureSnapshots?.[snapshot.id] ?? snapshot }
+    },
+    history: pushHistoryEntry(history, session),
+    selectedPlacementId: nextPlacement.id,
+    placement: nextPlacement
   };
+}
+
+/**
+ * Adds a text or date Placement with validation, history, and selection.
+ */
+export function addTextPlacement(session: WorkSession, history: History, request: AddTextPlacementRequest): EditorResult {
+  if (request.placement.type !== 'text' && request.placement.type !== 'date') {
+    return { ok: false, error: { reason: 'unsupported-placement', message: 'Only text and date Placements use this action' } };
+  }
+  const error = validateDocAndPage(session, request.docId, request.placement.pageIndex)
+    ?? validateTextValue(request.placement)
+    ?? validateFreshPlacementId(session, request.placement.id);
+  if (error) return { ok: false, error };
+
+  if (!isValidGeometry(request.placement)) {
+    return { ok: false, error: { reason: 'invalid-geometry', message: `Invalid geometry: ${JSON.stringify(request.placement)}` } };
+  }
+
+  const documents = session.documents.map((doc) =>
+    doc.docId === request.docId
+      ? { ...doc, placements: [...doc.placements, request.placement], status: 'placed' as const, batchError: undefined }
+      : doc
+  );
 
   return {
     ok: true,
-    session: nextSession,
+    session: {
+      ...session,
+      updatedAt: Date.now(),
+      documents,
+      templatePlacements: syncTemplatePlacements(documents)
+    },
     history: pushHistoryEntry(history, session),
-    placement: nextPlacement
+    selectedPlacementId: request.placement.id
+  };
+}
+
+/**
+ * Updates a Placement with validation. Uses coalesceKey for gesture/typing
+ * coalescing so one logical action creates one undo entry.
+ */
+export function updatePlacement(session: WorkSession, history: History, request: UpdatePlacementRequest): EditorResult {
+  const found = findPlacement(session, request.docId, request.placementId);
+  if (!found) {
+    return { ok: false, error: { reason: 'placement-not-found', message: `Placement ${request.placementId} not found` } };
+  }
+
+  const updated = { ...found.placement, ...request.changes };
+  const validationError = validateDocAndPage(session, request.docId, updated.pageIndex)
+    ?? validateTextValue(updated)
+    ?? validateRequiredSnapshot(session, updated);
+  if (validationError) return { ok: false, error: validationError };
+
+  if ((request.changes.x !== undefined || request.changes.y !== undefined ||
+       request.changes.w !== undefined || request.changes.h !== undefined) && !isValidGeometry(updated)) {
+    return { ok: false, error: { reason: 'invalid-geometry', message: `Invalid committed geometry` } };
+  }
+
+  const documents = session.documents.map((doc) =>
+    doc.docId === request.docId
+      ? {
+          ...doc,
+          placements: doc.placements.map((p) => (p.id === request.placementId ? updated : p)),
+          status: 'placed' as const,
+          batchError: undefined
+        }
+      : doc
+  );
+
+  return {
+    ok: true,
+    session: { ...session, updatedAt: Date.now(), documents, templatePlacements: syncTemplatePlacements(documents) },
+    history: pushHistoryEntry(history, session, request.coalesceKey, request.historyMode)
+  };
+}
+
+/**
+ * Removes a Placement, repairs selection, and pushes history.
+ */
+export function removePlacement(
+  session: WorkSession,
+  history: History,
+  docId: string,
+  placementId: string,
+  selectedPlacementId: string | null = null
+): EditorResult {
+  const found = findPlacement(session, docId, placementId);
+  if (!found) return { ok: false, error: { reason: 'placement-not-found', message: `Placement ${placementId} not found` } };
+
+  const documents = session.documents.map((doc) => {
+    if (doc.docId !== docId) return doc;
+    const placements = doc.placements.filter((p) => p.id !== placementId);
+    return {
+      ...doc,
+      placements,
+      status: (placements.length > 0 ? 'placed' : 'pending') as SessionDocument['status'],
+      batchError: undefined
+    };
+  });
+
+  return {
+    ok: true,
+    session: { ...session, updatedAt: Date.now(), documents, templatePlacements: syncTemplatePlacements(documents) },
+    history: pushHistoryEntry(history, session),
+    selectedPlacementId: selectedPlacementId === placementId ? null : selectedPlacementId
+  };
+}
+
+/**
+ * Duplicates a Placement with a fresh ID, small offset, and preserved snapshotId.
+ */
+export function duplicatePlacement(session: WorkSession, history: History, docId: string, placementId: string): EditorResult {
+  const found = findPlacement(session, docId, placementId);
+  if (!found) return { ok: false, error: { reason: 'placement-not-found', message: `Placement ${placementId} not found` } };
+
+  const source = found.placement;
+  const snapshotError = validateRequiredSnapshot(session, source);
+  if (snapshotError) return { ok: false, error: snapshotError };
+  const clone = {
+    ...clonePlacement(source),
+    x: Math.min(source.x + 0.02, 1 - source.w),
+    y: Math.min(source.y + 0.02, 1 - source.h)
+  };
+
+  const documents = session.documents.map((doc) =>
+    doc.docId === docId
+      ? { ...doc, placements: [...doc.placements, clone], status: 'placed' as const, batchError: undefined }
+      : doc
+  );
+
+  return {
+    ok: true,
+    session: { ...session, updatedAt: Date.now(), documents, templatePlacements: syncTemplatePlacements(documents) },
+    history: pushHistoryEntry(history, session),
+    selectedPlacementId: clone.id
+  };
+}
+
+/**
+ * Copies a Placement to the clipboard. Returns the copied placement or null.
+ */
+export function copyPlacement(session: WorkSession, docId: string, placementId: string): Placement | null {
+  const found = findPlacement(session, docId, placementId);
+  return found ? { ...found.placement } : null;
+}
+
+/**
+ * Pastes the clipboard Placement onto a page with a fresh ID and preserved snapshotId.
+ */
+export function pastePlacement(session: WorkSession, history: History, docId: string, pageIndex: number, clipboard: Placement | null): EditorResult {
+  if (!clipboard) return { ok: false, error: { reason: 'empty-clipboard', message: 'No placement on clipboard' } };
+
+  const error = validateDocAndPage(session, docId, pageIndex)
+    ?? validateRequiredSnapshot(session, clipboard);
+  if (error) return { ok: false, error };
+
+  const clone = { ...clonePlacement(clipboard), pageIndex };
+  if (!isValidGeometry(clone)) {
+    return { ok: false, error: { reason: 'invalid-geometry', message: 'Clipboard Placement has invalid geometry' } };
+  }
+
+  const documents = session.documents.map((doc) =>
+    doc.docId === docId
+      ? { ...doc, placements: [...doc.placements, clone], status: 'placed' as const, batchError: undefined }
+      : doc
+  );
+
+  return {
+    ok: true,
+    session: { ...session, updatedAt: Date.now(), documents, templatePlacements: syncTemplatePlacements(documents) },
+    history: pushHistoryEntry(history, session),
+    selectedPlacementId: clone.id
+  };
+}
+
+// ─── Undo / Redo ────────────────────────────────────────────────────
+
+export type HistoryResult = {
+  changed: boolean;
+  session: WorkSession;
+  history: History;
+  selectedPlacementId: string | null;
+};
+
+export function undo(
+  session: WorkSession,
+  history: History,
+  selectedPlacementId: string | null = null
+): HistoryResult {
+  const entry = history.past[history.past.length - 1];
+  if (!entry) return { changed: false, session, history, selectedPlacementId };
+
+  const current: HistoryEntry = {
+    documents: session.documents,
+    templatePlacements: session.templatePlacements,
+    at: Date.now()
+  };
+  const restored = restoreHistoryEntry(session, entry).session!;
+  return {
+    changed: true,
+    session: restored,
+    history: { past: history.past.slice(0, -1), future: [...history.future, current] },
+    selectedPlacementId: placementExists(restored.documents, selectedPlacementId) ? selectedPlacementId : null
+  };
+}
+
+export function redo(
+  session: WorkSession,
+  history: History,
+  selectedPlacementId: string | null = null
+): HistoryResult {
+  const entry = history.future[history.future.length - 1];
+  if (!entry) return { changed: false, session, history, selectedPlacementId };
+
+  const current: HistoryEntry = {
+    documents: session.documents,
+    templatePlacements: session.templatePlacements,
+    at: Date.now()
+  };
+  const restored = restoreHistoryEntry(session, entry).session!;
+  return {
+    changed: true,
+    session: restored,
+    history: { past: [...history.past, current], future: history.future.slice(0, -1) },
+    selectedPlacementId: placementExists(restored.documents, selectedPlacementId) ? selectedPlacementId : null
   };
 }

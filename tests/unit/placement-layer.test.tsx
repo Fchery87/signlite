@@ -1,8 +1,14 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { PlacementLayer } from '../../src/components/editor/PlacementLayer';
 import { PlacedElement } from '../../src/components/editor/PlacedElement';
 import { useSessionStore } from '../../src/stores/session';
 import { saveAsset, setDateFormat } from '../../src/db/signatures';
+
+function dispatchPointer(target: EventTarget, type: string, pointerId: number, clientX: number, clientY: number) {
+  const event = new MouseEvent(type, { bubbles: true, clientX, clientY });
+  Object.defineProperty(event, 'pointerId', { value: pointerId });
+  target.dispatchEvent(event);
+}
 
 function resetStore() {
   useSessionStore.setState({
@@ -66,7 +72,9 @@ describe('placement layer', () => {
       dropEffect: 'copy'
     };
 
-    fireEvent.drop(layer, { dataTransfer, clientX: 100, clientY: 50 });
+    const dropEvent = createEvent.drop(layer, { dataTransfer });
+    Object.defineProperties(dropEvent, { clientX: { value: 100 }, clientY: { value: 50 } });
+    fireEvent(layer, dropEvent);
 
     expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(0);
     await waitFor(() => expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(1));
@@ -79,14 +87,17 @@ describe('placement layer', () => {
   it('nudges, deselects, and deletes selected placements from the keyboard', () => {
     useSessionStore.getState().addPlacement('doc-1', {
       id: 'placement-1',
-      type: 'signature',
-      assetId: 'asset-1',
+      type: 'text',
+      value: 'Signer',
+      fontSize: 12,
       pageIndex: 0,
       x: 0.1,
       y: 0.1,
       w: 0.2,
       h: 0.1
     });
+
+    useSessionStore.setState({ history: { past: [], future: [] } });
 
     const { rerender } = render(
       <div className="relative" style={{ width: 200, height: 100 }}>
@@ -116,7 +127,11 @@ describe('placement layer', () => {
     );
 
     fireEvent.keyDown(window, { key: 'ArrowRight' });
-    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.x).toBeCloseTo(0.1 + 1 / 200);
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.x).toBeCloseTo(0.1 + 2 / 200);
+    expect(useSessionStore.getState().history.past).toHaveLength(1);
+    useSessionStore.getState().undo();
+    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.x).toBeCloseTo(0.1);
 
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(useSessionStore.getState().selectedPlacementId).toBeNull();
@@ -129,8 +144,9 @@ describe('placement layer', () => {
   it('ignores placement shortcuts while an input is focused', () => {
     useSessionStore.getState().addPlacement('doc-1', {
       id: 'placement-1',
-      type: 'signature',
-      assetId: 'asset-1',
+      type: 'text',
+      value: 'Signer',
+      fontSize: 12,
       pageIndex: 0,
       x: 0.1,
       y: 0.1,
@@ -220,8 +236,9 @@ describe('placement layer', () => {
   it('offers duplicate, copy, and delete on any selected element', () => {
     useSessionStore.getState().addPlacement('doc-1', {
       id: 'sig-1',
-      type: 'signature',
-      assetId: 'asset-1',
+      type: 'text',
+      value: 'Signer',
+      fontSize: 12,
       pageIndex: 0,
       x: 0.1,
       y: 0.1,
@@ -245,8 +262,9 @@ describe('placement layer', () => {
   it('copies and duplicates the selected placement from the keyboard', () => {
     useSessionStore.getState().addPlacement('doc-1', {
       id: 'sig-1',
-      type: 'signature',
-      assetId: 'asset-1',
+      type: 'text',
+      value: 'Signer',
+      fontSize: 12,
       pageIndex: 0,
       x: 0.1,
       y: 0.1,
@@ -365,4 +383,49 @@ describe('placement layer', () => {
 
     createObjectURLSpy.mockRestore();
   });
+
+  it('moves through pointer previews with one undo entry', () => {
+    useSessionStore.getState().addPlacement('doc-1', {
+      id: 'move-1', type: 'text', value: 'Signer', fontSize: 12,
+      pageIndex: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1
+    });
+    useSessionStore.setState({ history: { past: [], future: [] } });
+    const placement = useSessionStore.getState().session.documents[0]?.placements[0];
+    if (!placement) throw new Error('Expected placement');
+
+    render(<PlacedElement documentId="doc-1" pageSize={{ w: 200, h: 100 }} placement={placement} scale={1} selected={false} />);
+    const target = screen.getByRole('button', { name: 'Signer' });
+    dispatchPointer(target, 'pointerdown', 1, 20, 10);
+    dispatchPointer(window, 'pointermove', 1, 30, 20);
+    dispatchPointer(window, 'pointermove', 1, 40, 30);
+    dispatchPointer(window, 'pointerup', 1, 40, 30);
+
+    expect(useSessionStore.getState().session.documents[0]?.placements[0]).toMatchObject({ x: 0.2, y: 0.3 });
+    expect(useSessionStore.getState().history.past).toHaveLength(1);
+    useSessionStore.getState().undo();
+    expect(useSessionStore.getState().session.documents[0]?.placements[0]).toMatchObject({ x: 0.1, y: 0.1 });
+  });
+
+  it('resizes through pointer previews with one undo entry', () => {
+    useSessionStore.getState().addPlacement('doc-1', {
+      id: 'resize-1', type: 'text', value: 'Signer', fontSize: 12,
+      pageIndex: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1
+    });
+    useSessionStore.setState({ history: { past: [], future: [] } });
+    const placement = useSessionStore.getState().session.documents[0]?.placements[0];
+    if (!placement) throw new Error('Expected placement');
+
+    render(<PlacedElement documentId="doc-1" pageSize={{ w: 200, h: 100 }} placement={placement} scale={1} selected />);
+    const handle = screen.getByRole('button', { name: 'Resize se' });
+    dispatchPointer(handle, 'pointerdown', 2, 60, 20);
+    dispatchPointer(window, 'pointermove', 2, 80, 30);
+    dispatchPointer(window, 'pointermove', 2, 90, 40);
+    dispatchPointer(window, 'pointerup', 2, 90, 40);
+
+    expect(useSessionStore.getState().session.documents[0]?.placements[0]).toMatchObject({ w: 0.35, h: 0.3 });
+    expect(useSessionStore.getState().history.past).toHaveLength(1);
+    useSessionStore.getState().undo();
+    expect(useSessionStore.getState().session.documents[0]?.placements[0]).toMatchObject({ w: 0.2, h: 0.1 });
+  });
+
 });
