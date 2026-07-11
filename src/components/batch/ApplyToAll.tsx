@@ -12,7 +12,7 @@ import type {
   FlattenWorkerResponse
 } from '../../workers/flatten.worker';
 import { STRINGS } from '../../lib/strings';
-import type { ApplyToAllPreview } from '../../lib/workSessionEditor';
+import type { ApplyToAllPreview } from '../../stores/session';
 
 type ApplyToAllProps = {
   onToast: (message: string) => void;
@@ -29,8 +29,8 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
   const signatureSnapshots = useMemo(() => storedSignatureSnapshots ?? {}, [storedSignatureSnapshots]);
   const previewApplyTemplatePlacements = useSessionStore((state) => state.previewApplyTemplatePlacements);
   const applyTemplatePlacements = useSessionStore((state) => state.applyTemplatePlacements);
-  const updateDocumentStatus = useSessionStore((state) => state.updateDocumentStatus);
-  const setDocumentBatchError = useSessionStore((state) => state.setDocumentBatchError);
+  const transitionDocumentOutput = useSessionStore((state) => state.transitionDocumentOutput);
+  const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [applyPreview, setApplyPreview] = useState<ApplyToAllPreview | null>(null);
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
@@ -45,8 +45,8 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
   );
   const overwriteCount = applyPreview?.targets.filter((target) => target.overwritesPlacements || target.endsSignedState).length
     ?? targetDocuments.filter((document) => document.placements.length > 0 || document.status === 'signed').length;
-  const disabled = !templateDocument || templateDocument.placements.length === 0 || targetDocuments.length === 0;
-  const batchDisabled = isBatchDownloading || documents.length < 2 || downloadableDocuments.length === 0;
+  const disabled = mutationLocked || !templateDocument || templateDocument.placements.length === 0 || targetDocuments.length === 0;
+  const batchDisabled = mutationLocked || isBatchDownloading || documents.length < 2 || downloadableDocuments.length === 0;
 
   useEffect(() => {
     return () => {
@@ -56,6 +56,7 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
   }, []);
 
   const openApplyPreview = () => {
+    if (mutationLocked) return;
     const preview = previewApplyTemplatePlacements();
     if (!preview) {
       onToast(STRINGS.batch.nothingToApply);
@@ -66,6 +67,7 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
   };
 
   const runApply = () => {
+    if (mutationLocked) return;
     if (!applyPreview) return;
     const result = applyTemplatePlacements(applyPreview);
     setConfirmOpen(false);
@@ -94,6 +96,7 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
   };
 
   const startBatchDownload = async () => {
+    if (mutationLocked) return;
     if (batchDisabled) {
       return;
     }
@@ -113,8 +116,7 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
       }
 
       for (const document of downloadableDocuments) {
-        updateDocumentStatus(document.docId, 'signing');
-        setDocumentBatchError(document.docId, null);
+        transitionDocumentOutput(document.docId, 'signing');
       }
 
       const snapshots = Object.fromEntries(
@@ -153,16 +155,14 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
             const progress = message as FlattenWorkerProgressMessage;
             successCount += 1;
             setBatchProgress({ done: progress.done, total: progress.total });
-            updateDocumentStatus(progress.docId, 'signed');
-            setDocumentBatchError(progress.docId, null);
+            transitionDocumentOutput(progress.docId, 'signed');
             return;
           }
 
           if (message.kind === 'error') {
             const errorMessage = message as FlattenWorkerErrorMessage;
             if (errorMessage.docId) {
-              updateDocumentStatus(errorMessage.docId, 'error');
-              setDocumentBatchError(errorMessage.docId, errorMessage.message);
+              transitionDocumentOutput(errorMessage.docId, 'error', errorMessage.message);
               return;
             }
 
@@ -266,7 +266,7 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
             <Button variant="secondary" onClick={() => { setConfirmOpen(false); setApplyPreview(null); }}>
               {STRINGS.buttons.cancel}
             </Button>
-            <Button onClick={runApply}>{STRINGS.buttons.replaceAndApply}</Button>
+            <Button onClick={runApply} disabled={mutationLocked}>{STRINGS.buttons.replaceAndApply}</Button>
           </div>
         </div>
       </Modal>

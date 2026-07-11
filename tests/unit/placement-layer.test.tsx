@@ -1,7 +1,7 @@
 import { createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { PlacementLayer } from '../../src/components/editor/PlacementLayer';
 import { PlacedElement } from '../../src/components/editor/PlacedElement';
-import { useSessionStore } from '../../src/stores/session';
+import { sessionStoreTestHarness } from '../../src/stores/session';
 import { saveAsset, setDateFormat } from '../../src/db/signatures';
 
 function dispatchPointer(target: EventTarget, type: string, pointerId: number, clientX: number, clientY: number) {
@@ -11,7 +11,7 @@ function dispatchPointer(target: EventTarget, type: string, pointerId: number, c
 }
 
 function resetStore() {
-  useSessionStore.setState({
+  sessionStoreTestHarness.setState({
     session: {
       id: 'session-1',
       createdAt: 1,
@@ -76,16 +76,16 @@ describe('placement layer', () => {
     Object.defineProperties(dropEvent, { clientX: { value: 100 }, clientY: { value: 50 } });
     fireEvent(layer, dropEvent);
 
-    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(0);
-    await waitFor(() => expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(1));
-    const placement = useSessionStore.getState().session.documents[0]?.placements[0];
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(0);
+    await waitFor(() => expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(1));
+    const placement = sessionStoreTestHarness.getState().session.documents[0]?.placements[0];
     expect(placement).toMatchObject({ type: 'signature', pageIndex: 0, snapshotId: expect.any(String) });
     expect(placement?.w).toBeCloseTo(0.2);
     expect(placement?.h).toBeCloseTo(0.24);
   });
 
   it('nudges, deselects, and deletes selected placements from the keyboard', () => {
-    useSessionStore.getState().addPlacement('doc-1', {
+    sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
       id: 'placement-1',
       type: 'text',
       value: 'Signer',
@@ -97,7 +97,7 @@ describe('placement layer', () => {
       h: 0.1
     });
 
-    useSessionStore.setState({ history: { past: [], future: [] } });
+    sessionStoreTestHarness.setState({ history: { past: [], future: [] } });
 
     const { rerender } = render(
       <div className="relative" style={{ width: 200, height: 100 }}>
@@ -105,21 +105,21 @@ describe('placement layer', () => {
           documentId="doc-1"
           pageIndex={0}
           pageSize={{ w: 200, h: 100 }}
-          placements={useSessionStore.getState().session.documents[0]?.placements ?? []}
+          placements={sessionStoreTestHarness.getState().session.documents[0]?.placements ?? []}
           scale={1}
           selectedPlacementId={null}
         />
       </div>
     );
 
-    const placement = useSessionStore.getState().session.documents[0]?.placements[0];
+    const placement = sessionStoreTestHarness.getState().session.documents[0]?.placements[0];
     rerender(
       <div className="relative" style={{ width: 200, height: 100 }}>
         <PlacementLayer
           documentId="doc-1"
           pageIndex={0}
           pageSize={{ w: 200, h: 100 }}
-          placements={useSessionStore.getState().session.documents[0]?.placements ?? []}
+          placements={sessionStoreTestHarness.getState().session.documents[0]?.placements ?? []}
           scale={1}
           selectedPlacementId={placement?.id ?? null}
         />
@@ -128,21 +128,21 @@ describe('placement layer', () => {
 
     fireEvent.keyDown(window, { key: 'ArrowRight' });
     fireEvent.keyDown(window, { key: 'ArrowRight' });
-    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.x).toBeCloseTo(0.1 + 2 / 200);
-    expect(useSessionStore.getState().history.past).toHaveLength(1);
-    useSessionStore.getState().undo();
-    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.x).toBeCloseTo(0.1);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements[0]?.x).toBeCloseTo(0.1 + 2 / 200);
+    expect(sessionStoreTestHarness.getState().history.past).toHaveLength(1);
+    sessionStoreTestHarness.getState().undo();
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements[0]?.x).toBeCloseTo(0.1);
 
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(useSessionStore.getState().selectedPlacementId).toBeNull();
+    expect(sessionStoreTestHarness.getState().selectedPlacementId).toBeNull();
 
-    useSessionStore.getState().setSelection('doc-1', placement?.id ?? null);
+    sessionStoreTestHarness.getState().setSelection('doc-1', placement?.id ?? null);
     fireEvent.keyDown(window, { key: 'Delete' });
-    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(0);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(0);
   });
 
   it('ignores placement shortcuts while an input is focused', () => {
-    useSessionStore.getState().addPlacement('doc-1', {
+    sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
       id: 'placement-1',
       type: 'text',
       value: 'Signer',
@@ -162,7 +162,7 @@ describe('placement layer', () => {
             documentId="doc-1"
             pageIndex={0}
             pageSize={{ w: 200, h: 100 }}
-            placements={useSessionStore.getState().session.documents[0]?.placements ?? []}
+            placements={sessionStoreTestHarness.getState().session.documents[0]?.placements ?? []}
             scale={1}
             selectedPlacementId="placement-1"
           />
@@ -176,13 +176,13 @@ describe('placement layer', () => {
     fireEvent.keyDown(input, { key: 'ArrowRight' });
     fireEvent.keyDown(input, { key: 'Delete' });
 
-    const placement = useSessionStore.getState().session.documents[0]?.placements[0];
+    const placement = sessionStoreTestHarness.getState().session.documents[0]?.placements[0];
     expect(placement?.x).toBeCloseTo(0.1);
-    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(1);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(1);
   });
 
   it('cycles date formats and edits text placements inline', () => {
-    useSessionStore.getState().addPlacement('doc-1', {
+    sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
       id: 'date-1',
       type: 'date',
       pageIndex: 0,
@@ -193,7 +193,7 @@ describe('placement layer', () => {
       value: 'MMM d, yyyy',
       fontSize: 12
     });
-    useSessionStore.getState().addPlacement('doc-1', {
+    sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
       id: 'text-1',
       type: 'text',
       pageIndex: 0,
@@ -205,7 +205,7 @@ describe('placement layer', () => {
       fontSize: 12
     });
 
-    const placements = useSessionStore.getState().session.documents[0]?.placements ?? [];
+    const placements = sessionStoreTestHarness.getState().session.documents[0]?.placements ?? [];
     const datePlacement = placements.find((item) => item.id === 'date-1');
     const textPlacement = placements.find((item) => item.id === 'text-1');
     if (!datePlacement || !textPlacement) {
@@ -220,21 +220,21 @@ describe('placement layer', () => {
     );
 
     fireEvent.click(screen.getByText('Cycle format'));
-    expect(useSessionStore.getState().session.documents[0]?.placements.find((item) => item.id === 'date-1')?.value).toBe('MM/dd/yyyy');
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements.find((item) => item.id === 'date-1')?.value).toBe('MM/dd/yyyy');
 
     fireEvent.click(screen.getByText('Edit'));
     const input = screen.getByDisplayValue('Text');
     fireEvent.change(input, { target: { value: 'Signer name' } });
-    expect(useSessionStore.getState().session.documents[0]?.placements.find((item) => item.id === 'text-1')?.value).toBe('Signer name');
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements.find((item) => item.id === 'text-1')?.value).toBe('Signer name');
 
     // Both the date and text placements render a size input; the text one is second.
     const sizeInput = screen.getAllByRole('spinbutton')[1]!;
     fireEvent.change(sizeInput, { target: { value: '18' } });
-    expect(useSessionStore.getState().session.documents[0]?.placements.find((item) => item.id === 'text-1')?.fontSize).toBe(18);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements.find((item) => item.id === 'text-1')?.fontSize).toBe(18);
   });
 
   it('offers duplicate, copy, and delete on any selected element', () => {
-    useSessionStore.getState().addPlacement('doc-1', {
+    sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
       id: 'sig-1',
       type: 'text',
       value: 'Signer',
@@ -245,22 +245,22 @@ describe('placement layer', () => {
       w: 0.2,
       h: 0.1
     });
-    const placement = useSessionStore.getState().session.documents[0]?.placements[0];
+    const placement = sessionStoreTestHarness.getState().session.documents[0]?.placements[0];
 
     render(<PlacedElement documentId="doc-1" pageSize={{ w: 200, h: 100 }} placement={placement!} scale={1} selected />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }));
-    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(2);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(2);
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
-    expect(useSessionStore.getState().copiedPlacement?.id).toBe('sig-1');
+    expect(sessionStoreTestHarness.getState().copiedPlacement?.id).toBe('sig-1');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    expect(useSessionStore.getState().session.documents[0]?.placements.map((item) => item.id)).not.toContain('sig-1');
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements.map((item) => item.id)).not.toContain('sig-1');
   });
 
   it('copies and duplicates the selected placement from the keyboard', () => {
-    useSessionStore.getState().addPlacement('doc-1', {
+    sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
       id: 'sig-1',
       type: 'text',
       value: 'Signer',
@@ -278,7 +278,7 @@ describe('placement layer', () => {
           documentId="doc-1"
           pageIndex={0}
           pageSize={{ w: 200, h: 100 }}
-          placements={useSessionStore.getState().session.documents[0]?.placements ?? []}
+          placements={sessionStoreTestHarness.getState().session.documents[0]?.placements ?? []}
           scale={1}
           selectedPlacementId="sig-1"
         />
@@ -286,14 +286,14 @@ describe('placement layer', () => {
     );
 
     fireEvent.keyDown(window, { key: 'c', ctrlKey: true });
-    expect(useSessionStore.getState().copiedPlacement?.id).toBe('sig-1');
+    expect(sessionStoreTestHarness.getState().copiedPlacement?.id).toBe('sig-1');
 
     fireEvent.keyDown(window, { key: 'd', ctrlKey: true });
-    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(2);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(2);
   });
 
   it('adjusts date font size from the toolbar without starting a drag', () => {
-    useSessionStore.getState().addPlacement('doc-1', {
+    sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
       id: 'date-1',
       type: 'date',
       pageIndex: 0,
@@ -305,7 +305,7 @@ describe('placement layer', () => {
       fontSize: 12
     });
 
-    const datePlacement = useSessionStore.getState().session.documents[0]?.placements[0];
+    const datePlacement = sessionStoreTestHarness.getState().session.documents[0]?.placements[0];
     if (!datePlacement) {
       throw new Error('Expected placement to exist');
     }
@@ -320,8 +320,8 @@ describe('placement layer', () => {
     expect(notPrevented).toBe(true);
 
     fireEvent.change(sizeInput, { target: { value: '16' } });
-    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.fontSize).toBe(16);
-    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.value).toBe('MMM d, yyyy');
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements[0]?.fontSize).toBe(16);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements[0]?.value).toBe('MMM d, yyyy');
   });
 
   it('renders a snapshot-backed placement exclusively from the Work Session', async () => {
@@ -338,7 +338,7 @@ describe('placement layer', () => {
 
     // A snapshot-backed placement that also carries a legacy assetId.
     // Rendering must use the snapshot bytes, not the library asset.
-    useSessionStore.setState((state) => ({
+    sessionStoreTestHarness.setState((state) => ({
       session: {
         ...state.session,
         signatureSnapshots: {
@@ -369,7 +369,7 @@ describe('placement layer', () => {
     }));
 
     const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL');
-    const placement = useSessionStore.getState().session.documents[0]?.placements[0];
+    const placement = sessionStoreTestHarness.getState().session.documents[0]?.placements[0];
     if (!placement) throw new Error('Expected placement to exist');
     render(
       <PlacedElement documentId="doc-1" pageSize={{ w: 200, h: 100 }} placement={placement} scale={1} selected />
@@ -385,12 +385,12 @@ describe('placement layer', () => {
   });
 
   it('moves through pointer previews with one undo entry', () => {
-    useSessionStore.getState().addPlacement('doc-1', {
+    sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
       id: 'move-1', type: 'text', value: 'Signer', fontSize: 12,
       pageIndex: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1
     });
-    useSessionStore.setState({ history: { past: [], future: [] } });
-    const placement = useSessionStore.getState().session.documents[0]?.placements[0];
+    sessionStoreTestHarness.setState({ history: { past: [], future: [] } });
+    const placement = sessionStoreTestHarness.getState().session.documents[0]?.placements[0];
     if (!placement) throw new Error('Expected placement');
 
     render(<PlacedElement documentId="doc-1" pageSize={{ w: 200, h: 100 }} placement={placement} scale={1} selected={false} />);
@@ -400,19 +400,19 @@ describe('placement layer', () => {
     dispatchPointer(window, 'pointermove', 1, 40, 30);
     dispatchPointer(window, 'pointerup', 1, 40, 30);
 
-    expect(useSessionStore.getState().session.documents[0]?.placements[0]).toMatchObject({ x: 0.2, y: 0.3 });
-    expect(useSessionStore.getState().history.past).toHaveLength(1);
-    useSessionStore.getState().undo();
-    expect(useSessionStore.getState().session.documents[0]?.placements[0]).toMatchObject({ x: 0.1, y: 0.1 });
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements[0]).toMatchObject({ x: 0.2, y: 0.3 });
+    expect(sessionStoreTestHarness.getState().history.past).toHaveLength(1);
+    sessionStoreTestHarness.getState().undo();
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements[0]).toMatchObject({ x: 0.1, y: 0.1 });
   });
 
   it('resizes through pointer previews with one undo entry', () => {
-    useSessionStore.getState().addPlacement('doc-1', {
+    sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
       id: 'resize-1', type: 'text', value: 'Signer', fontSize: 12,
       pageIndex: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1
     });
-    useSessionStore.setState({ history: { past: [], future: [] } });
-    const placement = useSessionStore.getState().session.documents[0]?.placements[0];
+    sessionStoreTestHarness.setState({ history: { past: [], future: [] } });
+    const placement = sessionStoreTestHarness.getState().session.documents[0]?.placements[0];
     if (!placement) throw new Error('Expected placement');
 
     render(<PlacedElement documentId="doc-1" pageSize={{ w: 200, h: 100 }} placement={placement} scale={1} selected />);
@@ -422,10 +422,10 @@ describe('placement layer', () => {
     dispatchPointer(window, 'pointermove', 2, 90, 40);
     dispatchPointer(window, 'pointerup', 2, 90, 40);
 
-    expect(useSessionStore.getState().session.documents[0]?.placements[0]).toMatchObject({ w: 0.35, h: 0.3 });
-    expect(useSessionStore.getState().history.past).toHaveLength(1);
-    useSessionStore.getState().undo();
-    expect(useSessionStore.getState().session.documents[0]?.placements[0]).toMatchObject({ w: 0.2, h: 0.1 });
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements[0]).toMatchObject({ w: 0.35, h: 0.3 });
+    expect(sessionStoreTestHarness.getState().history.past).toHaveLength(1);
+    sessionStoreTestHarness.getState().undo();
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements[0]).toMatchObject({ w: 0.2, h: 0.1 });
   });
 
 });

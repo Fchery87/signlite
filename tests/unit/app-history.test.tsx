@@ -16,15 +16,17 @@ vi.mock('../../src/components/editor/EditorView', () => ({
 }));
 
 import App from '../../src/App';
-import { useSessionStore, createInitialSession } from '../../src/stores/session';
+import { sessionStoreTestHarness, createInitialSession } from '../../src/stores/session';
 import type { WorkSession } from '../../src/db/schema';
 
 function resetStore() {
-  useSessionStore.setState({
+  sessionStoreTestHarness.setState({
     session: createInitialSession(),
     selectedDocumentId: null,
     selectedPlacementId: null,
-    view: 'dropzone'
+    view: 'dropzone',
+    mutationLease: null,
+    mutationLock: null
   });
 }
 
@@ -70,7 +72,7 @@ describe('App history restore', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
 
     await waitFor(() => {
-      expect(useSessionStore.getState().session.id).toBe('saved-session');
+      expect(sessionStoreTestHarness.getState().session.id).toBe('saved-session');
       expect(screen.queryByText('Resume last session?')).not.toBeInTheDocument();
     });
   });
@@ -84,7 +86,7 @@ describe('App history restore', () => {
     vi.useFakeTimers();
 
     act(() => {
-      useSessionStore.getState().addDocuments([
+      sessionStoreTestHarness.getState().addDocuments([
         {
           docId: 'doc-new',
           fileName: 'new.pdf',
@@ -106,4 +108,23 @@ describe('App history restore', () => {
     expect(historyMocks.saveSession).toHaveBeenCalledWith(expect.objectContaining({ documents: expect.any(Array) }));
     expect(historyMocks.clearSession).toHaveBeenCalledWith('saved-session');
   });
+
+  it('announces the identified Work Session lock politely', async () => {
+    render(<App />);
+    let lease: ReturnType<ReturnType<typeof sessionStoreTestHarness.getState>['acquireMutationLease']> = null;
+    act(() => {
+      lease = sessionStoreTestHarness.getState().acquireMutationLease('Batch Signing attempt 42');
+    });
+
+    const status = await screen.findByText('Work Session locked by Batch Signing attempt 42. Editing is temporarily disabled.');
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+
+    if (lease) {
+      act(() => {
+        sessionStoreTestHarness.getState().releaseMutationLease(lease!);
+      });
+    }
+  });
+
 });

@@ -14,6 +14,7 @@ export type SignliteErrorCode =
 export const STRINGS = {
   appName: 'SignLite',
   appShellReady: 'Foundation shell ready.',
+  workSessionLocked: (owner: string) => `Work Session locked by ${owner}. Editing is temporarily disabled.`,
   footerEmpty: 'Client-side by default.',
   footerLoaded: (count: number) => `${count} document${count === 1 ? '' : 's'} loaded.`,
   previewPrimitives: 'Preview primitives',

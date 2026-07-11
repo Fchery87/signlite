@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import { EditorView } from '../../src/components/editor/EditorView';
-import { useSessionStore } from '../../src/stores/session';
+import { sessionStoreTestHarness } from '../../src/stores/session';
 import { STRINGS } from '../../src/lib/strings';
 
 vi.mock('../../src/pdf/render', () => ({
@@ -51,7 +51,7 @@ function emitVisibility(observerIndex: number, ratio: number) {
 }
 
 function resetStore() {
-  useSessionStore.setState({
+  sessionStoreTestHarness.setState({
     session: {
       id: 'session-1',
       createdAt: 1,
@@ -76,7 +76,9 @@ function resetStore() {
     selectedPlacementId: null,
     copiedPlacement: null,
     history: { past: [], future: [] },
-    view: 'editor'
+    view: 'editor',
+    mutationLease: null,
+    mutationLock: null
   });
 }
 
@@ -106,7 +108,7 @@ describe('editor view', () => {
     fireEvent.click(screen.getByRole('button', { name: STRINGS.library.text }));
     fireEvent.click(screen.getByRole('button', { name: STRINGS.library.date }));
 
-    const placements = useSessionStore.getState().session.documents[0]?.placements ?? [];
+    const placements = sessionStoreTestHarness.getState().session.documents[0]?.placements ?? [];
     expect(placements).toHaveLength(2);
     expect(placements[0]?.pageIndex).toBe(1);
     expect(placements[1]?.pageIndex).toBe(1);
@@ -131,7 +133,7 @@ describe('editor view', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: STRINGS.library.date }));
 
-    const placements = useSessionStore.getState().session.documents[0]?.placements ?? [];
+    const placements = sessionStoreTestHarness.getState().session.documents[0]?.placements ?? [];
     expect(placements).toHaveLength(2);
     expect(placements[0]?.pageIndex).toBe(1);
     expect(placements[1]?.pageIndex).toBe(0);
@@ -150,7 +152,7 @@ describe('editor view', () => {
     });
     fireEvent.keyDown(window, { key: 'v', ctrlKey: true });
 
-    const placements = useSessionStore.getState().session.documents[0]?.placements ?? [];
+    const placements = sessionStoreTestHarness.getState().session.documents[0]?.placements ?? [];
     expect(placements).toHaveLength(2);
     expect(placements[1]?.pageIndex).toBe(1);
     expect(placements[1]?.id).not.toBe(placements[0]?.id);
@@ -161,13 +163,13 @@ describe('editor view', () => {
     await waitFor(() => expect(intersectionObservers.length).toBeGreaterThanOrEqual(2));
 
     fireEvent.click(screen.getByRole('button', { name: STRINGS.library.text }));
-    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(1);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.undo }));
-    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(0);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(0);
 
     fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.redo }));
-    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(1);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(1);
   });
 
   it('lets the user type more than one character into a text placement', async () => {
@@ -175,7 +177,7 @@ describe('editor view', () => {
     await waitFor(() => expect(intersectionObservers.length).toBeGreaterThanOrEqual(2));
 
     fireEvent.click(screen.getByRole('button', { name: STRINGS.library.text }));
-    useSessionStore.setState({ history: { past: [], future: [] } });
+    sessionStoreTestHarness.setState({ history: { past: [], future: [] } });
 
     const placed = await screen.findByText('Text', { selector: 'span' });
     const placedButton = placed.closest('[role="button"]')!;
@@ -187,10 +189,39 @@ describe('editor view', () => {
     fireEvent.change(input, { target: { value: 'He' } });
     fireEvent.change(input, { target: { value: 'Hello' } });
 
-    const placement = useSessionStore.getState().session.documents[0]?.placements[0];
+    const placement = sessionStoreTestHarness.getState().session.documents[0]?.placements[0];
     expect(placement?.value).toBe('Hello');
-    expect(useSessionStore.getState().history.past).toHaveLength(1);
-    useSessionStore.getState().undo();
-    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.value).toBe('Text');
+    expect(sessionStoreTestHarness.getState().history.past).toHaveLength(1);
+    sessionStoreTestHarness.getState().undo();
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements[0]?.value).toBe('Text');
   });
+
+  it('disables mutation controls while keeping page and zoom navigation available', async () => {
+    render(<EditorView onToast={() => {}} />);
+    await waitFor(() => expect(intersectionObservers.length).toBeGreaterThanOrEqual(2));
+
+    let lease: ReturnType<ReturnType<typeof sessionStoreTestHarness.getState>['acquireMutationLease']> = null;
+    act(() => {
+      lease = sessionStoreTestHarness.getState().acquireMutationLease('Batch Signing attempt');
+    });
+
+    expect(screen.getByRole('button', { name: STRINGS.library.text })).toBeDisabled();
+    expect(screen.getByRole('button', { name: STRINGS.library.date })).toBeDisabled();
+    expect(screen.getByRole('button', { name: STRINGS.buttons.download })).toBeDisabled();
+
+    const zoom = screen.getByRole('button', { name: '100%' });
+    expect(zoom).toBeEnabled();
+    fireEvent.click(zoom);
+    const pageTwo = screen.getByRole('button', { name: /Page 2/i });
+    expect(pageTwo).toBeEnabled();
+    fireEvent.click(pageTwo);
+    expect(screen.getByText(STRINGS.editor.pageOf(2, 2))).toBeInTheDocument();
+
+    if (lease) {
+      act(() => {
+        sessionStoreTestHarness.getState().releaseMutationLease(lease!);
+      });
+    }
+  });
+
 });

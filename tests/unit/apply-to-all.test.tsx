@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApplyToAll } from '../../src/components/batch/ApplyToAll';
 import { BatchPanel } from '../../src/components/batch/BatchPanel';
 import { STRINGS } from '../../src/lib/strings';
-import { useSessionStore } from '../../src/stores/session';
+import { sessionStoreTestHarness } from '../../src/stores/session';
 import type { SessionDocument } from '../../src/db/schema';
 
 const placement = {
@@ -19,7 +19,7 @@ function doc(docId: string, status: SessionDocument['status'] = 'pending'): Sess
 }
 
 function reset(documents: SessionDocument[]) {
-  useSessionStore.setState({
+  sessionStoreTestHarness.setState({
     session: {
       id: 'session', createdAt: 1, updatedAt: 1, documents,
       templatePlacements: documents[0]?.placements ?? [], signatureSnapshots: {}
@@ -43,13 +43,13 @@ describe('apply-to-all confirmation', () => {
     fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.applyToAll }));
     expect(screen.getByText(/Signed state will end/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.cancel }));
-    expect(useSessionStore.getState().session.documents[1]).toMatchObject({ status: 'signed' });
-    expect(useSessionStore.getState().session.documents[1]?.placements[0]?.id).toBe('old-placement');
+    expect(sessionStoreTestHarness.getState().session.documents[1]).toMatchObject({ status: 'signed' });
+    expect(sessionStoreTestHarness.getState().session.documents[1]?.placements[0]?.id).toBe('old-placement');
 
     fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.applyToAll }));
     fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.replaceAndApply }));
-    expect(useSessionStore.getState().session.documents[1]).toMatchObject({ status: 'placed' });
-    expect(useSessionStore.getState().session.documents[1]?.placements[0]?.id).not.toBe('template-placement');
+    expect(sessionStoreTestHarness.getState().session.documents[1]).toMatchObject({ status: 'placed' });
+    expect(sessionStoreTestHarness.getState().session.documents[1]?.placements[0]?.id).not.toBe('template-placement');
   });
 
   it('shows Signed and Needs Review as simultaneous visible states', () => {
@@ -73,13 +73,13 @@ describe('apply-to-all confirmation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.applyToAll }));
     act(() => {
-      useSessionStore.getState().updatePlacement('template', placement.id, { value: 'Changed after preview' });
+      sessionStoreTestHarness.getState().updatePlacement('template', placement.id, { value: 'Changed after preview' });
     });
     fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.replaceAndApply }));
 
     expect(onToast).toHaveBeenCalledWith(STRINGS.batch.stalePreview);
-    expect(useSessionStore.getState().session.documents[1]).toMatchObject({ status: 'signed' });
-    expect(useSessionStore.getState().session.documents[1]?.placements[0]).toMatchObject({
+    expect(sessionStoreTestHarness.getState().session.documents[1]).toMatchObject({ status: 'signed' });
+    expect(sessionStoreTestHarness.getState().session.documents[1]?.placements[0]).toMatchObject({
       id: 'old-placement', value: 'Old'
     });
   });
@@ -100,7 +100,7 @@ describe('apply-to-all confirmation', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent(STRINGS.batch.needsReviewAspect);
     fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.replaceAndApply }));
 
-    const target = useSessionStore.getState().session.documents[1];
+    const target = sessionStoreTestHarness.getState().session.documents[1];
     expect(target).toMatchObject({ status: 'signed', needsReviewReason: STRINGS.batch.needsReviewAspect });
     expect(target?.placements[0]).toMatchObject({ id: 'old-placement', value: 'Keep' });
     expect(onToast).toHaveBeenCalledWith(STRINGS.batch.reviewSummary(1));

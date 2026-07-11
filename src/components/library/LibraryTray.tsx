@@ -15,11 +15,12 @@ type LibraryTrayProps = {
   onAddText?: () => void;
   onPlaceAsset?: (asset: SignatureAsset) => void;
   activePage?: number;
+  placementDisabled?: boolean;
 };
 
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
 
-export function LibraryTray({ onToast, onAddDate, onAddText, onPlaceAsset, activePage = 0 }: LibraryTrayProps) {
+export function LibraryTray({ onToast, onAddDate, onAddText, onPlaceAsset, activePage = 0, placementDisabled = false }: LibraryTrayProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [assets, setAssets] = useState<SignatureAsset[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -153,10 +154,10 @@ export function LibraryTray({ onToast, onAddDate, onAddText, onPlaceAsset, activ
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2">
-        <Button variant="secondary" onClick={onAddDate}>
+        <Button variant="secondary" onClick={onAddDate} disabled={placementDisabled}>
           {STRINGS.library.date}
         </Button>
-        <Button variant="secondary" onClick={onAddText}>
+        <Button variant="secondary" onClick={onAddText} disabled={placementDisabled}>
           {STRINGS.library.text}
         </Button>
       </div>
@@ -180,6 +181,7 @@ export function LibraryTray({ onToast, onAddDate, onAddText, onPlaceAsset, activ
               title={STRINGS.library.signatures}
               assets={groupedAssets.signatures}
               activePage={activePage}
+              placementDisabled={placementDisabled}
               renamingId={renamingId}
               renameValue={renameValue}
               onRenameValueChange={setRenameValue}
@@ -200,6 +202,7 @@ export function LibraryTray({ onToast, onAddDate, onAddText, onPlaceAsset, activ
               title={STRINGS.library.initials}
               assets={groupedAssets.initials}
               activePage={activePage}
+              placementDisabled={placementDisabled}
               renamingId={renamingId}
               renameValue={renameValue}
               onRenameValueChange={setRenameValue}
@@ -257,6 +260,7 @@ type AssetGroupProps = {
   title: string;
   assets: SignatureAsset[];
   activePage: number;
+  placementDisabled: boolean;
   renamingId: string | null;
   renameValue: string;
   onRenameValueChange: (value: string) => void;
@@ -272,6 +276,7 @@ function AssetGroup({
   title,
   assets,
   activePage,
+  placementDisabled,
   renamingId,
   renameValue,
   onRenameValueChange,
@@ -297,6 +302,7 @@ function AssetGroup({
               key={asset.id}
               asset={asset}
               activePage={activePage}
+              placementDisabled={placementDisabled}
               renamingId={renamingId}
               renameValue={renameValue}
               onRenameValueChange={onRenameValueChange}
@@ -317,6 +323,7 @@ function AssetGroup({
 type AssetCardProps = {
   asset: SignatureAsset;
   activePage: number;
+  placementDisabled: boolean;
   renamingId: string | null;
   renameValue: string;
   onRenameValueChange: (value: string) => void;
@@ -331,6 +338,7 @@ type AssetCardProps = {
 function AssetCard({
   asset,
   activePage,
+  placementDisabled,
   renamingId,
   renameValue,
   onRenameValueChange,
@@ -356,7 +364,7 @@ function AssetCard({
       <button
         className="focus-ring w-full bg-mist/40 p-2"
         type="button"
-        draggable
+        draggable={!placementDisabled}
         onDragStart={(event) => {
           event.dataTransfer.setData(
             ASSET_DRAG_TYPE,
@@ -400,6 +408,7 @@ function AssetCard({
                 className="px-2 text-caption"
                 aria-label={STRINGS.library.placeOnPage(activePage + 1)}
                 onClick={() => void onPlace(asset)}
+                disabled={placementDisabled}
               >
                 {STRINGS.buttons.place}
               </Button>

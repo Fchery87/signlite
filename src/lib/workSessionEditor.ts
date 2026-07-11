@@ -712,3 +712,48 @@ export function redo(
     ...selection
   };
 }
+
+// ─── Output state ───────────────────────────────────────────────────
+
+export type DocumentOutputTransition = {
+  docId: string;
+  status: SessionDocument['status'];
+  batchError?: string;
+};
+
+/** Applies one output-state consequence through the durable mutation seam. */
+export function transitionDocumentOutput(
+  state: WorkSessionEditorState,
+  transition: DocumentOutputTransition
+): CompleteStateResult {
+  if (!state.session.documents.some((document) => document.docId === transition.docId)) {
+    return { ok: false, error: { reason: 'document-not-found', message: `Document ${transition.docId} not found` } };
+  }
+  const documents = state.session.documents.map((document) =>
+    document.docId === transition.docId
+      ? {
+          ...document,
+          status: transition.status,
+          batchError: transition.batchError
+        }
+      : document
+  );
+  return completeState(
+    { ...state.session, updatedAt: Date.now(), documents, templatePlacements: syncTemplatePlacements(documents) },
+    state.history,
+    state.selectedDocumentId,
+    state.selectedPlacementId,
+    state.copiedPlacement
+  );
+}
+
+export type MutationLease = Readonly<{ id: string; owner: string }>;
+
+export function acquireMutationLease(current: MutationLease | null, owner: string): MutationLease | null {
+  if (current || owner.trim().length === 0) return null;
+  return Object.freeze({ id: crypto.randomUUID(), owner });
+}
+
+export function releaseMutationLease(current: MutationLease | null, capability: MutationLease): boolean {
+  return current === capability;
+}

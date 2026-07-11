@@ -1,9 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { ElementsPanel } from '../../src/components/editor/ElementsPanel';
-import { useSessionStore } from '../../src/stores/session';
+import { sessionStoreTestHarness } from '../../src/stores/session';
 
 function resetStore() {
-  useSessionStore.setState({
+  sessionStoreTestHarness.setState({
     session: {
       id: 'session-1',
       createdAt: 1,
@@ -36,7 +36,7 @@ describe('elements panel', () => {
   beforeEach(resetStore);
 
   it('lists placements with labels and page numbers', () => {
-    const document = useSessionStore.getState().session.documents[0]!;
+    const document = sessionStoreTestHarness.getState().session.documents[0]!;
     render(<ElementsPanel document={document} selectedPlacementId={null} onSelect={() => {}} />);
 
     expect(screen.getByText('Signature')).toBeInTheDocument();
@@ -46,7 +46,7 @@ describe('elements panel', () => {
   });
 
   it('selects an element when its row is clicked', () => {
-    const document = useSessionStore.getState().session.documents[0]!;
+    const document = sessionStoreTestHarness.getState().session.documents[0]!;
     const onSelect = vi.fn();
     render(<ElementsPanel document={document} selectedPlacementId={null} onSelect={onSelect} />);
 
@@ -55,15 +55,15 @@ describe('elements panel', () => {
   });
 
   it('deletes an element from its row', () => {
-    const document = useSessionStore.getState().session.documents[0]!;
+    const document = sessionStoreTestHarness.getState().session.documents[0]!;
     render(<ElementsPanel document={document} selectedPlacementId={null} onSelect={() => {}} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Signature on page 1' }));
-    expect(useSessionStore.getState().session.documents[0]?.placements.map((item) => item.id)).toEqual(['text-1']);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements.map((item) => item.id)).toEqual(['text-1']);
   });
 
   it('shows an empty state when nothing is placed', () => {
-    const document = { ...useSessionStore.getState().session.documents[0]!, placements: [] };
+    const document = { ...sessionStoreTestHarness.getState().session.documents[0]!, placements: [] };
     render(<ElementsPanel document={document} selectedPlacementId={null} onSelect={() => {}} />);
 
     expect(screen.getByText('Nothing placed yet.')).toBeInTheDocument();

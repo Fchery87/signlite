@@ -56,7 +56,7 @@ export function EditorView({ onToast }: EditorViewProps) {
   const documents = useSessionStore((state) => state.session.documents);
   const selectedDocumentId = useSessionStore((state) => state.selectedDocumentId);
   const selectedPlacementId = useSessionStore((state) => state.selectedPlacementId);
-  const addPlacement = useSessionStore((state) => state.addPlacement);
+  const addTextPlacement = useSessionStore((state) => state.addTextPlacement);
   const addSignaturePlacement = useSessionStore((state) => state.addSignaturePlacement);
   const storedSignatureSnapshots = useSessionStore((state) => state.session.signatureSnapshots);
   const signatureSnapshots = useMemo(() => storedSignatureSnapshots ?? {}, [storedSignatureSnapshots]);
@@ -66,8 +66,9 @@ export function EditorView({ onToast }: EditorViewProps) {
   const canUndo = useSessionStore((state) => state.history.past.length > 0);
   const canRedo = useSessionStore((state) => state.history.future.length > 0);
   const setSelection = useSessionStore((state) => state.setSelection);
-  const updateDocumentStatus = useSessionStore((state) => state.updateDocumentStatus);
+  const transitionDocumentOutput = useSessionStore((state) => state.transitionDocumentOutput);
   const removeDocument = useSessionStore((state) => state.removeDocument);
+  const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
   const selectedDocument = documents.find((document) => document.docId === selectedDocumentId) ?? documents[0] ?? null;
 
   const [pdfState, setPdfState] = useState<PdfState>({ status: 'loading' });
@@ -161,7 +162,7 @@ export function EditorView({ onToast }: EditorViewProps) {
     (type: 'date' | 'text') => {
       const pageSize = selectedDocument?.pageSizes[activePage];
       if (!selectedDocument || !pageSize) return;
-      addPlacement(selectedDocument.docId, {
+      addTextPlacement(selectedDocument.docId, {
         id: crypto.randomUUID(),
         type,
         pageIndex: activePage,
@@ -175,7 +176,7 @@ export function EditorView({ onToast }: EditorViewProps) {
       announcePlacement(type, activePage);
       onToast(type === 'date' ? STRINGS.editor.dateAdded : STRINGS.editor.textAdded);
     },
-    [activePage, addPlacement, announcePlacement, dateFormat, onToast, selectedDocument]
+    [activePage, addTextPlacement, announcePlacement, dateFormat, onToast, selectedDocument]
   );
 
   const handlePlaceAsset = useCallback(
@@ -216,7 +217,7 @@ export function EditorView({ onToast }: EditorViewProps) {
   }, [activePage, announcePlacement, onToast, pastePlacement, selectedDocId]);
 
   const handleDownload = useCallback(async () => {
-    if (!selectedDocument || isDownloading) return;
+    if (!selectedDocument || isDownloading || mutationLocked) return;
     setIsDownloading(true);
     try {
       const { flattenDocument } = await import('../../pdf/flatten');
@@ -224,14 +225,14 @@ export function EditorView({ onToast }: EditorViewProps) {
       const fileName = signedPdfFileName(selectedDocument.fileName);
       const pdfBytes = flattened.buffer.slice(flattened.byteOffset, flattened.byteOffset + flattened.byteLength) as ArrayBuffer;
       downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), fileName);
-      updateDocumentStatus(selectedDocument.docId, 'signed');
+      transitionDocumentOutput(selectedDocument.docId, 'signed');
       onToast(STRINGS.editor.downloadSuccess(fileName));
     } catch (error) {
       onToast(error instanceof Error ? error.message : STRINGS.editor.downloadFailed);
     } finally {
       setIsDownloading(false);
     }
-  }, [isDownloading, onToast, selectedDocument, signatureSnapshots, updateDocumentStatus]);
+  }, [isDownloading, onToast, selectedDocument, signatureSnapshots, transitionDocumentOutput, mutationLocked]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -332,10 +333,10 @@ export function EditorView({ onToast }: EditorViewProps) {
               <Button variant="ghost" onClick={() => setShortcutOpen(true)}>
                 ?
               </Button>
-              <Button variant="ghost" onClick={undo} disabled={!canUndo}>
+              <Button variant="ghost" onClick={undo} disabled={!canUndo || mutationLocked}>
                 {STRINGS.buttons.undo}
               </Button>
-              <Button variant="ghost" onClick={redo} disabled={!canRedo}>
+              <Button variant="ghost" onClick={redo} disabled={!canRedo || mutationLocked}>
                 {STRINGS.buttons.redo}
               </Button>
               {zoomOptions.map((option) => (
@@ -350,7 +351,7 @@ export function EditorView({ onToast }: EditorViewProps) {
               ))}
               <Button
                 onClick={() => void handleDownload()}
-                disabled={isDownloading || !hasPlacements}
+                disabled={isDownloading || !hasPlacements || mutationLocked}
                 title={!hasPlacements ? STRINGS.tooltips.nothingPlacedYet : undefined}
               >
                 {isDownloading ? STRINGS.editor.downloading : STRINGS.buttons.download}
@@ -364,7 +365,7 @@ export function EditorView({ onToast }: EditorViewProps) {
                 <div className="border border-danger/30 bg-danger/10 p-4 text-body text-danger">
                   <p>{pdfState.message}</p>
                   <div className="mt-3">
-                    <Button variant="secondary" onClick={() => removeDocument(selectedDocument.docId)}>
+                    <Button variant="secondary" disabled={mutationLocked} onClick={() => removeDocument(selectedDocument.docId)}>
                       {STRINGS.editor.removeFromSession}
                     </Button>
                   </div>
@@ -402,6 +403,7 @@ export function EditorView({ onToast }: EditorViewProps) {
               onAddText={() => placeSpecialElement('text')}
               onPlaceAsset={handlePlaceAsset}
               activePage={activePage}
+              placementDisabled={mutationLocked}
             />
           </div>
         </aside>

@@ -20,6 +20,7 @@ export default function App() {
   const addDocuments = useSessionStore((state) => state.addDocuments);
   const restoreSession = useSessionStore((state) => state.restoreSession);
   const resetSession = useSessionStore((state) => state.resetSession);
+  const mutationLock = useSessionStore((state) => state.mutationLock);
   const [modalOpen, setModalOpen] = useState(false);
   const [toasts, setToasts] = useState<Array<{ id: string; message: string }>>([
     { id: 'shell-ready', message: STRINGS.appShellReady }
@@ -120,6 +121,11 @@ export default function App() {
                 {STRINGS.resume}
               </Button>
             </div>
+          </div>
+        ) : null}
+        {mutationLock ? (
+          <div role="status" aria-live="polite" className="border-t border-warning/30 bg-warning/10 px-6 py-3 text-body text-warning">
+            {STRINGS.workSessionLocked(mutationLock.owner)}
           </div>
         ) : null}
         {libraryWarning ? <div className="border-t border-warning/30 bg-warning/10 px-6 py-3 text-body text-warning">{libraryWarning}</div> : null}
