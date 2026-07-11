@@ -28,7 +28,9 @@ function resetStore() {
     selectedPlacementId: null,
     copiedPlacement: null,
     history: { past: [], future: [] },
-    view: 'editor'
+    view: 'editor',
+    mutationLease: null,
+    mutationLock: null
   });
 }
 
@@ -60,6 +62,21 @@ describe('elements panel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Signature on page 1' }));
     expect(sessionStoreTestHarness.getState().session.documents[0]?.placements.map((item) => item.id)).toEqual(['text-1']);
+  });
+
+  it('keeps selection available but disables delete while the Work Session is locked', () => {
+    const lease = sessionStoreTestHarness.getState().acquireMutationLease('Batch Signing attempt');
+    if (!lease) throw new Error('Expected lease');
+    const document = sessionStoreTestHarness.getState().session.documents[0]!;
+    const onSelect = vi.fn();
+    render(<ElementsPanel document={document} selectedPlacementId={null} onSelect={onSelect} />);
+    const deleteButton = screen.getByRole('button', { name: 'Delete Signature on page 1' });
+    expect(deleteButton).toBeDisabled();
+    fireEvent.click(deleteButton);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(2);
+    fireEvent.click(screen.getByText('Text — Signer name'));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'text-1' }));
+    expect(sessionStoreTestHarness.getState().releaseMutationLease(lease)).toBe(true);
   });
 
   it('shows an empty state when nothing is placed', () => {

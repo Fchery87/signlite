@@ -2,7 +2,7 @@ import { createEvent, fireEvent, render, screen, waitFor } from '@testing-librar
 import { PlacementLayer } from '../../src/components/editor/PlacementLayer';
 import { PlacedElement } from '../../src/components/editor/PlacedElement';
 import { sessionStoreTestHarness } from '../../src/stores/session';
-import { saveAsset, setDateFormat } from '../../src/db/signatures';
+import { getDateFormat, saveAsset, setDateFormat } from '../../src/db/signatures';
 
 function dispatchPointer(target: EventTarget, type: string, pointerId: number, clientX: number, clientY: number) {
   const event = new MouseEvent(type, { bubbles: true, clientX, clientY });
@@ -34,7 +34,9 @@ function resetStore() {
     selectedPlacementId: null,
     copiedPlacement: null,
     history: { past: [], future: [] },
-    view: 'editor'
+    view: 'editor',
+    mutationLease: null,
+    mutationLock: null
   });
 }
 
@@ -231,6 +233,47 @@ describe('placement layer', () => {
     const sizeInput = screen.getAllByRole('spinbutton')[1]!;
     fireEvent.change(sizeInput, { target: { value: '18' } });
     expect(sessionStoreTestHarness.getState().session.documents[0]?.placements.find((item) => item.id === 'text-1')?.fontSize).toBe(18);
+  });
+
+  it('disables Placement mutation affordances while preserving selection navigation under a lock', () => {
+    sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
+      id: 'date-locked', type: 'date', value: 'MMM d, yyyy', fontSize: 12,
+      pageIndex: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1
+    });
+    const placement = sessionStoreTestHarness.getState().session.documents[0]?.placements[0];
+    if (!placement) throw new Error('Expected placement');
+    const lease = sessionStoreTestHarness.getState().acquireMutationLease('Batch Signing attempt');
+    if (!lease) throw new Error('Expected lease');
+    const baseline = sessionStoreTestHarness.getState();
+    render(<div className="relative" style={{ width: 200, height: 100 }}><PlacementLayer
+      documentId="doc-1" pageIndex={0} pageSize={{ w: 200, h: 100 }}
+      placements={[placement]} scale={1} selectedPlacementId={placement.id}
+    /></div>);
+    expect(screen.getByRole('button', { name: 'Cycle format' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Duplicate' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    expect(screen.getByRole('spinbutton')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Resize se' })).toBeDisabled();
+    const placementButton = screen.getAllByRole('button').find((button) => button.getAttribute('aria-disabled') === 'true');
+    if (!placementButton) throw new Error('Expected locked Placement button');
+    dispatchPointer(placementButton, 'pointerdown', 8, 20, 10);
+    dispatchPointer(window, 'pointermove', 8, 60, 40);
+    dispatchPointer(window, 'pointerup', 8, 60, 40);
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    fireEvent.keyDown(window, { key: 'd', ctrlKey: true });
+    fireEvent.drop(screen.getByTestId('placement-layer'), {
+      dataTransfer: { getData: () => JSON.stringify({ id: 'ignored', kind: 'signature', width: 10, height: 5 }) }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Cycle format' }));
+    const locked = sessionStoreTestHarness.getState();
+    expect(locked.session).toBe(baseline.session);
+    expect(locked.history).toBe(baseline.history);
+    expect(locked.contentRevision).toBe(baseline.contentRevision);
+    expect(getDateFormat()).toBe('MMM d, yyyy');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(sessionStoreTestHarness.getState().selectedPlacementId).toBeNull();
+    expect(sessionStoreTestHarness.getState().releaseMutationLease(lease)).toBe(true);
   });
 
   it('offers duplicate, copy, and delete on any selected element', () => {
