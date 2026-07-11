@@ -5,8 +5,8 @@ import { STRINGS } from './lib/strings';
 import { DropZone } from './components/DropZone';
 
 const EditorView = lazy(() => import('./components/editor/EditorView').then((module) => ({ default: module.EditorView })));
-import { clearSession, loadLatestSession, pruneOldSessions, saveSession } from './db/history';
-import { hydrateSignaturePrefs, isUsingMemoryStore } from './db/signatures';
+import { clearSession, saveSession } from './db/history';
+import { startupAndDiscover } from './lib/sessionLifecycle';
 import type { WorkSession } from './db/schema';
 
 function isQuotaExceededError(error: unknown) {
@@ -47,12 +47,10 @@ export default function App() {
     let cancelled = false;
 
     void (async () => {
-      await pruneOldSessions();
-      await hydrateSignaturePrefs();
-      const latestSession = await loadLatestSession();
+      const result = await startupAndDiscover();
       if (cancelled) return;
-      setResumeSession(latestSession);
-      setLibraryWarning(isUsingMemoryStore() ? STRINGS.errors['idb-unavailable'] : null);
+      setResumeSession(result.candidate);
+      setLibraryWarning(result.storageAvailable ? null : STRINGS.errors['idb-unavailable']);
       setHistoryReady(true);
     })();
 
