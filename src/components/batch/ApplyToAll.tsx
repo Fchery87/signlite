@@ -24,6 +24,8 @@ type BatchProgress = {
 
 export function ApplyToAll({ onToast }: ApplyToAllProps) {
   const documents = useSessionStore((state) => state.session.documents);
+  const storedSignatureSnapshots = useSessionStore((state) => state.session.signatureSnapshots);
+  const signatureSnapshots = useMemo(() => storedSignatureSnapshots ?? {}, [storedSignatureSnapshots]);
   const applyTemplatePlacements = useSessionStore((state) => state.applyTemplatePlacements);
   const updateDocumentStatus = useSessionStore((state) => state.updateDocumentStatus);
   const setDocumentBatchError = useSessionStore((state) => state.setDocumentBatchError);
@@ -95,8 +97,12 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
         setDocumentBatchError(document.docId, null);
       }
 
+      const snapshots = Object.fromEntries(
+        Object.entries(signatureSnapshots).map(([id, snapshot]) => [id, { ...snapshot, pngBytes: snapshot.pngBytes.slice(0) }])
+      );
       const request: FlattenWorkerRequest = {
         kind: 'flatten',
+        snapshots,
         docs: downloadableDocuments.map((document) => ({
           ...document,
           pdfBytes: document.pdfBytes.slice(0),
@@ -108,7 +114,11 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
         dateFormat: getDateFormat()
       };
 
-      const transfers: Transferable[] = [...request.docs.map((document) => document.pdfBytes), ...Object.values(assetMap)];
+      const transfers: Transferable[] = [
+        ...request.docs.map((document) => document.pdfBytes),
+        ...Object.values(assetMap),
+        ...Object.values(snapshots).map((snapshot) => snapshot.pngBytes)
+      ];
 
       const worker = new Worker(new URL('../../workers/flatten.worker.ts', import.meta.url), { type: 'module' });
       workerRef.current?.terminate();

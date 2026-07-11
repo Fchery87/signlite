@@ -15,9 +15,21 @@ export interface SignatureAsset {
   lastUsedAt: number;
 }
 
+export interface SignatureSnapshot {
+  id: string;
+  kind: 'signature' | 'initials';
+  pngBytes: ArrayBuffer;
+  width: number;
+  height: number;
+}
+
+export type SignatureSnapshotMap = Record<string, SignatureSnapshot>;
+
 export interface Placement {
   id: string;
   type: 'signature' | 'initials' | 'date' | 'text';
+  snapshotId?: string;
+  /** Legacy compatibility for sessions created before signature snapshots. */
   assetId?: string;
   assetPngBytes?: ArrayBuffer;
   pageIndex: number;
@@ -46,6 +58,8 @@ export interface WorkSession {
   updatedAt: number;
   documents: SessionDocument[];
   templatePlacements: Placement[];
+  /** Optional while reading legacy sessions; normalized to an empty map by the store. */
+  signatureSnapshots?: SignatureSnapshotMap;
 }
 
 export interface Prefs {

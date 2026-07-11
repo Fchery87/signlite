@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import type { Placement, SessionDocument, SignatureAsset } from '../db/schema';
+import type { Placement, SessionDocument, SignatureAsset, SignatureSnapshotMap } from '../db/schema';
 import { getAsset, getDateFormat } from '../db/signatures';
 import { STRINGS } from '../lib/strings';
 import { collectAssetIds, type FlattenAssetMap } from './assets';
@@ -11,6 +11,7 @@ export { collectAssetIds };
 export type AssetLookup = (id: string) => Promise<SignatureAsset | null>;
 
 type FlattenOptions = {
+  snapshots?: SignatureSnapshotMap;
   assetMap?: FlattenAssetMap;
   dateFormat?: string;
   loadAsset?: AssetLookup;
@@ -22,6 +23,10 @@ function getPlacementText(value: string | undefined, fallback: string) {
 }
 
 async function resolveAssetBytes(placement: Placement, options: FlattenOptions) {
+  if (placement.snapshotId) {
+    return options.snapshots?.[placement.snapshotId]?.pngBytes ?? null;
+  }
+
   if (placement.assetId && options.assetMap?.[placement.assetId]) {
     return options.assetMap[placement.assetId];
   }

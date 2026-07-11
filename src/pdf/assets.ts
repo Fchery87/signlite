@@ -7,7 +7,7 @@ export function collectAssetIds(documents: Pick<SessionDocument, 'placements'>[]
 
   for (const document of documents) {
     for (const placement of document.placements) {
-      if ((placement.type === 'signature' || placement.type === 'initials') && placement.assetId) {
+      if ((placement.type === 'signature' || placement.type === 'initials') && !placement.snapshotId && placement.assetId) {
         ids.add(placement.assetId);
       }
     }

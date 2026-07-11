@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { Placement, SessionDocument, WorkSession } from '../db/schema';
+import type { Placement, SessionDocument, SignatureAsset, WorkSession } from '../db/schema';
+import { createSignatureSnapshot } from '../lib/signatureSnapshots';
 import { STRINGS } from '../lib/strings';
 
 export type ViewState = 'dropzone' | 'editor';
@@ -29,6 +30,11 @@ type SessionState = {
   removeDocument: (docId: string) => void;
   reorderDocuments: (docIds: string[]) => void;
   addPlacement: (docId: string, placement: Placement) => void;
+  addSignaturePlacement: (
+    docId: string,
+    asset: Pick<SignatureAsset, 'kind' | 'pngBytes' | 'width' | 'height'>,
+    placement: Omit<Placement, 'type' | 'snapshotId' | 'assetId' | 'assetPngBytes'>
+  ) => Promise<Placement | null>;
   updatePlacement: (docId: string, placementId: string, next: Partial<Placement>) => void;
   removePlacement: (docId: string, placementId: string) => void;
   duplicatePlacement: (docId: string, placementId: string) => void;
@@ -127,7 +133,8 @@ export const createInitialSession = (): WorkSession => ({
   createdAt: Date.now(),
   updatedAt: Date.now(),
   documents: [],
-  templatePlacements: []
+  templatePlacements: [],
+  signatureSnapshots: {}
 });
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -210,6 +217,37 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         view: 'editor'
       };
     }),
+  addSignaturePlacement: async (docId, asset, placement) => {
+    const snapshot = await createSignatureSnapshot(asset);
+    const nextPlacement: Placement = { ...placement, type: asset.kind, snapshotId: snapshot.id };
+    let inserted = false;
+    set((state) => {
+      if (!state.session.documents.some((doc) => doc.docId === docId)) return state;
+      inserted = true;
+      const documents: SessionDocument[] = state.session.documents.map((doc) =>
+        doc.docId === docId
+          ? { ...doc, placements: [...doc.placements, nextPlacement], status: 'placed', batchError: undefined }
+          : doc
+      );
+      return {
+        session: {
+          ...state.session,
+          updatedAt: Date.now(),
+          documents,
+          templatePlacements: syncTemplatePlacements(documents),
+          signatureSnapshots: {
+            ...(state.session.signatureSnapshots ?? {}),
+            [snapshot.id]: state.session.signatureSnapshots?.[snapshot.id] ?? snapshot
+          }
+        },
+        selectedDocumentId: docId,
+        selectedPlacementId: nextPlacement.id,
+        history: pushHistoryEntry(state),
+        view: 'editor'
+      };
+    });
+    return inserted ? nextPlacement : null;
+  },
   updatePlacement: (docId, placementId, next) =>
     set((state) => {
       const documents: SessionDocument[] = state.session.documents.map((doc) =>
@@ -429,7 +467,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({
       session: {
         ...session,
-        templatePlacements: session.templatePlacements.length > 0 ? session.templatePlacements : syncTemplatePlacements(session.documents)
+        templatePlacements: session.templatePlacements.length > 0 ? session.templatePlacements : syncTemplatePlacements(session.documents),
+        signatureSnapshots: session.signatureSnapshots ?? {}
       },
       selectedDocumentId: session.documents[0]?.docId ?? null,
       selectedPlacementId: null,

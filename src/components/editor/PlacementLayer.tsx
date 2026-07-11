@@ -61,7 +61,7 @@ export function PlacementLayer({
   onToast,
   onAnnouncePlacement
 }: PlacementLayerProps) {
-  const addPlacement = useSessionStore((state) => state.addPlacement);
+  const addSignaturePlacement = useSessionStore((state) => state.addSignaturePlacement);
   const updatePlacement = useSessionStore((state) => state.updatePlacement);
   const removePlacement = useSessionStore((state) => state.removePlacement);
   const duplicatePlacement = useSessionStore((state) => state.duplicatePlacement);
@@ -164,19 +164,12 @@ export function PlacementLayer({
       }
     );
 
-    const placementId = crypto.randomUUID();
-
-    addPlacement(documentId, {
-      id: placementId,
-      type: asset.kind,
-      assetId: asset.id,
+    const fullAsset = await getAsset(asset.id);
+    if (!fullAsset) return;
+    await addSignaturePlacement(documentId, fullAsset, {
+      id: crypto.randomUUID(),
       pageIndex,
       ...normalized
-    });
-
-    void getAsset(asset.id).then((fullAsset) => {
-      if (!fullAsset) return;
-      updatePlacement(documentId, placementId, { assetPngBytes: fullAsset.pngBytes.slice(0) });
     });
     await touchAsset(asset.id);
     onAnnouncePlacement?.(asset.kind, pageIndex);

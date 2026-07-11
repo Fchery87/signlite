@@ -19,7 +19,8 @@ function resetStore() {
       createdAt: 1,
       updatedAt: 1,
       documents: [],
-      templatePlacements: []
+      templatePlacements: [],
+      signatureSnapshots: {}
     },
     selectedDocumentId: null,
     selectedPlacementId: null,
@@ -49,6 +50,43 @@ describe('session store', () => {
     const state = useSessionStore.getState();
     expect(state.view).toBe('editor');
     expect(state.session.documents).toHaveLength(1);
+  });
+
+  it('atomically inserts and deduplicates immutable signature snapshots', async () => {
+    useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
+    const asset = {
+      kind: 'signature' as const,
+      pngBytes: new Uint8Array([1, 2, 3]).buffer,
+      width: 20,
+      height: 10
+    };
+
+    const first = await useSessionStore.getState().addSignaturePlacement('doc-1', asset, {
+      id: 'snapshot-placement-1', pageIndex: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1
+    });
+    const second = await useSessionStore.getState().addSignaturePlacement('doc-1', asset, {
+      id: 'snapshot-placement-2', pageIndex: 0, x: 0.2, y: 0.2, w: 0.2, h: 0.1
+    });
+
+    const session = useSessionStore.getState().session;
+    expect(first?.snapshotId).toBe(second?.snapshotId);
+    expect(Object.keys(session.signatureSnapshots ?? {})).toHaveLength(1);
+    expect(session.documents[0]?.placements.every((placement) => Boolean(placement.snapshotId))).toBe(true);
+    expect(session.documents[0]?.placements.every((placement) => !placement.assetId && !placement.assetPngBytes)).toBe(true);
+  });
+
+  it('retains snapshots after placement deletion and undo history changes', async () => {
+    useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
+    await useSessionStore.getState().addSignaturePlacement(
+      'doc-1',
+      { kind: 'initials', pngBytes: new Uint8Array([8]).buffer, width: 2, height: 1 },
+      { id: 'snap-placement', pageIndex: 0, x: 0, y: 0, w: 0.2, h: 0.1 }
+    );
+    const snapshotId = useSessionStore.getState().session.documents[0]?.placements[0]?.snapshotId;
+    useSessionStore.getState().removePlacement('doc-1', 'snap-placement');
+    expect(useSessionStore.getState().session.signatureSnapshots?.[snapshotId!]).toBeDefined();
+    useSessionStore.getState().undo();
+    expect(useSessionStore.getState().session.documents[0]?.placements[0]?.snapshotId).toBe(snapshotId);
   });
 
   it('adds and removes placements', () => {

@@ -116,6 +116,28 @@ describe('flattenDocument', () => {
     expect(stream).toMatch(/\b60 0 0 40 0 0 cm\b/);
   });
 
+  it('resolves snapshot placements without consulting the live library', async () => {
+    const document = await makeDocument([
+      { id: 'sig-modern', type: 'signature', snapshotId: 'snapshot-1', pageIndex: 0, x: 0.1, y: 0.1, w: 0.3, h: 0.2 }
+    ]);
+    const loadAsset = vi.fn<() => Promise<SignatureAsset | null>>();
+    const output = await flattenDocument(document, {
+      snapshots: { 'snapshot-1': { id: 'snapshot-1', kind: 'signature', pngBytes: PNG_BYTES, width: 1, height: 1 } },
+      loadAsset
+    });
+    expect(loadAsset).not.toHaveBeenCalled();
+    expect(new TextDecoder().decode(output)).toContain('/XObject');
+  });
+
+  it('does not fall through to a live library lookup when a referenced snapshot is missing', async () => {
+    const document = await makeDocument([
+      { id: 'sig-modern', type: 'signature', snapshotId: 'missing', assetId: 'asset-1', pageIndex: 0, x: 0.1, y: 0.1, w: 0.3, h: 0.2 }
+    ]);
+    const loadAsset = vi.fn<() => Promise<SignatureAsset | null>>();
+    await flattenDocument(document, { snapshots: {}, loadAsset });
+    expect(loadAsset).not.toHaveBeenCalled();
+  });
+
   it('falls back to cached placement png bytes when the library asset is gone', async () => {
     const document = await makeDocument([
       {

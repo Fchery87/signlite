@@ -53,6 +53,9 @@ function normalizeRect(rect: { x: number; y: number; w: number; h: number }) {
 
 export function PlacedElement({ documentId, pageSize, placement, scale, selected, onToast }: PlacedElementProps) {
   const updatePlacement = useSessionStore((state) => state.updatePlacement);
+  const snapshotBytes = useSessionStore((state) =>
+    placement.snapshotId ? state.session.signatureSnapshots?.[placement.snapshotId]?.pngBytes : undefined
+  );
   const removePlacement = useSessionStore((state) => state.removePlacement);
   const duplicatePlacement = useSessionStore((state) => state.duplicatePlacement);
   const copyPlacement = useSessionStore((state) => state.copyPlacement);
@@ -69,24 +72,22 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
   const screenRect = useMemo(() => normalizedToScreen(placement, pageSize, scale), [pageSize, placement, scale]);
 
   useEffect(() => {
-    if (!placement.assetId && !placement.assetPngBytes) return;
-    let revokedUrl = '';
+    let url = '';
     let cancelled = false;
-
     void (async () => {
-      const asset = placement.assetId ? await getAsset(placement.assetId) : null;
-      const pngBytes = asset?.pngBytes ?? placement.assetPngBytes;
+      // Modern Placements resolve exclusively from the Work Session. Library lookup
+      // remains only for compatibility with pre-snapshot persisted sessions.
+      const legacyAsset = !placement.snapshotId && placement.assetId ? await getAsset(placement.assetId) : null;
+      const pngBytes = snapshotBytes ?? legacyAsset?.pngBytes ?? placement.assetPngBytes;
       if (!pngBytes || cancelled) return;
-      const url = bufferToObjectUrl(pngBytes);
-      revokedUrl = url;
+      url = bufferToObjectUrl(pngBytes);
       setSrc(url);
     })();
-
     return () => {
       cancelled = true;
-      if (revokedUrl) URL.revokeObjectURL(revokedUrl);
+      if (url) URL.revokeObjectURL(url);
     };
-  }, [placement.assetId, placement.assetPngBytes]);
+  }, [placement.assetId, placement.assetPngBytes, placement.snapshotId, snapshotBytes]);
 
   useEffect(() => {
     if (selected && isEditingText) {

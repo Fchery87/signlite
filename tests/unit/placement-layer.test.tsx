@@ -1,8 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { PlacementLayer } from '../../src/components/editor/PlacementLayer';
 import { PlacedElement } from '../../src/components/editor/PlacedElement';
 import { useSessionStore } from '../../src/stores/session';
-import { setDateFormat } from '../../src/db/signatures';
+import { saveAsset, setDateFormat } from '../../src/db/signatures';
 
 function resetStore() {
   useSessionStore.setState({
@@ -37,7 +37,11 @@ describe('placement layer', () => {
     await setDateFormat('MMM d, yyyy');
   });
 
-  it('creates placements from library drops', () => {
+  it('creates placements from library drops only after the snapshot is available', async () => {
+    const savedAsset = await saveAsset({
+      kind: 'signature', source: 'uploaded', pngBytes: new Uint8Array([1, 2, 3]).buffer,
+      width: 400, height: 100, label: 'Drop asset'
+    });
     const { getByTestId } = render(
       <div className="relative" style={{ width: 200, height: 100 }}>
         <PlacementLayer
@@ -57,14 +61,16 @@ describe('placement layer', () => {
     });
 
     const dataTransfer = {
-      getData: () => JSON.stringify({ id: 'asset-1', kind: 'signature', width: 400, height: 100 }),
+      getData: () => JSON.stringify({ id: savedAsset.id, kind: 'signature', width: 400, height: 100 }),
       dropEffect: 'copy'
     };
 
     fireEvent.drop(layer, { dataTransfer, clientX: 100, clientY: 50 });
 
+    expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(0);
+    await waitFor(() => expect(useSessionStore.getState().session.documents[0]?.placements).toHaveLength(1));
     const placement = useSessionStore.getState().session.documents[0]?.placements[0];
-    expect(placement).toMatchObject({ type: 'signature', pageIndex: 0 });
+    expect(placement).toMatchObject({ type: 'signature', pageIndex: 0, snapshotId: expect.any(String) });
     expect(placement?.w).toBeCloseTo(0.2);
     expect(placement?.h).toBeCloseTo(0.24);
   });

@@ -1,5 +1,5 @@
 import { zipSync } from 'fflate';
-import type { SessionDocument } from '../db/schema';
+import type { SessionDocument, SignatureSnapshotMap } from '../db/schema';
 import { dedupeFileName, signedPdfFileName } from '../lib/downloadNames';
 import { STRINGS } from '../lib/strings';
 import type { FlattenAssetMap } from '../pdf/assets';
@@ -8,6 +8,8 @@ import { flattenDocument } from '../pdf/flatten';
 export type FlattenWorkerRequest = {
   kind: 'flatten';
   docs: SessionDocument[];
+  snapshots?: SignatureSnapshotMap;
+  /** Legacy assets for sessions whose Placements predate snapshots. */
   assets: FlattenAssetMap;
   zip: boolean;
   dateFormat?: string;
@@ -56,6 +58,7 @@ export async function runFlattenJob(request: FlattenWorkerRequest, worker?: Work
   for (const [index, document] of request.docs.entries()) {
     try {
       const flattened = await flattenDocument(document, {
+        snapshots: request.snapshots,
         assetMap: request.assets,
         dateFormat: request.dateFormat
       });

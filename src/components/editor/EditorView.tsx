@@ -57,6 +57,9 @@ export function EditorView({ onToast }: EditorViewProps) {
   const selectedDocumentId = useSessionStore((state) => state.selectedDocumentId);
   const selectedPlacementId = useSessionStore((state) => state.selectedPlacementId);
   const addPlacement = useSessionStore((state) => state.addPlacement);
+  const addSignaturePlacement = useSessionStore((state) => state.addSignaturePlacement);
+  const storedSignatureSnapshots = useSessionStore((state) => state.session.signatureSnapshots);
+  const signatureSnapshots = useMemo(() => storedSignatureSnapshots ?? {}, [storedSignatureSnapshots]);
   const pastePlacement = useSessionStore((state) => state.pastePlacement);
   const undo = useSessionStore((state) => state.undo);
   const redo = useSessionStore((state) => state.redo);
@@ -176,7 +179,7 @@ export function EditorView({ onToast }: EditorViewProps) {
   );
 
   const handlePlaceAsset = useCallback(
-    (asset: SignatureAsset) => {
+    async (asset: SignatureAsset) => {
       const pageSize = selectedDocument?.pageSizes[activePage];
       if (!selectedDocument || !pageSize) return;
       const width = 0.2;
@@ -185,11 +188,8 @@ export function EditorView({ onToast }: EditorViewProps) {
         Math.min(width * (asset.height / asset.width) * (pageSize.w / pageSize.h), 0.5)
       );
 
-      addPlacement(selectedDocument.docId, {
+      await addSignaturePlacement(selectedDocument.docId, asset, {
         id: crypto.randomUUID(),
-        type: asset.kind,
-        assetId: asset.id,
-        assetPngBytes: asset.pngBytes.slice(0),
         pageIndex: activePage,
         x: 0.1,
         y: 0.1,
@@ -199,7 +199,7 @@ export function EditorView({ onToast }: EditorViewProps) {
       announcePlacement(asset.kind, activePage);
       onToast(STRINGS.announcements.placedOnPage(placementLabel(asset.kind), activePage + 1));
     },
-    [activePage, addPlacement, announcePlacement, onToast, selectedDocument]
+    [activePage, addSignaturePlacement, announcePlacement, onToast, selectedDocument]
   );
 
   const handlePaste = useCallback(() => {
@@ -216,7 +216,7 @@ export function EditorView({ onToast }: EditorViewProps) {
     setIsDownloading(true);
     try {
       const { flattenDocument } = await import('../../pdf/flatten');
-      const flattened = await flattenDocument(selectedDocument);
+      const flattened = await flattenDocument(selectedDocument, { snapshots: signatureSnapshots });
       const fileName = signedPdfFileName(selectedDocument.fileName);
       const pdfBytes = flattened.buffer.slice(flattened.byteOffset, flattened.byteOffset + flattened.byteLength) as ArrayBuffer;
       downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), fileName);
@@ -227,7 +227,7 @@ export function EditorView({ onToast }: EditorViewProps) {
     } finally {
       setIsDownloading(false);
     }
-  }, [isDownloading, onToast, selectedDocument, updateDocumentStatus]);
+  }, [isDownloading, onToast, selectedDocument, signatureSnapshots, updateDocumentStatus]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
