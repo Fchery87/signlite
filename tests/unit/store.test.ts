@@ -1,4 +1,5 @@
-import { sessionStoreTestHarness } from '../../src/stores/session';
+import { renderHook } from '@testing-library/react';
+import { sessionStoreTestHarness, useSessionStore } from '../../src/stores/session';
 
 function makeDocument(docId: string, pageCount = 1, pageSize = { w: 612, h: 792 }) {
   return {
@@ -305,6 +306,15 @@ describe('session store', () => {
   });
 
 
+  it('projects privileged lease capabilities out of runtime React selectors', () => {
+    const { result } = renderHook(() => useSessionStore((state) => state));
+    const exposed = result.current as unknown as Record<string, unknown>;
+    expect(exposed).toHaveProperty('mutationLock');
+    expect(exposed).not.toHaveProperty('mutationLease');
+    expect(exposed).not.toHaveProperty('acquireMutationLease');
+    expect(exposed).not.toHaveProperty('releaseMutationLease');
+  });
+
   it('owns an exclusive identified lease and rejects wrong or stale capabilities', () => {
     const first = sessionStoreTestHarness.getState().acquireMutationLease('Batch Signing attempt-1');
     expect(first).not.toBeNull();
@@ -324,6 +334,48 @@ describe('session store', () => {
     expect(sessionStoreTestHarness.getState().releaseMutationLease(first)).toBe(false);
     expect(sessionStoreTestHarness.getState().mutationLock).toEqual({ owner: 'Batch Signing attempt-2' });
     if (second) expect(sessionStoreTestHarness.getState().releaseMutationLease(second)).toBe(true);
+  });
+
+  it('rejects forged and stale capabilities without changing durable or revision state', () => {
+    sessionStoreTestHarness.getState().addDocuments([makeDocument('doc-1')]);
+    const lease = sessionStoreTestHarness.getState().acquireMutationLease('Batch Signing attempt-1');
+    if (!lease) throw new Error('Expected lease');
+    const baseline = sessionStoreTestHarness.getState();
+    expect(baseline.transitionDocumentOutput('doc-1', 'signing', undefined, { ...lease })).toBe(false);
+    let current = sessionStoreTestHarness.getState();
+    expect(current.session).toBe(baseline.session);
+    expect(current.history).toBe(baseline.history);
+    expect(current.contentRevision).toBe(baseline.contentRevision);
+    expect(current.ownershipRevision).toBe(baseline.ownershipRevision);
+    expect(current.releaseMutationLease(lease)).toBe(true);
+    const replacement = sessionStoreTestHarness.getState().acquireMutationLease('Batch Signing attempt-2');
+    if (!replacement) throw new Error('Expected replacement lease');
+    const replacementBaseline = sessionStoreTestHarness.getState();
+    expect(replacementBaseline.transitionDocumentOutput('doc-1', 'signing', undefined, lease)).toBe(false);
+    current = sessionStoreTestHarness.getState();
+    expect(current.session).toBe(replacementBaseline.session);
+    expect(current.history).toBe(replacementBaseline.history);
+    expect(current.contentRevision).toBe(replacementBaseline.contentRevision);
+    expect(current.ownershipRevision).toBe(replacementBaseline.ownershipRevision);
+    expect(current.releaseMutationLease(replacement)).toBe(true);
+  });
+
+  it('rejects normalization started before a lease is acquired', async () => {
+    const candidate = {
+      id: 'restore-candidate', createdAt: 2, updatedAt: 2,
+      documents: [makeDocument('restored')], templatePlacements: [], signatureSnapshots: {}
+    };
+    const pending = sessionStoreTestHarness.getState().restoreSession(candidate);
+    const lease = sessionStoreTestHarness.getState().acquireMutationLease('Batch Signing attempt');
+    if (!lease) throw new Error('Expected lease');
+    const baseline = sessionStoreTestHarness.getState();
+    await expect(pending).resolves.toBe(false);
+    const locked = sessionStoreTestHarness.getState();
+    expect(locked.session).toBe(baseline.session);
+    expect(locked.history).toBe(baseline.history);
+    expect(locked.contentRevision).toBe(baseline.contentRevision);
+    expect(locked.ownershipRevision).toBe(baseline.ownershipRevision);
+    expect(locked.releaseMutationLease(lease)).toBe(true);
   });
 
   it('rejects every durable action category while leased but permits read navigation', async () => {

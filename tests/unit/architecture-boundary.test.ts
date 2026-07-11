@@ -13,18 +13,18 @@ describe('durable Work Session mutation boundary', () => {
   const files = sourceFiles(root);
   const contents = files.map((path) => ({ path: relative(process.cwd(), path), source: readFileSync(path, 'utf8') }));
 
-  it('allows only the store adapter to import WorkSessionEditor', () => {
-    const importers = contents
-      .filter(({ source }) => /from ['"][^'"]*workSessionEditor['"]/.test(source))
-      .map(({ path }) => path);
+  it('allows only the store adapter to reference WorkSessionEditor', () => {
+    const importers = contents.filter(({ source }) => /workSessionEditor/.test(source)).map(({ path }) => path);
     expect(importers).toEqual(['src/stores/session.ts']);
   });
 
-  it('keeps imperative store capabilities out of production consumers', () => {
-    const harnessImporters = contents.filter(({ path, source }) =>
-      path !== 'src/stores/session.ts' && /sessionStoreTestHarness/.test(source));
-    const imperativeHookUsers = contents.filter(({ source }) => /useSessionStore\.(getState|setState)/.test(source));
-    expect(harnessImporters).toEqual([]);
+  it('keeps imperative and privileged store capabilities out of production consumers', () => {
+    const allowedInternals = new Set(['src/stores/session.ts', 'src/lib/workSessionEditor.ts']);
+    const privilegedReferences = contents.filter(({ path, source }) =>
+      !allowedInternals.has(path)
+      && /(sessionStoreTestHarness|acquireMutationLease|releaseMutationLease|MutationLease)/.test(source));
+    const imperativeHookUsers = contents.filter(({ source }) => /useSessionStore\s*(?:\.|\[['"])(?:getState|setState)/.test(source));
+    expect(privilegedReferences).toEqual([]);
     expect(imperativeHookUsers).toEqual([]);
   });
 
