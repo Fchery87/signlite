@@ -747,6 +747,33 @@ export function transitionDocumentOutput(
   );
 }
 
+export type BatchSignedConfirmation = {
+  docIds: readonly string[];
+};
+
+/**
+ * Records the confirmed batch offer as Signed in one atomic completion action.
+ * Only the supplied document IDs become Signed; all other documents are unchanged.
+ */
+export function confirmBatchSigned(
+  state: WorkSessionEditorState,
+  confirmation: BatchSignedConfirmation
+): CompleteStateResult {
+  const docIdSet = new Set(confirmation.docIds);
+  const documents = state.session.documents.map((document) =>
+    docIdSet.has(document.docId)
+      ? { ...document, status: 'signed' as const, batchError: undefined }
+      : document
+  );
+  return completeState(
+    { ...state.session, updatedAt: Date.now(), documents, templatePlacements: syncTemplatePlacements(documents) },
+    state.history,
+    state.selectedDocumentId,
+    state.selectedPlacementId,
+    state.copiedPlacement
+  );
+}
+
 export type MutationLease = Readonly<{ id: string; owner: string }>;
 
 export function acquireMutationLease(current: MutationLease | null, owner: string): MutationLease | null {

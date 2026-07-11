@@ -101,6 +101,10 @@ export interface BatchSigningPorts {
     },
     isCancelled: () => boolean
   ) => Promise<ProcessFlattenOutcome>;
+  /** Delivers the artifact to the user (e.g. browser download).  Non-cancelable. */
+  deliverArtifact: (artifact: BatchArtifact) => Promise<boolean>;
+  /** Records the confirmed batch offer as Signed in one atomic completion action. */
+  confirmBatchSigned: (docIds: readonly string[], capability: BatchLeaseCapability) => boolean;
 }
 
 // ─── Attempt state ─────────────────────────────────────────────────────────
@@ -109,6 +113,7 @@ export type BatchAttemptStatus =
   | 'idle'
   | 'preparing'
   | 'processing'
+  | 'delivering'
   | 'succeeded'
   | 'failed'
   | 'cancelled';
@@ -130,6 +135,7 @@ export interface BatchAttemptResult {
   ok: boolean;
   cancelled: boolean;
   noEligible: boolean;
+  deliveryFailed: boolean;
   artifact: BatchArtifact | null;
   cohort: BatchCohort;
   successCount: number;
@@ -140,14 +146,15 @@ export interface BatchAttemptResult {
 
 /**
  * Owns a coherent Batch Signing attempt from lease acquisition through
- * full-cohort worker processing, cancellation, deterministic artifact
- * assembly, and terminal lease release.  All attempt identity, progress,
- * failures, worker handles, and intermediate output remain transient — the
- * module never persists them to durable Work Session state.
+ * full-cohort worker processing, delivery, deterministic artifact assembly,
+ * and terminal lease release.  Worker completion and progress never establish
+ * Signed Document state — only a confirmed delivery does, via one atomic
+ * completion action.
  */
 export class BatchSigning {
   private readonly ports: BatchSigningPorts;
   private cancelled = false;
+  private delivering = false;
   private active = false;
   private progress: BatchAttemptProgress = { status: 'idle', done: 0, total: 0, failures: {} };
   private successCount = 0;
@@ -164,15 +171,20 @@ export class BatchSigning {
     return this.active;
   }
 
+  /**
+   * Cancel is unavailable once delivery begins — delivery is an explicit
+   * non-cancelable point of no return.
+   */
   cancel(): void {
+    if (this.delivering) return;
     this.cancelled = true;
   }
 
   /**
    * Runs one complete Batch Signing attempt.
    * Acquires the lease, derives the full cohort, prepares input, processes
-   * the cohort through the flatten worker, and releases the lease on every
-   * terminal path (success, all-failure, cancellation, or no-eligible).
+   * the cohort, delivers the artifact, confirms Signed state, and releases
+   * the lease on every terminal path.
    */
   async attempt(): Promise<BatchAttemptResult> {
     if (this.active) {
@@ -188,18 +200,18 @@ export class BatchSigning {
       this.active = false;
       this.progress = { status: 'idle', done: 0, total: 0, failures: {} };
       return {
-        ok: false, cancelled: false, noEligible: false, artifact: null,
-        cohort: { eligible: [], excluded: [] }, successCount: 0, failureCount: 0
+        ok: false, cancelled: false, noEligible: false, deliveryFailed: false,
+        artifact: null, cohort: { eligible: [], excluded: [] }, successCount: 0, failureCount: 0
       };
     }
 
     try {
       return await this.runAttempt(lease);
     } finally {
-      // ── Always release the lease on every terminal path ──
       this.ports.releaseLease(lease);
       this.active = false;
       this.cancelled = false;
+      this.delivering = false;
     }
   }
 
@@ -212,8 +224,8 @@ export class BatchSigning {
     if (cohort.eligible.length === 0) {
       this.progress = { status: 'failed', done: 0, total: 0, failures: {} };
       return {
-        ok: false, cancelled: false, noEligible: true, artifact: null,
-        cohort, successCount: 0, failureCount: 0
+        ok: false, cancelled: false, noEligible: true, deliveryFailed: false,
+        artifact: null, cohort, successCount: 0, failureCount: 0
       };
     }
 
@@ -258,8 +270,8 @@ export class BatchSigning {
     if (finalEligible.length === 0) {
       this.progress = { status: 'failed', done: 0, total: 0, failures: {} };
       return {
-        ok: false, cancelled: false, noEligible: true, artifact: null,
-        cohort: finalCohort, successCount: 0, failureCount: 0
+        ok: false, cancelled: false, noEligible: true, deliveryFailed: false,
+        artifact: null, cohort: finalCohort, successCount: 0, failureCount: 0
       };
     }
 
@@ -269,7 +281,7 @@ export class BatchSigning {
       return this.cancelledResult(finalCohort);
     }
 
-    // ── 6. Transition eligible documents to 'signing' ──
+    // ── 6. Transition eligible documents to 'signing' (NOT 'signed') ──
     for (const doc of finalEligible) {
       this.ports.transitionOutput(doc.docId, 'signing', undefined, lease);
     }
@@ -307,6 +319,8 @@ export class BatchSigning {
     }
 
     // ── 9. Process the full cohort through the flatten worker ──
+    // Worker progress NEVER establishes Signed state — only tracks success.
+    const succeededDocIds: string[] = [];
     this.progress = { status: 'processing', done: 0, total: finalEligible.length, failures: {} };
 
     const outcome = await this.ports.processFlatten(
@@ -315,8 +329,8 @@ export class BatchSigning {
       {
         onProgress: (docId, done, total) => {
           if (this.cancelled) return;
+          succeededDocIds.push(docId);
           this.successCount += 1;
-          this.ports.transitionOutput(docId, 'signed', undefined, lease);
           this.progress = { ...this.progress, done, total };
         },
         onError: (docId, message) => {
@@ -342,33 +356,51 @@ export class BatchSigning {
     if (outcome.kind === 'all-failed') {
       this.progress = { ...this.progress, status: 'failed' };
       return {
-        ok: false, cancelled: false, noEligible: false, artifact: null,
-        cohort: finalCohort,
-        successCount: 0,
-        failureCount: finalEligible.length
+        ok: false, cancelled: false, noEligible: false, deliveryFailed: false,
+        artifact: null, cohort: finalCohort,
+        successCount: 0, failureCount: finalEligible.length
       };
     }
 
-    // ── 11. Success — deliver the artifact ──
+    // ── 11. DELIVER the artifact — explicit non-cancelable point of no return ──
+    this.delivering = true;
+    this.cancelled = false; // Cancel is no longer available
+    this.progress = { ...this.progress, status: 'delivering' };
+
+    const artifact: BatchArtifact = {
+      output: outcome.output,
+      mime: outcome.mime,
+      successCount: this.successCount
+    };
+
+    const delivered = await this.ports.deliverArtifact(artifact);
+
+    if (!delivered) {
+      // Delivery failed — NO Signed transitions
+      this.progress = { ...this.progress, status: 'failed' };
+      return {
+        ok: false, cancelled: false, noEligible: false, deliveryFailed: true,
+        artifact: null, cohort: finalCohort,
+        successCount: 0, failureCount: finalEligible.length
+      };
+    }
+
+    // ── 12. Confirm batch Signed in ONE atomic completion action ──
+    this.ports.confirmBatchSigned(succeededDocIds, lease);
+
     this.progress = { ...this.progress, status: 'succeeded' };
     const failureCount = Object.keys(this.progress.failures).length;
     return {
-      ok: true, cancelled: false, noEligible: false,
-      artifact: {
-        output: outcome.output,
-        mime: outcome.mime,
-        successCount: this.successCount
-      },
-      cohort: finalCohort,
-      successCount: this.successCount,
-      failureCount
+      ok: true, cancelled: false, noEligible: false, deliveryFailed: false,
+      artifact, cohort: finalCohort,
+      successCount: this.successCount, failureCount
     };
   }
 
   private cancelledResult(cohort: BatchCohort): BatchAttemptResult {
     return {
-      ok: false, cancelled: true, noEligible: false, artifact: null,
-      cohort, successCount: 0, failureCount: 0
+      ok: false, cancelled: true, noEligible: false, deliveryFailed: false,
+      artifact: null, cohort, successCount: 0, failureCount: 0
     };
   }
 }

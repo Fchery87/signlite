@@ -17,6 +17,7 @@ import {
   undo as editorUndo,
   redo as editorRedo,
   transitionDocumentOutput as editorTransitionDocumentOutput,
+  confirmBatchSigned as editorConfirmBatchSigned,
   acquireMutationLease as editorAcquireMutationLease,
   releaseMutationLease as editorReleaseMutationLease,
   emptyHistory,
@@ -73,6 +74,7 @@ type SessionState = {
   undo: () => void;
   redo: () => void;
   transitionDocumentOutput: (docId: string, status: SessionDocument['status'], batchError?: string, capability?: MutationLease) => boolean;
+  confirmBatchSigned: (docIds: string[], capability: MutationLease) => boolean;
   acquireMutationLease: (owner: string) => MutationLease | null;
   releaseMutationLease: (capability: MutationLease) => boolean;
   previewApplyTemplatePlacements: () => ApplyToAllPreview | null;
@@ -289,6 +291,16 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
     set({ session: result.session, history: result.history, selectedDocumentId: result.selectedDocumentId,
       selectedPlacementId: result.selectedPlacementId, copiedPlacement: result.copiedPlacement,
       contentRevision: state.contentRevision + 1 });
+    return true;
+  },
+
+  confirmBatchSigned: (docIds, capability) => {
+    const state = get();
+    if (state.mutationLease && state.mutationLease !== capability) return false;
+    const result = editorConfirmBatchSigned(toEditorState(state), { docIds });
+    if (!result.ok) return false;
+    set({ session: result.session, history: result.history, selectedDocumentId: result.selectedDocumentId,
+      selectedPlacementId: result.selectedPlacementId, contentRevision: state.contentRevision + 1 });
     return true;
   },
 
