@@ -193,6 +193,6 @@ export const STRINGS = {
     fileTooLarge: (fileName: string) => `${fileName} is too large (limit 100 MB).`
   },
   warnings: {
-    autosaveOff: "Autosave is off — this session won't survive a reload."
+    autosaveOff: "Storage is full. Autosave is off — your changes will not survive a page reload."
   }
 } as const;

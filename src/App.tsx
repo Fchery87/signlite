@@ -15,6 +15,7 @@ function isQuotaExceededError(error: unknown) {
 
 export default function App() {
   const session = useSessionStore((state) => state.session);
+  const contentRevision = useSessionStore((state) => state.contentRevision);
   const view = useSessionStore((state) => state.view);
   const documents = session.documents;
   const addDocuments = useSessionStore((state) => state.addDocuments);
@@ -30,6 +31,8 @@ export default function App() {
   const [libraryWarning, setLibraryWarning] = useState<string | null>(null);
   const [historyReady, setHistoryReady] = useState(false);
   const staleSessionIdRef = useRef<string | null>(null);
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
   const warnedOnQuotaRef = useRef(false);
 
   const documentCount = documents.length;
@@ -60,12 +63,25 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!historyReady || session.documents.length === 0) return;
+    if (!historyReady) return;
+    const current = sessionRef.current;
 
+    // An empty active Work Session clears only a persisted record with the
+    // same Work Session identity — never a separately retained predecessor.
+    if (current.documents.length === 0) {
+      if (staleSessionIdRef.current !== current.id) {
+        void clearSession(current.id);
+      }
+      return;
+    }
+
+    // Nonempty revisions save after the approved debounce; rapid edits
+    // replace the pending save with the latest coherent revision.
     const timeout = window.setTimeout(() => {
-      void saveSession(session)
+      void saveSession(sessionRef.current)
         .then(async () => {
-          if (staleSessionIdRef.current && staleSessionIdRef.current !== session.id) {
+          // Predecessor clears only after the first successful nonempty replacement save.
+          if (staleSessionIdRef.current && staleSessionIdRef.current !== sessionRef.current.id) {
             await clearSession(staleSessionIdRef.current);
             staleSessionIdRef.current = null;
           }
@@ -81,7 +97,7 @@ export default function App() {
     return () => {
       window.clearTimeout(timeout);
     };
-  }, [historyReady, session]);
+  }, [historyReady, contentRevision]);
 
   return (
     <div className="min-h-screen bg-mist text-ink">
