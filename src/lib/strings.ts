@@ -157,7 +157,8 @@ export const STRINGS = {
     batchFailed: 'Could not finish this batch.',
     batchFailedAll: 'Could not sign any of these PDFs.',
     needsReviewMissingPage: 'Needs review — this document is missing a template page.',
-    needsReviewAspect: 'Differs from template — review.'
+    needsReviewAspect: 'Differs from template — review.',
+    needsReviewMissingSignature: 'Needs review — a signature image could not be recovered.'
   },
   announcements: {
     placedOnPage: (label: string, pageNumber: number) => `${label} placed on page ${pageNumber}.`

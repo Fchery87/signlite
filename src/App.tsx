@@ -8,6 +8,7 @@ const EditorView = lazy(() => import('./components/editor/EditorView').then((mod
 import { clearSession, loadLatestSession, pruneOldSessions, saveSession } from './db/history';
 import { hydrateSignaturePrefs, isUsingMemoryStore } from './db/signatures';
 import type { WorkSession } from './db/schema';
+import { normalizeSession } from './lib/normalizeSession';
 
 function isQuotaExceededError(error: unknown) {
   return error instanceof DOMException && error.name === 'QuotaExceededError';
@@ -111,8 +112,9 @@ export default function App() {
                 {STRINGS.startFresh}
               </Button>
               <Button
-                onClick={() => {
-                  replaceSession(resumeSession);
+                onClick={async () => {
+                  const normalized = await normalizeSession(resumeSession);
+                  replaceSession(normalized);
                   setResumeSession(null);
                 }}
               >
