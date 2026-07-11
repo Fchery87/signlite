@@ -60,6 +60,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
   const duplicatePlacement = useSessionStore((state) => state.duplicatePlacement);
   const copyPlacement = useSessionStore((state) => state.copyPlacement);
   const setSelection = useSessionStore((state) => state.setSelection);
+  const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
   const [src, setSrc] = useState('');
   const [dateFormatValue, setDateFormatValue] = useState(() => getDateFormat());
   const [isEditingText, setIsEditingText] = useState(false);
@@ -94,11 +95,15 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
   }, [placement.assetId, placement.assetPngBytes, placement.snapshotId, snapshotBytes]);
 
   useEffect(() => {
+    if (mutationLocked) {
+      setIsEditingText(false);
+      return;
+    }
     if (selected && isEditingText) {
       textInputRef.current?.focus();
       textInputRef.current?.select();
     }
-  }, [isEditingText, selected]);
+  }, [isEditingText, mutationLocked, selected]);
 
   const displayValue =
     placement.type === 'date'
@@ -188,6 +193,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
     event.preventDefault();
     event.stopPropagation();
     setSelection(documentId, placement.id);
+    if (mutationLocked) return;
     gestureKeyRef.current = `gesture-${placement.id}-${Date.now()}`;
     pointerStateRef.current =
       mode === 'move'
@@ -198,6 +204,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
   };
 
   const cycleDateFormat = async () => {
+    if (mutationLocked) return;
     const current = placement.value || dateFormatValue;
     const index = DATE_FORMATS.indexOf(current as (typeof DATE_FORMATS)[number]);
     const next = DATE_FORMATS[(index + 1 + DATE_FORMATS.length) % DATE_FORMATS.length];
@@ -211,6 +218,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
       <div
         role="button"
         tabIndex={0}
+        aria-disabled={mutationLocked}
         className={`focus-ring group relative flex h-full w-full items-center justify-center overflow-visible border ${
           selected ? 'border-accent shadow-[0_0_0_2px_#EDF1FC]' : 'border-transparent hover:border-accent'
         } ${placement.type === 'signature' || placement.type === 'initials' ? 'bg-transparent' : 'bg-surface/85'}`}
@@ -219,12 +227,12 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
           event.stopPropagation();
           const wasSelected = selected;
           setSelection(documentId, placement.id);
-          if (placement.type === 'date' && wasSelected) {
+          if (!mutationLocked && placement.type === 'date' && wasSelected) {
             void cycleDateFormat();
           }
         }}
         onDoubleClick={() => {
-          if (placement.type === 'text') {
+          if (!mutationLocked && placement.type === 'text') {
             setIsEditingText(true);
           }
         }}
@@ -235,7 +243,9 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
           <input
             ref={textInputRef}
             value={placement.value ?? ''}
+            disabled={mutationLocked}
             onChange={(event) => {
+              if (mutationLocked) return;
               updatePlacement(documentId, placement.id, { value: event.target.value }, `text:${placement.id}`);
             }}
             onBlur={() => setIsEditingText(false)}
@@ -263,6 +273,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
               <button
                 type="button"
                 className="focus-ring rounded-sm px-2 py-1 hover:bg-mist"
+                disabled={mutationLocked}
                 onClick={() => setIsEditingText(true)}
               >
                 {STRINGS.buttons.edit}
@@ -271,6 +282,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
               <button
                 type="button"
                 className="focus-ring rounded-sm px-2 py-1 hover:bg-mist"
+                disabled={mutationLocked}
                 onClick={() => void cycleDateFormat()}
               >
                 Cycle format
@@ -284,6 +296,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
                   min={8}
                   max={72}
                   value={placement.fontSize ?? 12}
+                  disabled={mutationLocked}
                   onChange={(event) => {
                     updatePlacement(documentId, placement.id, { fontSize: Number(event.target.value) || 12 }, `fontSize:${placement.id}`);
                   }}
@@ -294,6 +307,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
             <button
               type="button"
               className="focus-ring rounded-sm px-2 py-1 hover:bg-mist"
+              disabled={mutationLocked}
               onClick={() => duplicatePlacement(documentId, placement.id)}
             >
               {STRINGS.buttons.duplicate}
@@ -311,6 +325,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
             <button
               type="button"
               className="focus-ring rounded-sm px-2 py-1 text-danger hover:bg-mist"
+              disabled={mutationLocked}
               onClick={() => removePlacement(documentId, placement.id)}
             >
               {STRINGS.buttons.delete}
@@ -325,6 +340,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
                 key={handle}
                 type="button"
                 aria-label={`Resize ${handle}`}
+                disabled={mutationLocked}
                 className={`absolute h-2 w-2 border border-accent bg-surface ${handle.includes('n') ? '-top-1' : '-bottom-1'} ${handle.includes('w') ? '-left-1' : '-right-1'}`}
                 onPointerDown={(event) => startPointer(event, 'resize', handle)}
               />
