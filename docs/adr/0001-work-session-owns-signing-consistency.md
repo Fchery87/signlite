@@ -1,0 +1,3 @@
+# Work Session owns signing consistency
+
+The Work Session owns immutable signature snapshots through a deduplicated per-session pool, while Signature Library images are immutable and existing Placements never depend on later library state. All durable mutations cross one grouped `WorkSessionEditor` module, and `BatchSigning` acquires an exclusive editing lease and owns artifact delivery; in-progress signing remains transient, and a document becomes Signed only after a completed artifact is offered for download. This rejects live library references, UI-coordinated history/status calls, and a generic command bus in exchange for locality, one test surface, and coherent restore and Batch Signing outcomes.
