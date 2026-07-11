@@ -27,7 +27,8 @@ function resetStore() {
     copiedPlacement: null,
     history: { past: [], future: [] },
     view: 'dropzone',
-    ownershipRevision: 0
+    ownershipRevision: 0,
+    contentRevision: 0
   });
 }
 
@@ -179,7 +180,9 @@ describe('session store', () => {
       h: 0.1
     });
 
-    const result = useSessionStore.getState().applyTemplatePlacements();
+    const preview = useSessionStore.getState().previewApplyTemplatePlacements();
+    if (!preview) throw new Error('Expected preview');
+    const result = useSessionStore.getState().applyTemplatePlacements(preview);
     const documents = useSessionStore.getState().session.documents;
 
     expect(result.appliedDocIds).toEqual(['doc-2']);
@@ -188,10 +191,10 @@ describe('session store', () => {
     expect(documents[1]?.placements[0]?.id).not.toBe('placement-template');
     expect(documents[1]?.status).toBe('placed');
     expect(documents[2]?.placements).toHaveLength(0);
-    expect(documents[2]?.status).toBe('needs-review');
-    expect(documents[2]?.batchError).toBe('Needs review — this document is missing a template page.');
-    expect(documents[3]?.status).toBe('needs-review');
-    expect(documents[3]?.batchError).toBe('Differs from template — review.');
+    expect(documents[2]?.status).toBe('pending');
+    expect(documents[2]?.needsReviewReason).toBe('Needs review — this document is missing a template page.');
+    expect(documents[3]?.status).toBe('pending');
+    expect(documents[3]?.needsReviewReason).toBe('Differs from template — review.');
   });
 
   it('returns null when pasting with an empty clipboard', () => {
@@ -264,7 +267,9 @@ describe('session store', () => {
     );
     const originalSnapshotId = useSessionStore.getState().session.documents[0]?.placements[0]?.snapshotId;
 
-    const result = useSessionStore.getState().applyTemplatePlacements();
+    const preview = useSessionStore.getState().previewApplyTemplatePlacements();
+    if (!preview) throw new Error('Expected preview');
+    const result = useSessionStore.getState().applyTemplatePlacements(preview);
     expect(result.appliedDocIds).toEqual(['doc-2']);
 
     const targetPlacements = useSessionStore.getState().session.documents[1]?.placements ?? [];
@@ -274,4 +279,23 @@ describe('session store', () => {
     // The snapshot pool is shared, not duplicated.
     expect(Object.keys(useSessionStore.getState().session.signatureSnapshots ?? {})).toHaveLength(1);
   });
+
+  it('binds apply previews to monotonic content revisions without counting view-only or rejected actions', () => {
+    useSessionStore.getState().addDocuments([makeDocument('template'), makeDocument('target')]);
+    useSessionStore.getState().addPlacement('template', { ...basePlacement });
+    const revision = useSessionStore.getState().contentRevision;
+    const preview = useSessionStore.getState().previewApplyTemplatePlacements();
+    if (!preview) throw new Error('Expected preview');
+
+    useSessionStore.getState().setSelection('target', null);
+    useSessionStore.getState().updatePlacement('missing', 'missing', { x: 0.2 });
+    expect(useSessionStore.getState().contentRevision).toBe(revision);
+
+    useSessionStore.getState().addPlacement('target', { ...basePlacement, id: 'new-target' });
+    expect(useSessionStore.getState().contentRevision).toBe(revision + 1);
+    const before = useSessionStore.getState().session;
+    expect(useSessionStore.getState().applyTemplatePlacements(preview)).toMatchObject({ ok: false, error: 'stale-preview' });
+    expect(useSessionStore.getState().session).toBe(before);
+  });
+
 });

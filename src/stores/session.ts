@@ -5,6 +5,8 @@ import {
   removeDocument as editorRemoveDocument,
   reorderDocuments as editorReorderDocuments,
   replaceSession as editorReplaceSession,
+  previewApplyToAll as editorPreviewApplyToAll,
+  confirmApplyToAll as editorConfirmApplyToAll,
   addSignaturePlacement as editorAddSignaturePlacement,
   addTextPlacement as editorAddTextPlacement,
   updatePlacement as editorUpdatePlacement,
@@ -17,16 +19,18 @@ import {
   emptyHistory,
   type History,
   type PlacementChanges,
-  type WorkSessionEditorState
+  type WorkSessionEditorState,
+  type ApplyToAllPreview
 } from '../lib/workSessionEditor';
-import { STRINGS } from '../lib/strings';
 import { normalizeSession } from '../lib/normalizeSession';
 
 export type ViewState = 'dropzone' | 'editor';
 
 export type ApplyTemplatePlacementsResult = {
+  ok: boolean;
   appliedDocIds: string[];
   needsReviewDocIds: string[];
+  error?: 'stale-preview' | 'rejected';
 };
 
 type SessionState = {
@@ -37,6 +41,7 @@ type SessionState = {
   history: History;
   view: ViewState;
   ownershipRevision: number;
+  contentRevision: number;
   addDocuments: (docs: SessionDocument[]) => void;
   removeDocument: (docId: string) => void;
   reorderDocuments: (docIds: string[]) => void;
@@ -61,41 +66,13 @@ type SessionState = {
   redo: () => void;
   updateDocumentStatus: (docId: string, status: SessionDocument['status']) => void;
   setDocumentBatchError: (docId: string, message: string | null) => void;
-  applyTemplatePlacements: () => ApplyTemplatePlacementsResult;
+  previewApplyTemplatePlacements: () => ApplyToAllPreview | null;
+  applyTemplatePlacements: (preview: ApplyToAllPreview) => ApplyTemplatePlacementsResult;
   setSelection: (docId: string | null, placementId: string | null) => void;
   replaceSession: (session: WorkSession) => void;
   restoreSession: (session: WorkSession) => Promise<boolean>;
   resetSession: () => void;
 };
-
-function syncTemplatePlacements(documents: SessionDocument[]) {
-  return documents[0]?.placements.map((placement) => ({ ...placement })) ?? [];
-}
-
-function clonePlacement(placement: Placement): Placement {
-  return { ...placement, id: crypto.randomUUID() };
-}
-
-function getTemplateMismatchMessage(templateDocument: SessionDocument, targetDocument: SessionDocument, templatePlacements: Placement[]) {
-  const missingPage = templatePlacements.some((placement) => placement.pageIndex >= targetDocument.pageCount);
-  if (missingPage) {
-    return STRINGS.batch.needsReviewMissingPage;
-  }
-
-  const hasAspectMismatch = templatePlacements.some((placement) => {
-    const templatePage = templateDocument.pageSizes[placement.pageIndex];
-    const targetPage = targetDocument.pageSizes[placement.pageIndex];
-    if (!templatePage || !targetPage) {
-      return true;
-    }
-
-    const templateAspect = templatePage.w / Math.max(templatePage.h, 1);
-    const targetAspect = targetPage.w / Math.max(targetPage.h, 1);
-    return Math.abs(targetAspect - templateAspect) / templateAspect > 0.1;
-  });
-
-  return hasAspectMismatch ? STRINGS.batch.needsReviewAspect : null;
-}
 
 function toEditorState(state: SessionState): WorkSessionEditorState {
   return {
@@ -124,6 +101,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   history: emptyHistory(),
   view: 'dropzone',
   ownershipRevision: 0,
+  contentRevision: 0,
 
   addDocuments: (docs) => {
     const result = editorAddDocuments(toEditorState(get()), docs);
@@ -135,7 +113,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       selectedPlacementId: result.selectedPlacementId,
       copiedPlacement: result.copiedPlacement,
       view: result.session.documents.length > 0 ? 'editor' : 'dropzone',
-      ownershipRevision: get().ownershipRevision + 1
+      ownershipRevision: get().ownershipRevision + 1,
+      contentRevision: get().contentRevision + 1
     });
   },
 
@@ -149,7 +128,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       selectedPlacementId: result.selectedPlacementId,
       copiedPlacement: result.copiedPlacement,
       view: result.session.documents.length > 0 ? 'editor' : 'dropzone',
-      ownershipRevision: get().ownershipRevision + 1
+      ownershipRevision: get().ownershipRevision + 1,
+      contentRevision: get().contentRevision + 1
     });
   },
 
@@ -161,7 +141,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       history: result.history,
       selectedDocumentId: result.selectedDocumentId,
       selectedPlacementId: result.selectedPlacementId,
-      copiedPlacement: result.copiedPlacement
+      copiedPlacement: result.copiedPlacement,
+      contentRevision: get().contentRevision + 1
     });
   },
 
@@ -173,7 +154,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       history: result.history,
       selectedDocumentId: docId,
       selectedPlacementId: result.selectedPlacementId ?? null,
-      view: 'editor'
+      view: 'editor',
+      contentRevision: get().contentRevision + 1
     });
   },
 
@@ -194,7 +176,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         history: result.history,
         selectedDocumentId: docId,
         selectedPlacementId: result.selectedPlacementId ?? null,
-        view: 'editor'
+        view: 'editor',
+        contentRevision: get().contentRevision + 1
       });
       return result.placement;
     }
@@ -203,7 +186,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   updatePlacement: (docId, placementId, next, coalesceKey, historyMode) => {
     const result = editorUpdatePlacement(get().session, get().history, { docId, placementId, changes: next, coalesceKey, historyMode });
     if (!result.ok) return;
-    set({ session: result.session, history: result.history });
+    set({ session: result.session, history: result.history, contentRevision: get().contentRevision + 1 });
   },
 
   removePlacement: (docId, placementId) => {
@@ -213,7 +196,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({
       session: result.session,
       history: result.history,
-      selectedPlacementId: result.selectedPlacementId ?? null
+      selectedPlacementId: result.selectedPlacementId ?? null,
+      contentRevision: get().contentRevision + 1
     });
   },
 
@@ -224,7 +208,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       session: result.session,
       history: result.history,
       selectedDocumentId: docId,
-      selectedPlacementId: result.selectedPlacementId ?? null
+      selectedPlacementId: result.selectedPlacementId ?? null,
+      contentRevision: get().contentRevision + 1
     });
   },
 
@@ -241,7 +226,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       session: result.session,
       history: result.history,
       selectedDocumentId: docId,
-      selectedPlacementId: result.selectedPlacementId ?? null
+      selectedPlacementId: result.selectedPlacementId ?? null,
+      contentRevision: get().contentRevision + 1
     });
     return result.session.documents
       .find((d) => d.docId === docId)
@@ -256,7 +242,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       session: result.session,
       history: result.history,
       selectedDocumentId: result.selectedDocumentId,
-      selectedPlacementId: result.selectedPlacementId
+      selectedPlacementId: result.selectedPlacementId,
+      contentRevision: state.contentRevision + 1
     });
   },
 
@@ -268,7 +255,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       session: result.session,
       history: result.history,
       selectedDocumentId: result.selectedDocumentId,
-      selectedPlacementId: result.selectedPlacementId
+      selectedPlacementId: result.selectedPlacementId,
+      contentRevision: state.contentRevision + 1
     });
   },
 
@@ -282,7 +270,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
             ? { ...doc, status, batchError: status === 'error' || status === 'needs-review' ? doc.batchError : undefined }
             : doc
         )
-      }
+      },
+      contentRevision: state.contentRevision + 1
     })),
 
   setDocumentBatchError: (docId, message) =>
@@ -293,47 +282,36 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         documents: state.session.documents.map((doc) =>
           doc.docId === docId ? { ...doc, batchError: message ?? undefined } : doc
         )
-      }
+      },
+      contentRevision: state.contentRevision + 1
     })),
 
-  applyTemplatePlacements: () => {
-    const appliedDocIds: string[] = [];
-    const needsReviewDocIds: string[] = [];
+  previewApplyTemplatePlacements: () => editorPreviewApplyToAll(get().session, get().contentRevision),
 
-    set((state) => {
-      const [templateDocument, ...otherDocuments] = state.session.documents;
-      if (!templateDocument || templateDocument.placements.length === 0) {
-        return state;
-      }
-
-      const documents: SessionDocument[] = [
-        templateDocument,
-        ...otherDocuments.map((doc) => {
-          if (doc.status === 'signed') {
-            return doc;
-          }
-          const mismatchMessage = getTemplateMismatchMessage(templateDocument, doc, templateDocument.placements);
-          if (mismatchMessage) {
-            needsReviewDocIds.push(doc.docId);
-            return { ...doc, status: 'needs-review' as const, batchError: mismatchMessage };
-          }
-          appliedDocIds.push(doc.docId);
-          return {
-            ...doc,
-            placements: templateDocument.placements.map(clonePlacement),
-            status: 'placed' as const,
-            batchError: undefined
-          };
-        })
-      ];
-
+  applyTemplatePlacements: (preview) => {
+    const state = get();
+    const result = editorConfirmApplyToAll(toEditorState(state), state.contentRevision, preview);
+    if (!result.ok) {
       return {
-        session: { ...state.session, updatedAt: Date.now(), documents, templatePlacements: syncTemplatePlacements(documents) },
-        history: { past: [...state.history.past.slice(-49), { documents: state.session.documents, templatePlacements: state.session.templatePlacements, at: Date.now() }], future: [] }
+        ok: false,
+        appliedDocIds: [],
+        needsReviewDocIds: [],
+        error: result.error.reason === 'stale-preview' ? 'stale-preview' : 'rejected'
       };
+    }
+    set({
+      session: result.session,
+      history: result.history,
+      selectedDocumentId: result.selectedDocumentId,
+      selectedPlacementId: result.selectedPlacementId,
+      copiedPlacement: result.copiedPlacement,
+      contentRevision: state.contentRevision + 1
     });
-
-    return { appliedDocIds, needsReviewDocIds };
+    return {
+      ok: true,
+      appliedDocIds: result.appliedDocIds ?? [],
+      needsReviewDocIds: result.needsReviewDocIds ?? []
+    };
   },
 
   setSelection: (docId, placementId) => set({ selectedDocumentId: docId, selectedPlacementId: placementId }),
@@ -348,7 +326,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       history: result.history,
       copiedPlacement: result.copiedPlacement,
       view: result.session.documents.length > 0 ? 'editor' : 'dropzone',
-      ownershipRevision: get().ownershipRevision + 1
+      ownershipRevision: get().ownershipRevision + 1,
+      contentRevision: get().contentRevision + 1
     });
   },
 
@@ -365,7 +344,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       history: result.history,
       copiedPlacement: result.copiedPlacement,
       view: result.session.documents.length > 0 ? 'editor' : 'dropzone',
-      ownershipRevision: ownershipRevision + 1
+      ownershipRevision: ownershipRevision + 1,
+      contentRevision: get().contentRevision + 1
     });
     return true;
   },
@@ -377,6 +357,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     history: emptyHistory(),
     copiedPlacement: null,
     view: 'dropzone',
-    ownershipRevision: state.ownershipRevision + 1
+    ownershipRevision: state.ownershipRevision + 1,
+    contentRevision: state.contentRevision + 1
   }))
 }));

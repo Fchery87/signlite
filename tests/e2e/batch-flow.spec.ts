@@ -112,6 +112,8 @@ test('restores a batch session and downloads a quiet signed zip', async ({ page 
   await page.keyboard.press('Tab');
 
   await page.getByRole('button', { name: 'Apply to all' }).click();
+  await expect(page.getByRole('dialog', { name: 'Replace existing placements?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Replace and apply' }).click();
   await expect(page.getByText('Applied to 9 documents.')).toBeVisible();
   await expect.poll(async () => batchPanel.locator('span').filter({ hasText: 'Placed' }).count()).toBe(10);
 

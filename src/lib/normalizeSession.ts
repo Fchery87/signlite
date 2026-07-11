@@ -92,19 +92,25 @@ export async function normalizeSession(session: WorkSession): Promise<WorkSessio
       normalizedPlacements.push(placement);
     }
 
-    // Clear transient signing-like state; do not restore as durable Signed truth
+    // Signed is durable; only the transient in-flight state is cleared.
+    // Legacy needs-review status is migrated to orthogonal review state.
     let status = doc.status;
     let batchError = doc.batchError;
-    if (status === 'signed' || status === 'signing') {
-      status = normalizedPlacements.some(isSignaturePlacement) ? 'placed' : 'pending';
+    let needsReviewReason = doc.needsReviewReason;
+    if (status === 'signing') {
+      status = normalizedPlacements.length > 0 ? 'placed' : 'pending';
+      batchError = undefined;
+    }
+    if (status === 'needs-review') {
+      status = normalizedPlacements.length > 0 ? 'placed' : 'pending';
+      needsReviewReason = needsReviewReason ?? batchError ?? STRINGS.batch.needsReviewMissingSignature;
       batchError = undefined;
     }
     if (unrecoverable) {
-      status = 'needs-review';
-      batchError = STRINGS.batch.needsReviewMissingSignature;
+      needsReviewReason = STRINGS.batch.needsReviewMissingSignature;
     }
 
-    documents.push({ ...doc, placements: normalizedPlacements, status, batchError });
+    documents.push({ ...doc, placements: normalizedPlacements, status, batchError, needsReviewReason });
   }
 
   // Repair template-derived state from the first document

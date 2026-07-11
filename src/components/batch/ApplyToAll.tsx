@@ -12,6 +12,7 @@ import type {
   FlattenWorkerResponse
 } from '../../workers/flatten.worker';
 import { STRINGS } from '../../lib/strings';
+import type { ApplyToAllPreview } from '../../lib/workSessionEditor';
 
 type ApplyToAllProps = {
   onToast: (message: string) => void;
@@ -26,21 +27,24 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
   const documents = useSessionStore((state) => state.session.documents);
   const storedSignatureSnapshots = useSessionStore((state) => state.session.signatureSnapshots);
   const signatureSnapshots = useMemo(() => storedSignatureSnapshots ?? {}, [storedSignatureSnapshots]);
+  const previewApplyTemplatePlacements = useSessionStore((state) => state.previewApplyTemplatePlacements);
   const applyTemplatePlacements = useSessionStore((state) => state.applyTemplatePlacements);
   const updateDocumentStatus = useSessionStore((state) => state.updateDocumentStatus);
   const setDocumentBatchError = useSessionStore((state) => state.setDocumentBatchError);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [applyPreview, setApplyPreview] = useState<ApplyToAllPreview | null>(null);
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   const workerRef = useRef<Worker | null>(null);
 
   const templateDocument = documents[0] ?? null;
-  const targetDocuments = useMemo(() => documents.slice(1).filter((document) => document.status !== 'signed'), [documents]);
+  const targetDocuments = useMemo(() => documents.slice(1), [documents]);
   const downloadableDocuments = useMemo(
-    () => documents.filter((document) => document.placements.length > 0 && document.status !== 'needs-review'),
+    () => documents.filter((document) => document.placements.length > 0 && !document.needsReviewReason && document.status !== 'needs-review'),
     [documents]
   );
-  const overwriteCount = targetDocuments.filter((document) => document.placements.length > 0).length;
+  const overwriteCount = applyPreview?.targets.filter((target) => target.overwritesPlacements || target.endsSignedState).length
+    ?? targetDocuments.filter((document) => document.placements.length > 0 || document.status === 'signed').length;
   const disabled = !templateDocument || templateDocument.placements.length === 0 || targetDocuments.length === 0;
   const batchDisabled = isBatchDownloading || documents.length < 2 || downloadableDocuments.length === 0;
 
@@ -51,9 +55,25 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
     };
   }, []);
 
+  const openApplyPreview = () => {
+    const preview = previewApplyTemplatePlacements();
+    if (!preview) {
+      onToast(STRINGS.batch.nothingToApply);
+      return;
+    }
+    setApplyPreview(preview);
+    setConfirmOpen(true);
+  };
+
   const runApply = () => {
-    const result = applyTemplatePlacements();
+    if (!applyPreview) return;
+    const result = applyTemplatePlacements(applyPreview);
     setConfirmOpen(false);
+    setApplyPreview(null);
+    if (!result.ok) {
+      onToast(result.error === 'stale-preview' ? STRINGS.batch.stalePreview : STRINGS.editor.placementFailed);
+      return;
+    }
 
     if (result.appliedDocIds.length === 0 && result.needsReviewDocIds.length === 0) {
       onToast(STRINGS.batch.nothingToApply);
@@ -195,13 +215,7 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
           <Button
             type="button"
             disabled={disabled}
-            onClick={() => {
-              if (overwriteCount > 0) {
-                setConfirmOpen(true);
-                return;
-              }
-              runApply();
-            }}
+            onClick={openApplyPreview}
           >
             {STRINGS.buttons.applyToAll}
           </Button>
@@ -236,11 +250,20 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
           </div>
         </div>
       </div>
-      <Modal open={confirmOpen} title={STRINGS.batch.replaceTitle} onClose={() => setConfirmOpen(false)}>
+      <Modal open={confirmOpen} title={STRINGS.batch.replaceTitle} onClose={() => { setConfirmOpen(false); setApplyPreview(null); }}>
         <div className="space-y-4">
           <p className="text-body text-quiet">{STRINGS.batch.replaceBody(overwriteCount)}</p>
+          <ul className="space-y-2 text-caption text-quiet">
+            {applyPreview?.targets.map((target) => (
+              <li key={target.docId}>
+                <span className="font-medium text-ink">{target.fileName}</span>{' — '}
+                {target.needsReviewReason
+                  ?? (target.endsSignedState ? STRINGS.batch.signedWillEnd : STRINGS.batch.placementsWillReplace)}
+              </li>
+            ))}
+          </ul>
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
+            <Button variant="secondary" onClick={() => { setConfirmOpen(false); setApplyPreview(null); }}>
               {STRINGS.buttons.cancel}
             </Button>
             <Button onClick={runApply}>{STRINGS.buttons.replaceAndApply}</Button>

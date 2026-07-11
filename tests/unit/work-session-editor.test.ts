@@ -6,6 +6,8 @@ import {
   duplicatePlacement,
   emptyHistory,
   pastePlacement,
+  previewApplyToAll,
+  confirmApplyToAll,
   removeDocument,
   removePlacement,
   redo,
@@ -15,6 +17,7 @@ import {
   updatePlacement
 } from '../../src/lib/workSessionEditor';
 import type { WorkSession, SessionDocument } from '../../src/db/schema';
+import { STRINGS } from '../../src/lib/strings';
 
 const ASSET = {
   kind: 'signature' as const,
@@ -504,6 +507,202 @@ describe('WorkSessionEditor.addSignaturePlacement', () => {
     expect(result.selectedPlacementId).toBeNull();
     expect(result.history).toEqual(emptyHistory());
     expect(result.copiedPlacement).toBeNull();
+  });
+
+
+  it('previews Signed targets without mutation and identifies overwritten output', () => {
+    const templatePlacement = { ...PLACEMENT_INPUT, type: 'text' as const, value: 'Template', fontSize: 12 };
+    const signedPlacement = { ...templatePlacement, id: 'signed-old', value: 'Old' };
+    const session = makeSession([
+      { ...makeDoc('template'), placements: [templatePlacement], status: 'placed' },
+      { ...makeDoc('signed'), placements: [signedPlacement], status: 'signed' }
+    ]);
+
+    const preview = previewApplyToAll(session, 7);
+    expect(preview).toMatchObject({
+      revision: 7,
+      targets: [{ docId: 'signed', compatible: true, overwritesPlacements: true, endsSignedState: true }]
+    });
+    expect(session.documents[1]?.status).toBe('signed');
+    expect(session.documents[1]?.placements[0]?.id).toBe('signed-old');
+  });
+
+  it('rejects stale apply-to-all confirmation with no state change', () => {
+    const templatePlacement = { ...PLACEMENT_INPUT, type: 'text' as const, value: 'Template', fontSize: 12 };
+    const session = makeSession([
+      { ...makeDoc('template'), placements: [templatePlacement], status: 'placed' },
+      makeDoc('target')
+    ]);
+    const state = {
+      session, history: emptyHistory(), selectedDocumentId: 'target', selectedPlacementId: null, copiedPlacement: null
+    };
+    const preview = previewApplyToAll(session, 2)!;
+
+    const result = confirmApplyToAll(state, 3, preview);
+    expect(result).toMatchObject({ ok: false, error: { reason: 'stale-preview' } });
+    expect(session.documents[1]?.placements).toEqual([]);
+    expect(state.history).toEqual(emptyHistory());
+  });
+
+  it('atomically applies compatible targets while keeping incompatible Signed targets Signed and Needs Review', () => {
+    const templatePlacement = {
+      ...PLACEMENT_INPUT, type: 'text' as const, value: 'Template', fontSize: 12, pageIndex: 1
+    };
+    const compatibleOld = { ...templatePlacement, id: 'compatible-old', value: 'Old' };
+    const incompatibleOld = { ...PLACEMENT_INPUT, id: 'incompatible-old', type: 'text' as const, value: 'Keep', fontSize: 12 };
+    const session = makeSession([
+      { ...makeDoc('template', 2), placements: [templatePlacement], status: 'placed' },
+      { ...makeDoc('compatible', 2), placements: [compatibleOld], status: 'signed' },
+      { ...makeDoc('incompatible', 1), placements: [incompatibleOld], status: 'signed' }
+    ]);
+    const state = {
+      session,
+      history: emptyHistory(),
+      selectedDocumentId: 'compatible',
+      selectedPlacementId: compatibleOld.id,
+      copiedPlacement: null
+    };
+    const preview = previewApplyToAll(session, 4)!;
+
+    const result = confirmApplyToAll(state, 4, preview);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.appliedDocIds).toEqual(['compatible']);
+    expect(result.needsReviewDocIds).toEqual(['incompatible']);
+    expect(result.history.past).toHaveLength(1);
+    expect(result.selectedPlacementId).toBeNull();
+    expect(result.session.documents[1]).toMatchObject({ status: 'placed', needsReviewReason: undefined });
+    expect(result.session.documents[1]?.placements[0]?.id).not.toBe(templatePlacement.id);
+    expect(result.session.documents[2]).toMatchObject({
+      status: 'signed', placements: [incompatibleOld], needsReviewReason: 'Needs review — this document is missing a template page.'
+    });
+  });
+
+
+  it('ends Signed state for every successful output-affecting Placement action only', async () => {
+    const seed = { ...PLACEMENT_INPUT, id: 'seed', type: 'text' as const, value: 'Original', fontSize: 12 };
+    const signed = () => makeSession([{ ...makeDoc('doc-1', 2), placements: [seed], status: 'signed' }]);
+    const expectEnded = (result: ReturnType<typeof addTextPlacement>) => {
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('expected successful editor action');
+      expect(result.session.documents[0]?.status).not.toBe('signed');
+      return result;
+    };
+
+    expectEnded(addTextPlacement(signed(), emptyHistory(), {
+      docId: 'doc-1', placement: { ...PLACEMENT_INPUT, id: 'text', type: 'text', value: 'Text', fontSize: 12 }
+    }));
+    expectEnded(addTextPlacement(signed(), emptyHistory(), {
+      docId: 'doc-1', placement: { ...PLACEMENT_INPUT, id: 'date', type: 'date', value: '2026-07-11', fontSize: 12 }
+    }));
+
+    for (const kind of ['signature', 'initials'] as const) {
+      const result = await addSignaturePlacement(signed(), emptyHistory(), {
+        docId: 'doc-1', asset: { ...ASSET, kind }, placement: { ...PLACEMENT_INPUT, id: kind }
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('expected successful signature action');
+      expect(result.session.documents[0]?.status).toBe('placed');
+    }
+
+    expectEnded(updatePlacement(signed(), emptyHistory(), {
+      docId: 'doc-1', placementId: seed.id, changes: { value: 'Changed' }
+    }));
+    expectEnded(duplicatePlacement(signed(), emptyHistory(), 'doc-1', seed.id));
+    expectEnded(pastePlacement(signed(), emptyHistory(), 'doc-1', 1, seed));
+    const removed = expectEnded(removePlacement(signed(), emptyHistory(), 'doc-1', seed.id));
+    expect(removed.session.documents[0]?.status).toBe('pending');
+
+    const rejectedSession = signed();
+    const rejectedHistory = emptyHistory();
+    expect(updatePlacement(rejectedSession, rejectedHistory, {
+      docId: 'doc-1', placementId: seed.id, changes: { x: Number.NaN }
+    })).toMatchObject({ ok: false });
+    expect(rejectedSession.documents[0]?.status).toBe('signed');
+    expect(rejectedHistory).toEqual(emptyHistory());
+
+    const copied = copyPlacement(rejectedSession, 'doc-1', seed.id);
+    expect(copied).toEqual(seed);
+    expect(rejectedSession.documents[0]?.status).toBe('signed');
+    const selectionOnly = undo(rejectedSession, emptyHistory(), seed.id, 'doc-1');
+    expect(selectionOnly.changed).toBe(false);
+    expect(selectionOnly.session).toBe(rejectedSession);
+    expect(selectionOnly.session.documents[0]?.status).toBe('signed');
+  });
+
+  it('rejects apply-to-all with a missing snapshot without changing any complete state', () => {
+    const missingSignature = {
+      ...PLACEMENT_INPUT, id: 'missing-signature', type: 'signature' as const, snapshotId: 'absent'
+    };
+    const clipboard = { ...PLACEMENT_INPUT, id: 'clipboard', type: 'text' as const, value: 'Copy', fontSize: 12 };
+    const session = makeSession([
+      { ...makeDoc('template'), placements: [missingSignature], status: 'placed' },
+      { ...makeDoc('target-a'), placements: [clipboard], status: 'signed' },
+      { ...makeDoc('target-b'), placements: [], status: 'pending' }
+    ]);
+    const history = {
+      past: [{ documents: session.documents, templatePlacements: [missingSignature], at: 1 }],
+      future: []
+    };
+    const state = {
+      session, history, selectedDocumentId: 'target-a', selectedPlacementId: clipboard.id, copiedPlacement: clipboard
+    };
+    const preview = previewApplyToAll(session, 12);
+    if (!preview) throw new Error('expected preview');
+
+    const result = confirmApplyToAll(state, 12, preview);
+    expect(result).toMatchObject({ ok: false, error: { reason: 'missing-snapshot' } });
+    expect(state.session).toBe(session);
+    expect(state.session.documents.map((document) => document.placements)).toEqual([
+      [missingSignature], [clipboard], []
+    ]);
+    expect(state.session.documents.map((document) => document.status)).toEqual(['placed', 'signed', 'pending']);
+    expect(state.session.signatureSnapshots).toEqual({});
+    expect(state.history).toBe(history);
+    expect(state.selectedDocumentId).toBe('target-a');
+    expect(state.selectedPlacementId).toBe(clipboard.id);
+    expect(state.copiedPlacement).toBe(clipboard);
+  });
+
+  it('undoes and redoes Signed and orthogonal Needs Review apply consequences', () => {
+    const template = {
+      ...PLACEMENT_INPUT, id: 'template-placement', type: 'text' as const, value: 'Template', fontSize: 12, pageIndex: 1
+    };
+    const compatibleOld = { ...template, id: 'compatible-old', value: 'Old' };
+    const incompatibleOld = { ...PLACEMENT_INPUT, id: 'incompatible-old', type: 'text' as const, value: 'Keep', fontSize: 12 };
+    const session = makeSession([
+      { ...makeDoc('template', 2), placements: [template], status: 'placed' },
+      { ...makeDoc('compatible', 2), placements: [compatibleOld], status: 'signed' },
+      { ...makeDoc('incompatible', 1), placements: [incompatibleOld], status: 'signed' }
+    ]);
+    const preview = previewApplyToAll(session, 5);
+    if (!preview) throw new Error('expected preview');
+    const applied = confirmApplyToAll({
+      session, history: emptyHistory(), selectedDocumentId: 'compatible',
+      selectedPlacementId: compatibleOld.id, copiedPlacement: null
+    }, 5, preview);
+    if (!applied.ok) throw new Error('expected apply');
+
+    const reversed = undo(
+      applied.session, applied.history, applied.selectedPlacementId, applied.selectedDocumentId
+    );
+    expect(reversed.session.documents[1]?.status).toBe('signed');
+    expect(reversed.session.documents[1]?.needsReviewReason).toBeUndefined();
+    expect(reversed.session.documents[1]?.placements[0]?.id).toBe('compatible-old');
+    expect(reversed.session.documents[2]?.status).toBe('signed');
+    expect(reversed.session.documents[2]?.needsReviewReason).toBeUndefined();
+    expect(reversed.session.documents[2]?.placements[0]?.id).toBe('incompatible-old');
+
+    const replayed = redo(
+      reversed.session, reversed.history, reversed.selectedPlacementId, reversed.selectedDocumentId
+    );
+    expect(replayed.session.documents[1]?.status).toBe('placed');
+    expect(replayed.session.documents[1]?.needsReviewReason).toBeUndefined();
+    expect(replayed.session.documents[1]?.placements[0]?.id).not.toBe('compatible-old');
+    expect(replayed.session.documents[2]).toMatchObject({
+      status: 'signed', needsReviewReason: STRINGS.batch.needsReviewMissingPage
+    });
+    expect(replayed.session.documents[2]?.placements[0]?.id).toBe('incompatible-old');
   });
 
 });

@@ -66,7 +66,7 @@ export function BatchPanel() {
               role="button"
               tabIndex={0}
               draggable
-              aria-label={`${document.fileName}, ${statusLabels[document.status]}`}
+              aria-label={`${document.fileName}, ${statusLabels[document.status]}${document.needsReviewReason ? `, ${STRINGS.status.needsReview}` : ''}`}
               onDragStart={() => setDraggedDocumentId(document.docId)}
               onDragEnd={() => setDraggedDocumentId(null)}
               onDragOver={(event) => {
@@ -127,11 +127,15 @@ export function BatchPanel() {
                     <span className={`rounded-full px-2 py-0.5 text-caption ${statusStyles[document.status]}`} title={document.batchError}>
                       {statusLabels[document.status]}
                     </span>
+                    {document.needsReviewReason ? (
+                      <span className="rounded-full bg-warning/10 px-2 py-0.5 text-caption text-warning">{STRINGS.status.needsReview}</span>
+                    ) : null}
                   </div>
                   <p className="mt-1 text-caption text-quiet">
                     {document.pageCount} page{document.pageCount === 1 ? '' : 's'}
                   </p>
                   {document.batchError ? <p className="mt-1 text-caption text-danger">{document.batchError}</p> : null}
+                  {document.needsReviewReason ? <p className="mt-1 text-caption text-warning">{document.needsReviewReason}</p> : null}
                 </div>
                 <Button
                   type="button"

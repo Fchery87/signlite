@@ -97,8 +97,8 @@ describe('normalizeSession', () => {
     const session = makeSession([makeDoc('doc-1', [legacySig('sig-1', { assetId: 'deleted-asset-id' })])]);
     const result = await normalizeSession(session);
 
-    expect(result.documents[0]?.status).toBe('needs-review');
-    expect(result.documents[0]?.batchError).toBeTruthy();
+    expect(result.documents[0]?.status).toBe('pending');
+    expect(result.documents[0]?.needsReviewReason).toBeTruthy();
     expect(result.documents[0]?.placements).toHaveLength(1);
   });
 
@@ -111,10 +111,10 @@ describe('normalizeSession', () => {
     ]);
     const result = await normalizeSession(session);
 
-    expect(result.documents[0]?.status).not.toBe('needs-review');
+    expect(result.documents[0]?.needsReviewReason).toBeUndefined();
     expect(result.documents[0]?.placements[0]?.snapshotId).toBeTruthy();
-    expect(result.documents[1]?.status).toBe('needs-review');
-    expect(result.documents[2]?.status).not.toBe('needs-review');
+    expect(result.documents[1]?.needsReviewReason).toBeTruthy();
+    expect(result.documents[2]?.needsReviewReason).toBeUndefined();
   });
 
   // AC5: Template placements repaired from first document
@@ -147,15 +147,15 @@ describe('normalizeSession', () => {
     expect(second.documents[0]?.placements[0]?.snapshotId).toBe(first.documents[0]?.placements[0]?.snapshotId);
   });
 
-  // AC7: Legacy signed/signing status cleared
-  it('clears signed and signing status to placed after normalization', async () => {
+  // Signed is durable while signing is transient
+  it('preserves signed and clears signing status after normalization', async () => {
     const session = makeSession([
       makeDoc('doc-1', [legacySig('sig-1', { assetPngBytes: PNG_1x1.slice(0) })], { status: 'signed' }),
       makeDoc('doc-2', [legacySig('sig-2', { assetPngBytes: PNG_2x3.slice(0) })], { status: 'signing' })
     ]);
     const result = await normalizeSession(session);
 
-    expect(result.documents[0]?.status).toBe('placed');
+    expect(result.documents[0]?.status).toBe('signed');
     expect(result.documents[1]?.status).toBe('placed');
   });
 
@@ -185,4 +185,18 @@ describe('normalizeSession', () => {
     expect(result.documents[0]?.placements[0]?.snapshotId).toBe(existingSnapshotId);
     expect(Object.keys(result.signatureSnapshots ?? {})).toHaveLength(1);
   });
+
+  it('migrates legacy needs-review status into orthogonal review state', async () => {
+    const session = makeSession([
+      makeDoc('doc-1', [
+        { id: 'text-1', type: 'text', pageIndex: 0, x: 0.1, y: 0.3, w: 0.2, h: 0.08, value: 'Hello', fontSize: 12 }
+      ], { status: 'needs-review', batchError: 'Legacy review reason' })
+    ]);
+    const result = await normalizeSession(session);
+
+    expect(result.documents[0]).toMatchObject({
+      status: 'placed', needsReviewReason: 'Legacy review reason', batchError: undefined
+    });
+  });
+
 });

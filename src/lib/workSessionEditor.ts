@@ -1,5 +1,6 @@
 import type { Placement, SessionDocument, WorkSession } from '../db/schema';
 import { createSignatureSnapshot } from './signatureSnapshots';
+import { STRINGS } from './strings';
 
 // ─── History (owned by WorkSessionEditor) ────────────────────────────
 
@@ -70,7 +71,9 @@ export type WorkSessionEditorError = {
     | 'unsupported-placement'
     | 'invalid-value'
     | 'missing-snapshot'
-    | 'empty-clipboard';
+    | 'empty-clipboard'
+    | 'nothing-to-apply'
+    | 'stale-preview';
   message: string;
 };
 
@@ -523,6 +526,127 @@ export function pastePlacement(session: WorkSession, history: History, docId: st
     history: pushHistoryEntry(history, session),
     selectedPlacementId: clone.id
   };
+}
+
+// ─── Revision-bound apply-to-all ─────────────────────────────────────
+
+export type ApplyToAllTargetPreview = {
+  docId: string;
+  fileName: string;
+  compatible: boolean;
+  overwritesPlacements: boolean;
+  endsSignedState: boolean;
+  needsReviewReason?: string;
+};
+
+export type ApplyToAllPreview = {
+  revision: number;
+  templateDocumentId: string;
+  targets: ApplyToAllTargetPreview[];
+};
+
+export type ApplyToAllResult = CompleteStateResult & {
+  appliedDocIds?: string[];
+  needsReviewDocIds?: string[];
+};
+
+function templateMismatchReason(
+  templateDocument: SessionDocument,
+  targetDocument: SessionDocument,
+  templatePlacements: Placement[]
+): string | undefined {
+  if (templatePlacements.some((placement) => placement.pageIndex >= targetDocument.pageCount)) {
+    return STRINGS.batch.needsReviewMissingPage;
+  }
+  const aspectMismatch = templatePlacements.some((placement) => {
+    const templatePage = templateDocument.pageSizes[placement.pageIndex];
+    const targetPage = targetDocument.pageSizes[placement.pageIndex];
+    if (!templatePage || !targetPage) return true;
+    const templateAspect = templatePage.w / Math.max(templatePage.h, 1);
+    const targetAspect = targetPage.w / Math.max(targetPage.h, 1);
+    return Math.abs(targetAspect - templateAspect) / templateAspect > 0.1;
+  });
+  return aspectMismatch ? STRINGS.batch.needsReviewAspect : undefined;
+}
+
+/** Derives a non-mutating preview bound to the caller's monotonic content revision. */
+export function previewApplyToAll(session: WorkSession, revision: number): ApplyToAllPreview | null {
+  const [templateDocument, ...targets] = session.documents;
+  if (!templateDocument || templateDocument.placements.length === 0 || targets.length === 0) return null;
+
+  return {
+    revision,
+    templateDocumentId: templateDocument.docId,
+    targets: targets.map((document) => {
+      const needsReviewReason = templateMismatchReason(templateDocument, document, templateDocument.placements);
+      return {
+        docId: document.docId,
+        fileName: document.fileName,
+        compatible: !needsReviewReason,
+        overwritesPlacements: !needsReviewReason && document.placements.length > 0,
+        endsSignedState: !needsReviewReason && document.status === 'signed',
+        needsReviewReason
+      };
+    })
+  };
+}
+
+/** Confirms exactly the previewed revision as one atomic editor transition. */
+export function confirmApplyToAll(
+  state: WorkSessionEditorState,
+  currentRevision: number,
+  preview: ApplyToAllPreview
+): ApplyToAllResult {
+  if (preview.revision !== currentRevision) {
+    return { ok: false, error: { reason: 'stale-preview', message: 'The Work Session changed after this preview' } };
+  }
+  const [templateDocument] = state.session.documents;
+  if (!templateDocument || templateDocument.docId !== preview.templateDocumentId || templateDocument.placements.length === 0) {
+    return { ok: false, error: { reason: 'stale-preview', message: 'The template changed after this preview' } };
+  }
+  if (preview.targets.length !== state.session.documents.length - 1
+      || preview.targets.some((target, index) => state.session.documents[index + 1]?.docId !== target.docId)) {
+    return { ok: false, error: { reason: 'stale-preview', message: 'The target cohort changed after this preview' } };
+  }
+  const missingSnapshot = templateDocument.placements.find((placement) => validateRequiredSnapshot(state.session, placement));
+  if (missingSnapshot) {
+    return { ok: false, error: validateRequiredSnapshot(state.session, missingSnapshot)! };
+  }
+
+  const appliedDocIds: string[] = [];
+  const needsReviewDocIds: string[] = [];
+  const documents = state.session.documents.map((document, index) => {
+    if (index === 0) return document;
+    const target = preview.targets[index - 1]!;
+    const currentReason = templateMismatchReason(templateDocument, document, templateDocument.placements);
+    if (currentReason || target.needsReviewReason) {
+      needsReviewDocIds.push(document.docId);
+      return { ...document, needsReviewReason: currentReason ?? target.needsReviewReason };
+    }
+    appliedDocIds.push(document.docId);
+    const placements = templateDocument.placements.map(clonePlacement);
+    return {
+      ...document,
+      placements,
+      status: (placements.length > 0 ? 'placed' : 'pending') as SessionDocument['status'],
+      batchError: undefined,
+      needsReviewReason: undefined
+    };
+  });
+  const session = {
+    ...state.session,
+    updatedAt: Date.now(),
+    documents,
+    templatePlacements: syncTemplatePlacements(documents)
+  };
+  const complete = completeState(
+    session,
+    pushHistoryEntry(state.history, state.session),
+    state.selectedDocumentId,
+    state.selectedPlacementId,
+    state.copiedPlacement
+  );
+  return { ...complete, appliedDocIds, needsReviewDocIds };
 }
 
 // ─── Undo / Redo ────────────────────────────────────────────────────

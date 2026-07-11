@@ -50,6 +50,8 @@ export interface SessionDocument {
   placements: Placement[];
   status: 'pending' | 'placed' | 'signing' | 'signed' | 'needs-review' | 'error';
   batchError?: string;
+  /** Orthogonal review state; a Signed Document may still require review. */
+  needsReviewReason?: string;
 }
 
 export interface WorkSession {
