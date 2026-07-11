@@ -372,15 +372,22 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
 /** React read/command subscription. Lease capabilities and imperative Zustand setters are intentionally not exposed. */
 type PublicSessionState = Omit<SessionState, 'mutationLease' | 'acquireMutationLease' | 'releaseMutationLease'>;
 
+const publicStateCache = new WeakMap<SessionState, PublicSessionState>();
+
+function projectPublicState(state: SessionState): PublicSessionState {
+  const cached = publicStateCache.get(state);
+  if (cached) return cached;
+  const { mutationLease, acquireMutationLease, releaseMutationLease, ...publicState } = state;
+  // Selectors receive a stable runtime projection, not only a narrower TypeScript view.
+  void mutationLease;
+  void acquireMutationLease;
+  void releaseMutationLease;
+  publicStateCache.set(state, publicState);
+  return publicState;
+}
+
 export function useSessionStore<T>(selector: (state: PublicSessionState) => T): T {
-  return internalUseSessionStore((state) => {
-    const { mutationLease, acquireMutationLease, releaseMutationLease, ...publicState } = state;
-    // Selectors receive a runtime projection, not only a narrower TypeScript view.
-    void mutationLease;
-    void acquireMutationLease;
-    void releaseMutationLease;
-    return selector(publicState);
-  });
+  return internalUseSessionStore((state) => selector(projectPublicState(state)));
 }
 
 /** Test-only harness; production modules must not import this capability. */
