@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Placement, SessionDocument, SignatureAsset, WorkSession } from '../db/schema';
-import { createSignatureSnapshot } from '../lib/signatureSnapshots';
+import { addSignaturePlacement as editorAddSignaturePlacement } from '../lib/workSessionEditor';
 import { STRINGS } from '../lib/strings';
 
 export type ViewState = 'dropzone' | 'editor';
@@ -218,35 +218,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       };
     }),
   addSignaturePlacement: async (docId, asset, placement) => {
-    const snapshot = await createSignatureSnapshot(asset);
-    const nextPlacement: Placement = { ...placement, type: asset.kind, snapshotId: snapshot.id };
-    let inserted = false;
-    set((state) => {
-      if (!state.session.documents.some((doc) => doc.docId === docId)) return state;
-      inserted = true;
-      const documents: SessionDocument[] = state.session.documents.map((doc) =>
-        doc.docId === docId
-          ? { ...doc, placements: [...doc.placements, nextPlacement], status: 'placed', batchError: undefined }
-          : doc
-      );
-      return {
-        session: {
-          ...state.session,
-          updatedAt: Date.now(),
-          documents,
-          templatePlacements: syncTemplatePlacements(documents),
-          signatureSnapshots: {
-            ...(state.session.signatureSnapshots ?? {}),
-            [snapshot.id]: state.session.signatureSnapshots?.[snapshot.id] ?? snapshot
-          }
-        },
-        selectedDocumentId: docId,
-        selectedPlacementId: nextPlacement.id,
-        history: pushHistoryEntry(state),
-        view: 'editor'
-      };
+    const state = get();
+    const result = await editorAddSignaturePlacement(
+      state.session,
+      state.history,
+      { docId, asset, placement }
+    );
+    if (!result.ok) return null;
+
+    set({
+      session: result.session,
+      history: result.history,
+      selectedDocumentId: docId,
+      selectedPlacementId: result.placement.id,
+      view: 'editor'
     });
-    return inserted ? nextPlacement : null;
+    return result.placement;
   },
   updatePlacement: (docId, placementId, next) =>
     set((state) => {

@@ -171,7 +171,10 @@ export function PlacementLayer({
       pageIndex,
       ...normalized
     });
-    if (!inserted) return;
+    if (!inserted) {
+      onToast?.(STRINGS.editor.placementFailed);
+      return;
+    }
     await touchAsset(asset.id);
     onAnnouncePlacement?.(asset.kind, pageIndex);
     onToast?.(STRINGS.announcements.placedOnPage(asset.kind === 'signature' ? 'Signature' : 'Initials', pageIndex + 1));

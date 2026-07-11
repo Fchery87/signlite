@@ -95,7 +95,8 @@ export const STRINGS = {
     elementsEmpty: 'Nothing placed yet.',
     elementPageLabel: (pageNumber: number) => `Page ${pageNumber}`,
     deleteElement: (label: string, pageNumber: number) => `Delete ${label} on page ${pageNumber}`,
-    copiedHint: 'Copied. Press Ctrl+V to paste on the page you are viewing.'
+    copiedHint: 'Copied. Press Ctrl+V to paste on the page you are viewing.',
+    placementFailed: 'Could not place this signature.'
   },
   loading: {
     editor: 'Loading editor…',

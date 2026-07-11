@@ -196,7 +196,10 @@ export function EditorView({ onToast }: EditorViewProps) {
         w: width,
         h: height
       });
-      if (!inserted) return;
+      if (!inserted) {
+        onToast(STRINGS.editor.placementFailed);
+        return;
+      }
       announcePlacement(asset.kind, activePage);
       onToast(STRINGS.announcements.placedOnPage(placementLabel(asset.kind), activePage + 1));
     },
