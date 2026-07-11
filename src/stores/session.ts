@@ -373,7 +373,14 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
 type PublicSessionState = Omit<SessionState, 'mutationLease' | 'acquireMutationLease' | 'releaseMutationLease'>;
 
 export function useSessionStore<T>(selector: (state: PublicSessionState) => T): T {
-  return internalUseSessionStore((state) => selector(state));
+  return internalUseSessionStore((state) => {
+    const { mutationLease, acquireMutationLease, releaseMutationLease, ...publicState } = state;
+    // Selectors receive a runtime projection, not only a narrower TypeScript view.
+    void mutationLease;
+    void acquireMutationLease;
+    void releaseMutationLease;
+    return selector(publicState);
+  });
 }
 
 /** Test-only harness; production modules must not import this capability. */
