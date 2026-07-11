@@ -46,8 +46,7 @@ function harness(options: { save?: (session: WorkSession) => Promise<'persistent
     const pending = [...callbacks.values()];
     callbacks.clear();
     for (const callback of pending) callback();
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
   };
   return { lifecycle, save, clear, flush, stored: () => stored, pending: () => callbacks.size };
 }
@@ -149,4 +148,63 @@ describe('ActiveSessionLifecycle durability', () => {
     expect(remount.clear).not.toHaveBeenCalledWith('predecessor');
     expect(remount.lifecycle.getState().warning).toBe(warning);
   });
+
+  it('serializes an in-flight older save before the latest revision and keeps latest durability state', async () => {
+    let resolveFirst!: (value: 'memory') => void;
+    let resolveSecond!: (value: 'persistent') => void;
+    const first = new Promise<'memory'>((resolve) => { resolveFirst = resolve; });
+    const second = new Promise<'persistent'>((resolve) => { resolveSecond = resolve; });
+    const h = harness({ save: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second) });
+    await h.lifecycle.startup();
+    h.lifecycle.observeRevision(makeSession('replacement'), 1);
+    await h.flush();
+    h.lifecycle.observeRevision(makeSession('replacement'), 2);
+    await h.flush();
+    expect(h.save).toHaveBeenCalledTimes(1);
+    resolveFirst('memory');
+    await h.flush();
+    expect(h.save).toHaveBeenCalledTimes(2);
+    resolveSecond('persistent');
+    await h.flush();
+    expect(h.lifecycle.getState()).toMatchObject({ mode: 'persistent', warning: null });
+  });
+
+  it('orders an empty clear before a later nonempty save', async () => {
+    let resolveClear!: () => void;
+    const clearing = new Promise<void>((resolve) => { resolveClear = resolve; });
+    const h = harness();
+    h.clear.mockReturnValueOnce(clearing);
+    await h.lifecycle.startup();
+    h.lifecycle.observeRevision(makeSession('same', 0), 1);
+    await h.flush();
+    h.lifecycle.observeRevision(makeSession('same'), 2);
+    await h.flush();
+    expect(h.save).not.toHaveBeenCalled();
+    resolveClear();
+    await h.flush();
+    expect(h.save).toHaveBeenCalledWith(expect.objectContaining({ id: 'same' }));
+  });
+
+  it('dispose cancels pending work and prevents in-flight completion consequences', async () => {
+    let resolveSave!: (value: 'persistent') => void;
+    const saving = new Promise<'persistent'>((resolve) => { resolveSave = resolve; });
+    const h = harness({ save: async () => saving });
+    await h.lifecycle.startup();
+    h.lifecycle.startFresh('predecessor', () => undefined);
+    h.lifecycle.observeRevision(makeSession('replacement'), 1);
+    await h.flush();
+    h.lifecycle.dispose();
+    resolveSave('persistent');
+    await h.flush();
+    expect(h.clear).not.toHaveBeenCalledWith('predecessor');
+    expect(h.stored()).not.toBeNull();
+
+    const pending = harness();
+    await pending.lifecycle.startup();
+    pending.lifecycle.observeRevision(makeSession('pending'), 1);
+    pending.lifecycle.dispose();
+    await pending.flush();
+    expect(pending.save).not.toHaveBeenCalled();
+  });
+
 });

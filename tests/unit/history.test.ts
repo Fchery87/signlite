@@ -115,7 +115,7 @@ describe('history session persistence', () => {
     expect(serializeSession(restoredSession)).toEqual(serializeSession(session));
   });
 
-  it('falls back to active-tab memory when a put exceeds quota', async () => {
+  it('falls back to memory on quota and retries durable storage on a later save', async () => {
     const db = await openSignliteDb();
     const put = vi.spyOn(db, 'put').mockRejectedValueOnce(new DOMException('full', 'QuotaExceededError'));
     const session: WorkSession = {
@@ -125,6 +125,8 @@ describe('history session persistence', () => {
     };
     expect(await saveSession(session)).toBe('memory');
     expect((await loadLatestSession())?.id).toBe('memory-session');
+    expect(await saveSession({ ...session, updatedAt: 3 })).toBe('persistent');
+    expect(await loadLatestSession()).toEqual(expect.objectContaining({ updatedAt: 3 }));
     put.mockRestore();
   });
 
