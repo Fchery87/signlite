@@ -1,11 +1,16 @@
 import {
+  addDocuments,
   addSignaturePlacement,
   addTextPlacement,
   copyPlacement,
   duplicatePlacement,
   emptyHistory,
   pastePlacement,
+  removeDocument,
   removePlacement,
+  redo,
+  reorderDocuments,
+  replaceSession,
   undo,
   updatePlacement
 } from '../../src/lib/workSessionEditor';
@@ -403,6 +408,102 @@ describe('WorkSessionEditor.addSignaturePlacement', () => {
       });
       expect(result).toMatchObject({ ok: false, error: { reason: 'page-not-found' } });
     }
+  });
+
+
+  it('reorders an exact document permutation as one undoable action', () => {
+    const template = { ...PLACEMENT_INPUT, type: 'text' as const, value: 'Second', fontSize: 12 };
+    const session = makeSession([makeDoc('doc-1'), { ...makeDoc('doc-2'), placements: [template] }]);
+    const state = {
+      session, history: emptyHistory(), selectedDocumentId: 'doc-1',
+      selectedPlacementId: null, copiedPlacement: null
+    };
+
+    const reordered = reorderDocuments(state, ['doc-2', 'doc-1']);
+    expect(reordered.ok).toBe(true);
+    if (!reordered.ok) return;
+    expect(reordered.session.documents.map((doc) => doc.docId)).toEqual(['doc-2', 'doc-1']);
+    expect(reordered.session.templatePlacements[0]?.value).toBe('Second');
+    expect(reordered.history.past).toHaveLength(1);
+
+    const reversed = undo(
+      reordered.session, reordered.history, reordered.selectedPlacementId, reordered.selectedDocumentId
+    );
+    expect(reversed.session.documents.map((doc) => doc.docId)).toEqual(['doc-1', 'doc-2']);
+    expect(reversed.session.templatePlacements).toEqual([]);
+    const replayed = redo(
+      reversed.session, reversed.history, reversed.selectedPlacementId, reversed.selectedDocumentId
+    );
+    expect(replayed.session.documents.map((doc) => doc.docId)).toEqual(['doc-2', 'doc-1']);
+    expect(replayed.session.templatePlacements[0]?.value).toBe('Second');
+  });
+
+  it('rejects incomplete, duplicate, and unknown document orders atomically', () => {
+    const session = makeSession([makeDoc('doc-1'), makeDoc('doc-2')]);
+    const state = {
+      session, history: emptyHistory(), selectedDocumentId: 'doc-1',
+      selectedPlacementId: null, copiedPlacement: null
+    };
+    for (const order of [['doc-1'], ['doc-1', 'doc-1'], ['doc-1', 'missing']]) {
+      const result = reorderDocuments(state, order);
+      expect(result).toMatchObject({ ok: false, error: { reason: 'invalid-document-order' } });
+      expect(session.documents.map((doc) => doc.docId)).toEqual(['doc-1', 'doc-2']);
+      expect(state.history.past).toHaveLength(0);
+    }
+  });
+
+  it('treats membership changes as history and clipboard barriers', () => {
+    const placement = { ...PLACEMENT_INPUT, type: 'text' as const, value: 'A', fontSize: 12 };
+    const first = { ...makeDoc('doc-1'), placements: [placement] };
+    const priorHistory = { past: [{ documents: [first], templatePlacements: [placement], at: 2 }], future: [] };
+    const state = {
+      session: makeSession([first]), history: priorHistory, selectedDocumentId: 'doc-1',
+      selectedPlacementId: placement.id, copiedPlacement: placement
+    };
+
+    const added = addDocuments(state, [makeDoc('doc-2')]);
+    expect(added.ok).toBe(true);
+    if (!added.ok) return;
+    expect(added.history).toEqual(emptyHistory());
+    expect(added.copiedPlacement).toBeNull();
+
+    const removed = removeDocument({
+      session: added.session,
+      history: added.history,
+      selectedDocumentId: added.selectedDocumentId,
+      selectedPlacementId: added.selectedPlacementId,
+      copiedPlacement: added.copiedPlacement
+    }, 'doc-1');
+    expect(removed.ok).toBe(true);
+    if (!removed.ok) return;
+    expect(removed.session.documents.map((doc) => doc.docId)).toEqual(['doc-2']);
+    expect(removed.history).toEqual(emptyHistory());
+    expect(removed.selectedDocumentId).toBe('doc-2');
+    expect(removed.selectedPlacementId).toBeNull();
+    expect(undo(removed.session, removed.history).changed).toBe(false);
+  });
+
+  it('coherently replaces restored state and repairs the selection pair', () => {
+    const stale = { ...PLACEMENT_INPUT, type: 'text' as const, value: 'stale', fontSize: 12 };
+    const restoredPlacement = { ...stale, id: 'restored', value: 'fresh' };
+    const restored = makeSession([{ ...makeDoc('restored-doc'), placements: [restoredPlacement] }]);
+    restored.templatePlacements = [stale];
+    restored.signatureSnapshots = undefined;
+    const current = {
+      session: makeSession([makeDoc('old-doc')]),
+      history: { past: [{ documents: [makeDoc('older')], templatePlacements: [], at: 1 }], future: [] },
+      selectedDocumentId: 'missing', selectedPlacementId: stale.id, copiedPlacement: stale
+    };
+
+    const result = replaceSession(current, restored);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.session.templatePlacements).toEqual([restoredPlacement]);
+    expect(result.session.signatureSnapshots).toEqual({});
+    expect(result.selectedDocumentId).toBe('restored-doc');
+    expect(result.selectedPlacementId).toBeNull();
+    expect(result.history).toEqual(emptyHistory());
+    expect(result.copiedPlacement).toBeNull();
   });
 
 });

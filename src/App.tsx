@@ -8,7 +8,6 @@ const EditorView = lazy(() => import('./components/editor/EditorView').then((mod
 import { clearSession, loadLatestSession, pruneOldSessions, saveSession } from './db/history';
 import { hydrateSignaturePrefs, isUsingMemoryStore } from './db/signatures';
 import type { WorkSession } from './db/schema';
-import { normalizeSession } from './lib/normalizeSession';
 
 function isQuotaExceededError(error: unknown) {
   return error instanceof DOMException && error.name === 'QuotaExceededError';
@@ -19,7 +18,7 @@ export default function App() {
   const view = useSessionStore((state) => state.view);
   const documents = session.documents;
   const addDocuments = useSessionStore((state) => state.addDocuments);
-  const replaceSession = useSessionStore((state) => state.replaceSession);
+  const restoreSession = useSessionStore((state) => state.restoreSession);
   const resetSession = useSessionStore((state) => state.resetSession);
   const [modalOpen, setModalOpen] = useState(false);
   const [toasts, setToasts] = useState<Array<{ id: string; message: string }>>([
@@ -113,9 +112,9 @@ export default function App() {
               </Button>
               <Button
                 onClick={async () => {
-                  const normalized = await normalizeSession(resumeSession);
-                  replaceSession(normalized);
-                  setResumeSession(null);
+                  if (await restoreSession(resumeSession)) {
+                    setResumeSession(null);
+                  }
                 }}
               >
                 {STRINGS.resume}

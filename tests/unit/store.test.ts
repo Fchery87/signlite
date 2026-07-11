@@ -26,7 +26,8 @@ function resetStore() {
     selectedPlacementId: null,
     copiedPlacement: null,
     history: { past: [], future: [] },
-    view: 'dropzone'
+    view: 'dropzone',
+    ownershipRevision: 0
   });
 }
 
@@ -89,6 +90,38 @@ describe('session store', () => {
     await expect(pending).resolves.toBeNull();
     expect(useSessionStore.getState().session.documents).toHaveLength(0);
     expect(useSessionStore.getState().session.signatureSnapshots).toEqual({});
+  });
+
+  it('does not apply stale signature work to replacement resources with the same document identity', async () => {
+    useSessionStore.getState().addDocuments([makeDocument('doc-1')]);
+    const pending = useSessionStore.getState().addSignaturePlacement(
+      'doc-1',
+      { kind: 'signature', pngBytes: new Uint8Array([4, 5, 6]).buffer, width: 20, height: 10 },
+      { id: 'stale-placement', pageIndex: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1 }
+    );
+
+    useSessionStore.getState().replaceSession({
+      id: 'replacement-session', createdAt: 2, updatedAt: 2,
+      documents: [makeDocument('doc-1')], templatePlacements: [], signatureSnapshots: {}
+    });
+
+    await expect(pending).resolves.toBeNull();
+    const state = useSessionStore.getState();
+    expect(state.session.id).toBe('replacement-session');
+    expect(state.session.documents[0]?.placements).toEqual([]);
+    expect(state.history).toEqual({ past: [], future: [] });
+  });
+
+  it('does not restore a normalized candidate after Start Fresh supersedes it', async () => {
+    const pending = useSessionStore.getState().restoreSession({
+      id: 'saved-session', createdAt: 2, updatedAt: 2,
+      documents: [makeDocument('doc-1')], templatePlacements: [], signatureSnapshots: {}
+    });
+    useSessionStore.getState().resetSession();
+
+    await expect(pending).resolves.toBe(false);
+    expect(useSessionStore.getState().session.id).not.toBe('saved-session');
+    expect(useSessionStore.getState().session.documents).toEqual([]);
   });
 
   it('retains snapshots after placement deletion and undo history changes', async () => {

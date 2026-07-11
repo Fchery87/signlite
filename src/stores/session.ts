@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import type { Placement, SessionDocument, SignatureAsset, WorkSession } from '../db/schema';
 import {
+  addDocuments as editorAddDocuments,
+  removeDocument as editorRemoveDocument,
+  reorderDocuments as editorReorderDocuments,
+  replaceSession as editorReplaceSession,
   addSignaturePlacement as editorAddSignaturePlacement,
   addTextPlacement as editorAddTextPlacement,
   updatePlacement as editorUpdatePlacement,
@@ -12,9 +16,11 @@ import {
   redo as editorRedo,
   emptyHistory,
   type History,
-  type PlacementChanges
+  type PlacementChanges,
+  type WorkSessionEditorState
 } from '../lib/workSessionEditor';
 import { STRINGS } from '../lib/strings';
+import { normalizeSession } from '../lib/normalizeSession';
 
 export type ViewState = 'dropzone' | 'editor';
 
@@ -30,6 +36,7 @@ type SessionState = {
   copiedPlacement: Placement | null;
   history: History;
   view: ViewState;
+  ownershipRevision: number;
   addDocuments: (docs: SessionDocument[]) => void;
   removeDocument: (docId: string) => void;
   reorderDocuments: (docIds: string[]) => void;
@@ -57,6 +64,7 @@ type SessionState = {
   applyTemplatePlacements: () => ApplyTemplatePlacementsResult;
   setSelection: (docId: string | null, placementId: string | null) => void;
   replaceSession: (session: WorkSession) => void;
+  restoreSession: (session: WorkSession) => Promise<boolean>;
   resetSession: () => void;
 };
 
@@ -89,10 +97,14 @@ function getTemplateMismatchMessage(templateDocument: SessionDocument, targetDoc
   return hasAspectMismatch ? STRINGS.batch.needsReviewAspect : null;
 }
 
-function repairSelectedDocument(documents: SessionDocument[], selectedDocumentId: string | null): string | null {
-  return selectedDocumentId && documents.some((doc) => doc.docId === selectedDocumentId)
-    ? selectedDocumentId
-    : documents[0]?.docId ?? null;
+function toEditorState(state: SessionState): WorkSessionEditorState {
+  return {
+    session: state.session,
+    history: state.history,
+    selectedDocumentId: state.selectedDocumentId,
+    selectedPlacementId: state.selectedPlacementId,
+    copiedPlacement: state.copiedPlacement
+  };
 }
 
 export const createInitialSession = (): WorkSession => ({
@@ -111,42 +123,47 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   copiedPlacement: null,
   history: emptyHistory(),
   view: 'dropzone',
+  ownershipRevision: 0,
 
-  addDocuments: (docs) =>
-    set((state) => {
-      const documents = [...state.session.documents, ...docs];
-      return {
-        session: { ...state.session, updatedAt: Date.now(), documents, templatePlacements: syncTemplatePlacements(documents) },
-        selectedDocumentId: state.selectedDocumentId ?? docs[0]?.docId ?? null,
-        history: emptyHistory(),
-        copiedPlacement: null,
-        view: documents.length > 0 ? 'editor' : 'dropzone'
-      };
-    }),
+  addDocuments: (docs) => {
+    const result = editorAddDocuments(toEditorState(get()), docs);
+    if (!result.ok) return;
+    set({
+      session: result.session,
+      history: result.history,
+      selectedDocumentId: result.selectedDocumentId,
+      selectedPlacementId: result.selectedPlacementId,
+      copiedPlacement: result.copiedPlacement,
+      view: result.session.documents.length > 0 ? 'editor' : 'dropzone',
+      ownershipRevision: get().ownershipRevision + 1
+    });
+  },
 
-  removeDocument: (docId) =>
-    set((state) => {
-      const documents = state.session.documents.filter((doc) => doc.docId !== docId);
-      return {
-        session: { ...state.session, updatedAt: Date.now(), documents, templatePlacements: syncTemplatePlacements(documents) },
-        selectedDocumentId: repairSelectedDocument(documents, state.selectedDocumentId),
-        selectedPlacementId: null,
-        history: emptyHistory(),
-        copiedPlacement: null,
-        view: documents.length > 0 ? 'editor' : 'dropzone'
-      };
-    }),
+  removeDocument: (docId) => {
+    const result = editorRemoveDocument(toEditorState(get()), docId);
+    if (!result.ok) return;
+    set({
+      session: result.session,
+      history: result.history,
+      selectedDocumentId: result.selectedDocumentId,
+      selectedPlacementId: result.selectedPlacementId,
+      copiedPlacement: result.copiedPlacement,
+      view: result.session.documents.length > 0 ? 'editor' : 'dropzone',
+      ownershipRevision: get().ownershipRevision + 1
+    });
+  },
 
-  reorderDocuments: (docIds) =>
-    set((state) => {
-      const documents = docIds
-        .map((docId) => state.session.documents.find((doc) => doc.docId === docId))
-        .filter((doc): doc is SessionDocument => Boolean(doc));
-      return {
-        session: { ...state.session, updatedAt: Date.now(), documents, templatePlacements: syncTemplatePlacements(documents) },
-        history: emptyHistory()
-      };
-    }),
+  reorderDocuments: (docIds) => {
+    const result = editorReorderDocuments(toEditorState(get()), docIds);
+    if (!result.ok) return;
+    set({
+      session: result.session,
+      history: result.history,
+      selectedDocumentId: result.selectedDocumentId,
+      selectedPlacementId: result.selectedPlacementId,
+      copiedPlacement: result.copiedPlacement
+    });
+  },
 
   addPlacement: (docId, placement) => {
     const result = editorAddTextPlacement(get().session, get().history, { docId, placement });
@@ -161,12 +178,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   addSignaturePlacement: async (docId, asset, placement) => {
+    const ownershipRevision = get().ownershipRevision;
     // Snapshot hashing is asynchronous. Retry against the latest state if another
     // complete action commits while hashing so stale state can never be restored.
     while (true) {
       const state = get();
+      if (state.ownershipRevision !== ownershipRevision) return null;
       const result = await editorAddSignaturePlacement(state.session, state.history, { docId, asset, placement });
       if (!result.ok) return null;
+      if (get().ownershipRevision !== ownershipRevision) return null;
       if (get().session !== state.session || get().history !== state.history) continue;
 
       set({
@@ -230,24 +250,24 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   undo: () => {
     const state = get();
-    const result = editorUndo(state.session, state.history, state.selectedPlacementId);
+    const result = editorUndo(state.session, state.history, state.selectedPlacementId, state.selectedDocumentId);
     if (!result.changed) return;
     set({
       session: result.session,
       history: result.history,
-      selectedDocumentId: repairSelectedDocument(result.session.documents, state.selectedDocumentId),
+      selectedDocumentId: result.selectedDocumentId,
       selectedPlacementId: result.selectedPlacementId
     });
   },
 
   redo: () => {
     const state = get();
-    const result = editorRedo(state.session, state.history, state.selectedPlacementId);
+    const result = editorRedo(state.session, state.history, state.selectedPlacementId, state.selectedDocumentId);
     if (!result.changed) return;
     set({
       session: result.session,
       history: result.history,
-      selectedDocumentId: repairSelectedDocument(result.session.documents, state.selectedDocumentId),
+      selectedDocumentId: result.selectedDocumentId,
       selectedPlacementId: result.selectedPlacementId
     });
   },
@@ -318,27 +338,45 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   setSelection: (docId, placementId) => set({ selectedDocumentId: docId, selectedPlacementId: placementId }),
 
-  replaceSession: (session) =>
+  replaceSession: (session) => {
+    const result = editorReplaceSession(toEditorState(get()), session);
+    if (!result.ok) return;
     set({
-      session: {
-        ...session,
-        templatePlacements: session.templatePlacements.length > 0 ? session.templatePlacements : syncTemplatePlacements(session.documents),
-        signatureSnapshots: session.signatureSnapshots ?? {}
-      },
-      selectedDocumentId: session.documents[0]?.docId ?? null,
-      selectedPlacementId: null,
-      history: emptyHistory(),
-      copiedPlacement: null,
-      view: session.documents.length > 0 ? 'editor' : 'dropzone'
-    }),
+      session: result.session,
+      selectedDocumentId: result.selectedDocumentId,
+      selectedPlacementId: result.selectedPlacementId,
+      history: result.history,
+      copiedPlacement: result.copiedPlacement,
+      view: result.session.documents.length > 0 ? 'editor' : 'dropzone',
+      ownershipRevision: get().ownershipRevision + 1
+    });
+  },
 
-  resetSession: () =>
+  restoreSession: async (candidate) => {
+    const ownershipRevision = get().ownershipRevision;
+    const normalized = await normalizeSession(candidate);
+    if (get().ownershipRevision !== ownershipRevision) return false;
+    const result = editorReplaceSession(toEditorState(get()), normalized);
+    if (!result.ok || get().ownershipRevision !== ownershipRevision) return false;
     set({
-      session: createInitialSession(),
-      selectedDocumentId: null,
-      selectedPlacementId: null,
-      history: emptyHistory(),
-      copiedPlacement: null,
-      view: 'dropzone'
-    })
+      session: result.session,
+      selectedDocumentId: result.selectedDocumentId,
+      selectedPlacementId: result.selectedPlacementId,
+      history: result.history,
+      copiedPlacement: result.copiedPlacement,
+      view: result.session.documents.length > 0 ? 'editor' : 'dropzone',
+      ownershipRevision: ownershipRevision + 1
+    });
+    return true;
+  },
+
+  resetSession: () => set((state) => ({
+    session: createInitialSession(),
+    selectedDocumentId: null,
+    selectedPlacementId: null,
+    history: emptyHistory(),
+    copiedPlacement: null,
+    view: 'dropzone',
+    ownershipRevision: state.ownershipRevision + 1
+  }))
 }));

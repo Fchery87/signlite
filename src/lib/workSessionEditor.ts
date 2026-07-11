@@ -49,7 +49,7 @@ function restoreHistoryEntry(session: WorkSession, entry: HistoryEntry): Partial
       ...session,
       updatedAt: Date.now(),
       documents,
-      templatePlacements: entry.templatePlacements
+      templatePlacements: syncTemplatePlacements(documents)
     },
     selectedPlacementId: null
   };
@@ -60,6 +60,8 @@ function restoreHistoryEntry(session: WorkSession, entry: HistoryEntry): Partial
 export type WorkSessionEditorError = {
   reason:
     | 'document-not-found'
+    | 'duplicate-document-id'
+    | 'invalid-document-order'
     | 'page-not-found'
     | 'placement-not-found'
     | 'duplicate-placement-id'
@@ -130,6 +132,18 @@ export type ErrResult = { ok: false; error: WorkSessionEditorError };
 export type EditorResult = OkResult | ErrResult;
 export type AddSignaturePlacementResult = (OkResult & { placement: Placement }) | ErrResult;
 
+export type WorkSessionEditorState = {
+  session: WorkSession;
+  history: History;
+  selectedDocumentId: string | null;
+  selectedPlacementId: string | null;
+  copiedPlacement: Placement | null;
+};
+
+export type CompleteStateResult = ({
+  ok: true;
+} & WorkSessionEditorState) | ErrResult;
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function syncTemplatePlacements(documents: SessionDocument[]): Placement[] {
@@ -171,8 +185,28 @@ function findPlacement(session: WorkSession, docId: string, placementId: string)
   return { doc, placement };
 }
 
-function placementExists(documents: SessionDocument[], placementId: string | null): boolean {
-  return placementId !== null && documents.some((doc) => doc.placements.some((placement) => placement.id === placementId));
+function repairSelectionPair(
+  documents: SessionDocument[],
+  selectedDocumentId: string | null,
+  selectedPlacementId: string | null
+): { selectedDocumentId: string | null; selectedPlacementId: string | null } {
+  const selectedDocument = documents.find((doc) => doc.docId === selectedDocumentId) ?? documents[0];
+  const placementIsInSelectedDocument = selectedDocument?.placements.some((placement) => placement.id === selectedPlacementId) ?? false;
+  return {
+    selectedDocumentId: selectedDocument?.docId ?? null,
+    selectedPlacementId: placementIsInSelectedDocument ? selectedPlacementId : null
+  };
+}
+
+function completeState(
+  session: WorkSession,
+  history: History,
+  selectedDocumentId: string | null,
+  selectedPlacementId: string | null,
+  copiedPlacement: Placement | null
+): CompleteStateResult {
+  const selection = repairSelectionPair(session.documents, selectedDocumentId, selectedPlacementId);
+  return { ok: true, session, history, copiedPlacement, ...selection };
 }
 
 function validateFreshPlacementId(session: WorkSession, placementId: string): WorkSessionEditorError | null {
@@ -193,6 +227,82 @@ function validateDocAndPage(session: WorkSession, docId: string, pageIndex: numb
 function validateAssetDimensions(width: number, height: number): WorkSessionEditorError | null {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return { reason: 'unsupported-dimensions', message: `Unsupported dimensions: ${width}x${height}` };
   return null;
+}
+
+// ─── Complete document actions ───────────────────────────────────────
+
+/** Adds document resources and establishes a membership history barrier. */
+export function addDocuments(state: WorkSessionEditorState, addedDocuments: SessionDocument[]): CompleteStateResult {
+  const existingIds = new Set(state.session.documents.map((doc) => doc.docId));
+  const addedIds = addedDocuments.map((doc) => doc.docId);
+  if (new Set(addedIds).size !== addedIds.length || addedIds.some((docId) => existingIds.has(docId))) {
+    return { ok: false, error: { reason: 'duplicate-document-id', message: 'Document identities must be unique' } };
+  }
+  const documents = [...state.session.documents, ...addedDocuments];
+  const session = {
+    ...state.session,
+    updatedAt: Date.now(),
+    documents,
+    templatePlacements: syncTemplatePlacements(documents)
+  };
+  return completeState(
+    session,
+    emptyHistory(),
+    state.selectedDocumentId ?? addedDocuments[0]?.docId ?? null,
+    state.selectedPlacementId,
+    null
+  );
+}
+
+/** Removes a document resource and establishes a membership history barrier. */
+export function removeDocument(state: WorkSessionEditorState, docId: string): CompleteStateResult {
+  if (!state.session.documents.some((doc) => doc.docId === docId)) {
+    return { ok: false, error: { reason: 'document-not-found', message: `Document ${docId} not found` } };
+  }
+  const documents = state.session.documents.filter((doc) => doc.docId !== docId);
+  const session = {
+    ...state.session,
+    updatedAt: Date.now(),
+    documents,
+    templatePlacements: syncTemplatePlacements(documents)
+  };
+  return completeState(session, emptyHistory(), state.selectedDocumentId, state.selectedPlacementId, null);
+}
+
+/** Reorders the exact current document cohort as one undoable action. */
+export function reorderDocuments(state: WorkSessionEditorState, docIds: string[]): CompleteStateResult {
+  const currentIds = state.session.documents.map((doc) => doc.docId);
+  const requestedIds = new Set(docIds);
+  if (docIds.length !== currentIds.length
+      || requestedIds.size !== docIds.length
+      || currentIds.some((docId) => !requestedIds.has(docId))) {
+    return { ok: false, error: { reason: 'invalid-document-order', message: 'Document order must be an exact permutation' } };
+  }
+  const byId = new Map(state.session.documents.map((doc) => [doc.docId, doc]));
+  const documents = docIds.map((docId) => byId.get(docId)!);
+  const session = {
+    ...state.session,
+    updatedAt: Date.now(),
+    documents,
+    templatePlacements: syncTemplatePlacements(documents)
+  };
+  return completeState(
+    session,
+    pushHistoryEntry(state.history, state.session),
+    state.selectedDocumentId,
+    state.selectedPlacementId,
+    state.copiedPlacement
+  );
+}
+
+/** Replaces runtime ownership with one normalized Work Session transition. */
+export function replaceSession(state: WorkSessionEditorState, replacement: WorkSession): CompleteStateResult {
+  const session = {
+    ...replacement,
+    templatePlacements: syncTemplatePlacements(replacement.documents),
+    signatureSnapshots: replacement.signatureSnapshots ?? {}
+  };
+  return completeState(session, emptyHistory(), null, null, null);
 }
 
 // ─── Actions ─────────────────────────────────────────────────────────
@@ -421,16 +531,21 @@ export type HistoryResult = {
   changed: boolean;
   session: WorkSession;
   history: History;
+  selectedDocumentId: string | null;
   selectedPlacementId: string | null;
 };
 
 export function undo(
   session: WorkSession,
   history: History,
-  selectedPlacementId: string | null = null
+  selectedPlacementId: string | null = null,
+  selectedDocumentId: string | null = null
 ): HistoryResult {
   const entry = history.past[history.past.length - 1];
-  if (!entry) return { changed: false, session, history, selectedPlacementId };
+  if (!entry) {
+    const selection = repairSelectionPair(session.documents, selectedDocumentId, selectedPlacementId);
+    return { changed: false, session, history, ...selection };
+  }
 
   const current: HistoryEntry = {
     documents: session.documents,
@@ -438,21 +553,26 @@ export function undo(
     at: Date.now()
   };
   const restored = restoreHistoryEntry(session, entry).session!;
+  const selection = repairSelectionPair(restored.documents, selectedDocumentId, selectedPlacementId);
   return {
     changed: true,
     session: restored,
     history: { past: history.past.slice(0, -1), future: [...history.future, current] },
-    selectedPlacementId: placementExists(restored.documents, selectedPlacementId) ? selectedPlacementId : null
+    ...selection
   };
 }
 
 export function redo(
   session: WorkSession,
   history: History,
-  selectedPlacementId: string | null = null
+  selectedPlacementId: string | null = null,
+  selectedDocumentId: string | null = null
 ): HistoryResult {
   const entry = history.future[history.future.length - 1];
-  if (!entry) return { changed: false, session, history, selectedPlacementId };
+  if (!entry) {
+    const selection = repairSelectionPair(session.documents, selectedDocumentId, selectedPlacementId);
+    return { changed: false, session, history, ...selection };
+  }
 
   const current: HistoryEntry = {
     documents: session.documents,
@@ -460,10 +580,11 @@ export function redo(
     at: Date.now()
   };
   const restored = restoreHistoryEntry(session, entry).session!;
+  const selection = repairSelectionPair(restored.documents, selectedDocumentId, selectedPlacementId);
   return {
     changed: true,
     session: restored,
     history: { past: [...history.past, current], future: history.future.slice(0, -1) },
-    selectedPlacementId: placementExists(restored.documents, selectedPlacementId) ? selectedPlacementId : null
+    ...selection
   };
 }
