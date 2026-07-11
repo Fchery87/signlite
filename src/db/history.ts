@@ -12,9 +12,10 @@ function isQuotaExceeded(error: unknown) {
 }
 
 async function getDb() {
-  if (useMemory) return null;
   try {
-    return await openSignliteDb();
+    const db = await openSignliteDb();
+    useMemory = false;
+    return db;
   } catch {
     useMemory = true;
     return null;
@@ -30,6 +31,7 @@ export async function saveSession(session: WorkSession): Promise<SaveSessionOutc
   }
   try {
     await db.put('sessions', session);
+    useMemory = false;
     memorySessions.delete(session.id);
     return 'persistent';
   } catch (error) {
@@ -46,15 +48,17 @@ export async function loadLatestSession(): Promise<WorkSession | null> {
     return Array.from(memorySessions.values()).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
   }
   const sessions = await db.getAllFromIndex('sessions', 'by-updated-at');
-  return sessions.at(-1) ?? null;
+  const latestPersistent = sessions.at(-1) ?? null;
+  const latestMemory = Array.from(memorySessions.values()).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
+  if (!latestPersistent) return latestMemory;
+  if (!latestMemory) return latestPersistent;
+  return latestMemory.updatedAt > latestPersistent.updatedAt ? latestMemory : latestPersistent;
 }
 
 export async function clearSession(id: string): Promise<void> {
+  memorySessions.delete(id);
   const db = await getDb();
-  if (!db) {
-    memorySessions.delete(id);
-    return;
-  }
+  if (!db) return;
   await db.delete('sessions', id);
 }
 

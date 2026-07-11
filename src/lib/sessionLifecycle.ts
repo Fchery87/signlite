@@ -82,6 +82,9 @@ export class ActiveSessionLifecycle {
   private state: DurabilityState = { ready: false, candidate: null, mode: 'persistent', warning: null };
   private lastRevision: number | null = null;
   private pendingSave: number | null = null;
+  private generation = 0;
+  private operations: Promise<void> = Promise.resolve();
+  private disposed = false;
   private retained: RetainedPredecessor | null;
   private readonly listeners = new Set<(state: DurabilityState) => void>();
 
@@ -99,12 +102,14 @@ export class ActiveSessionLifecycle {
   }
 
   private update(change: Partial<DurabilityState>) {
+    if (this.disposed) return;
     this.state = { ...this.state, ...change };
     for (const listener of this.listeners) listener(this.state);
   }
 
   async startup() {
     const result = await this.deps.startup();
+    if (this.disposed) return;
     this.update({
       ready: true,
       candidate: result.candidate,
@@ -125,8 +130,9 @@ export class ActiveSessionLifecycle {
   }
 
   observeRevision(session: WorkSession, revision: number) {
-    if (!this.state.ready || revision === this.lastRevision) return;
+    if (this.disposed || !this.state.ready || revision === this.lastRevision) return;
     this.lastRevision = revision;
+    const generation = ++this.generation;
     if (this.pendingSave !== null) this.deps.cancel(this.pendingSave);
     this.pendingSave = null;
 
@@ -136,41 +142,51 @@ export class ActiveSessionLifecycle {
     }
 
     if (session.documents.length === 0) {
-      if (session.id !== this.retained?.predecessorId) void this.deps.clear(session.id);
+      if (session.id !== this.retained?.predecessorId) this.enqueue(generation, async () => this.deps.clear(session.id));
       return;
     }
 
     const snapshot = cloneSession(session);
     this.pendingSave = this.deps.schedule(() => {
       this.pendingSave = null;
-      void this.persist(snapshot);
+      this.enqueue(generation, async () => this.persist(snapshot, generation));
     }, 500);
   }
 
-  private async persist(session: WorkSession) {
+  private enqueue(generation: number, operation: () => Promise<void>) {
+    this.operations = this.operations.catch(() => undefined).then(async () => {
+      if (this.disposed || generation !== this.generation) return;
+      await operation();
+    });
+  }
+
+  private async persist(session: WorkSession, generation: number) {
     try {
       const outcome = await this.deps.save(session);
+      if (this.disposed || generation !== this.generation) return;
       if (outcome === 'memory') {
-        this.update({
-          mode: 'memory',
-          warning: this.state.warning ?? 'Autosave is using memory only. Changes will not survive reload.'
-        });
+        this.update({ mode: 'memory', warning: this.state.warning ?? 'Autosave is using memory only. Changes will not survive reload.' });
         return;
       }
-      this.update({ mode: 'persistent' });
+      this.update({ mode: 'persistent', warning: null });
       if (this.retained?.replacementId === session.id && this.retained.predecessorId !== session.id) {
-        await this.deps.clear(this.retained.predecessorId);
+        const predecessorId = this.retained.predecessorId;
+        await Promise.resolve();
+        if (this.disposed || generation !== this.generation) return;
+        await this.deps.clear(predecessorId);
+        if (this.disposed || generation !== this.generation) return;
         this.retained = null;
         writeRetained(this.deps.storage, null);
       }
     } catch {
-      this.update({
-        warning: this.state.warning ?? 'Autosave failed. Your latest changes may not survive reload.'
-      });
+      if (this.disposed || generation !== this.generation) return;
+      this.update({ warning: this.state.warning ?? 'Autosave failed. Your latest changes may not survive reload.' });
     }
   }
 
   dispose() {
+    this.disposed = true;
+    this.generation += 1;
     if (this.pendingSave !== null) this.deps.cancel(this.pendingSave);
     this.pendingSave = null;
     this.listeners.clear();

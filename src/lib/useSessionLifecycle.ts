@@ -12,6 +12,8 @@ export function useSessionLifecycle({ session, contentRevision, resetSession }: 
   const lifecycleRef = useRef<ReturnType<typeof createActiveSessionLifecycle> | null>(null);
   if (!lifecycleRef.current) lifecycleRef.current = createActiveSessionLifecycle();
   const lifecycle = lifecycleRef.current;
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
   const [state, setState] = useState<DurabilityState>(lifecycle.getState());
 
   useEffect(() => {
@@ -24,8 +26,8 @@ export function useSessionLifecycle({ session, contentRevision, resetSession }: 
   }, [lifecycle]);
 
   useEffect(() => {
-    lifecycle.observeRevision(session, contentRevision);
-  }, [contentRevision, lifecycle, session]);
+    lifecycle.observeRevision(sessionRef.current, contentRevision);
+  }, [contentRevision, lifecycle]);
 
   return {
     ...state,
