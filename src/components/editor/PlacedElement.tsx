@@ -75,10 +75,15 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
     let url = '';
     let cancelled = false;
     void (async () => {
-      // Modern Placements resolve exclusively from the Work Session. Library lookup
-      // remains only for compatibility with pre-snapshot persisted sessions.
-      const legacyAsset = !placement.snapshotId && placement.assetId ? await getAsset(placement.assetId) : null;
-      const pngBytes = snapshotBytes ?? legacyAsset?.pngBytes ?? placement.assetPngBytes;
+      let pngBytes: ArrayBuffer | undefined;
+      if (placement.snapshotId) {
+        // Modern Placements resolve exclusively from the Work Session snapshot pool.
+        pngBytes = snapshotBytes;
+      } else {
+        // Legacy Placements resolve from the live library, then embedded bytes.
+        const legacyAsset = placement.assetId ? await getAsset(placement.assetId) : null;
+        pngBytes = legacyAsset?.pngBytes ?? placement.assetPngBytes;
+      }
       if (!pngBytes || cancelled) return;
       url = bufferToObjectUrl(pngBytes);
       setSrc(url);

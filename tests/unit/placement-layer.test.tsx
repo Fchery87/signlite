@@ -21,7 +21,8 @@ function resetStore() {
           status: 'pending'
         }
       ],
-      templatePlacements: []
+      templatePlacements: [],
+      signatureSnapshots: {}
     },
     selectedDocumentId: 'doc-1',
     selectedPlacementId: null,
@@ -303,5 +304,65 @@ describe('placement layer', () => {
     fireEvent.change(sizeInput, { target: { value: '16' } });
     expect(useSessionStore.getState().session.documents[0]?.placements[0]?.fontSize).toBe(16);
     expect(useSessionStore.getState().session.documents[0]?.placements[0]?.value).toBe('MMM d, yyyy');
+  });
+
+  it('renders a snapshot-backed placement exclusively from the Work Session', async () => {
+    const snapshotBytes = new Uint8Array([42, 43, 44, 45, 46]).buffer;
+    const libraryBytes = new Uint8Array([1, 2, 3]).buffer;
+    const savedAsset = await saveAsset({
+      kind: 'signature',
+      source: 'uploaded',
+      pngBytes: libraryBytes,
+      width: 400,
+      height: 100,
+      label: 'Library sig'
+    });
+
+    // A snapshot-backed placement that also carries a legacy assetId.
+    // Rendering must use the snapshot bytes, not the library asset.
+    useSessionStore.setState((state) => ({
+      session: {
+        ...state.session,
+        signatureSnapshots: {
+          'snap-render': { id: 'snap-render', kind: 'signature', pngBytes: snapshotBytes, width: 400, height: 100 }
+        },
+        documents: state.session.documents.map((doc) =>
+          doc.docId === 'doc-1'
+            ? {
+                ...doc,
+                placements: [
+                  ...doc.placements,
+                  {
+                    id: 'render-test',
+                    type: 'signature',
+                    snapshotId: 'snap-render',
+                    assetId: savedAsset.id,
+                    pageIndex: 0,
+                    x: 0.1,
+                    y: 0.1,
+                    w: 0.2,
+                    h: 0.1
+                  }
+                ]
+              }
+            : doc
+        )
+      }
+    }));
+
+    const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL');
+    const placement = useSessionStore.getState().session.documents[0]?.placements[0];
+    if (!placement) throw new Error('Expected placement to exist');
+    render(
+      <PlacedElement documentId="doc-1" pageSize={{ w: 200, h: 100 }} placement={placement} scale={1} selected />
+    );
+
+    await waitFor(() => expect(screen.getByRole('img')).toHaveAttribute('src', expect.any(String)));
+
+    // The blob passed to createObjectURL must contain snapshot bytes, not library bytes.
+    const blob = createObjectURLSpy.mock.calls.at(-1)?.[0] as Blob;
+    expect(blob.size).toBe(5);
+
+    createObjectURLSpy.mockRestore();
   });
 });

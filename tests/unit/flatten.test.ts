@@ -129,12 +129,15 @@ describe('flattenDocument', () => {
     expect(new TextDecoder().decode(output)).toContain('/XObject');
   });
 
-  it('does not fall through to a live library lookup when a referenced snapshot is missing', async () => {
+  it('fails instead of producing a blank pdf when a referenced snapshot is missing', async () => {
     const document = await makeDocument([
       { id: 'sig-modern', type: 'signature', snapshotId: 'missing', assetId: 'asset-1', pageIndex: 0, x: 0.1, y: 0.1, w: 0.3, h: 0.2 }
     ]);
     const loadAsset = vi.fn<() => Promise<SignatureAsset | null>>();
-    await flattenDocument(document, { snapshots: {}, loadAsset });
+
+    await expect(flattenDocument(document, { snapshots: {}, loadAsset })).rejects.toThrow(
+      "Couldn't write contract.pdf. Try re-saving the PDF from its source."
+    );
     expect(loadAsset).not.toHaveBeenCalled();
   });
 

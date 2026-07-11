@@ -24,7 +24,11 @@ function getPlacementText(value: string | undefined, fallback: string) {
 
 async function resolveAssetBytes(placement: Placement, options: FlattenOptions) {
   if (placement.snapshotId) {
-    return options.snapshots?.[placement.snapshotId]?.pngBytes ?? null;
+    const snapshot = options.snapshots?.[placement.snapshotId];
+    if (!snapshot) {
+      throw new Error(`Missing snapshot ${placement.snapshotId} for placement ${placement.id}`);
+    }
+    return snapshot.pngBytes;
   }
 
   if (placement.assetId && options.assetMap?.[placement.assetId]) {

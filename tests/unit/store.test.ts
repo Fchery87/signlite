@@ -245,4 +245,52 @@ describe('session store', () => {
     state.undo();
     expect(useSessionStore.getState().session.documents).toHaveLength(0);
   });
+
+  it('preserves snapshot references through duplicate, copy, and paste', async () => {
+    useSessionStore.getState().addDocuments([makeDocument('doc-1', 2)]);
+    await useSessionStore.getState().addSignaturePlacement(
+      'doc-1',
+      { kind: 'signature', pngBytes: new Uint8Array([10, 20, 30]).buffer, width: 40, height: 20 },
+      { id: 'snap-1', pageIndex: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1 }
+    );
+    const originalSnapshotId = useSessionStore.getState().session.documents[0]?.placements[0]?.snapshotId;
+
+    useSessionStore.getState().duplicatePlacement('doc-1', 'snap-1');
+    const afterDup = useSessionStore.getState().session.documents[0]?.placements ?? [];
+    expect(afterDup[1]?.snapshotId).toBe(originalSnapshotId);
+    expect(afterDup[1]?.id).not.toBe('snap-1');
+
+    useSessionStore.getState().copyPlacement('doc-1', 'snap-1');
+    expect(useSessionStore.getState().copiedPlacement?.snapshotId).toBe(originalSnapshotId);
+
+    const pasted = useSessionStore.getState().pastePlacement('doc-1', 1);
+    expect(pasted?.snapshotId).toBe(originalSnapshotId);
+    expect(pasted?.pageIndex).toBe(1);
+
+    // The snapshot pool still holds exactly one entry for all three placements.
+    expect(Object.keys(useSessionStore.getState().session.signatureSnapshots ?? {})).toHaveLength(1);
+  });
+
+  it('preserves snapshot references through template application', async () => {
+    useSessionStore.getState().addDocuments([
+      makeDocument('template', 2),
+      makeDocument('doc-2', 2)
+    ]);
+    await useSessionStore.getState().addSignaturePlacement(
+      'template',
+      { kind: 'signature', pngBytes: new Uint8Array([5, 6, 7]).buffer, width: 30, height: 10 },
+      { id: 'tmpl-snap', pageIndex: 1, x: 0.1, y: 0.1, w: 0.25, h: 0.1 }
+    );
+    const originalSnapshotId = useSessionStore.getState().session.documents[0]?.placements[0]?.snapshotId;
+
+    const result = useSessionStore.getState().applyTemplatePlacements();
+    expect(result.appliedDocIds).toEqual(['doc-2']);
+
+    const targetPlacements = useSessionStore.getState().session.documents[1]?.placements ?? [];
+    expect(targetPlacements[0]?.snapshotId).toBe(originalSnapshotId);
+    expect(targetPlacements[0]?.id).not.toBe('tmpl-snap');
+
+    // The snapshot pool is shared, not duplicated.
+    expect(Object.keys(useSessionStore.getState().session.signatureSnapshots ?? {})).toHaveLength(1);
+  });
 });

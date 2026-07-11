@@ -188,7 +188,7 @@ export function EditorView({ onToast }: EditorViewProps) {
         Math.min(width * (asset.height / asset.width) * (pageSize.w / pageSize.h), 0.5)
       );
 
-      await addSignaturePlacement(selectedDocument.docId, asset, {
+      const inserted = await addSignaturePlacement(selectedDocument.docId, asset, {
         id: crypto.randomUUID(),
         pageIndex: activePage,
         x: 0.1,
@@ -196,6 +196,7 @@ export function EditorView({ onToast }: EditorViewProps) {
         w: width,
         h: height
       });
+      if (!inserted) return;
       announcePlacement(asset.kind, activePage);
       onToast(STRINGS.announcements.placedOnPage(placementLabel(asset.kind), activePage + 1));
     },

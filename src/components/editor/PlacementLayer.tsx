@@ -166,11 +166,12 @@ export function PlacementLayer({
 
     const fullAsset = await getAsset(asset.id);
     if (!fullAsset) return;
-    await addSignaturePlacement(documentId, fullAsset, {
+    const inserted = await addSignaturePlacement(documentId, fullAsset, {
       id: crypto.randomUUID(),
       pageIndex,
       ...normalized
     });
+    if (!inserted) return;
     await touchAsset(asset.id);
     onAnnouncePlacement?.(asset.kind, pageIndex);
     onToast?.(STRINGS.announcements.placedOnPage(asset.kind === 'signature' ? 'Signature' : 'Initials', pageIndex + 1));
