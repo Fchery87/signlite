@@ -1,4 +1,4 @@
-import { clearSession, loadLatestSession, saveSession } from '../../src/db/history';
+import { clearSession, loadLatestSession, resetHistoryFallbackForTests, saveSession } from '../../src/db/history';
 import { openSignliteDb, type WorkSession } from '../../src/db/schema';
 
 function serializeSession(session: WorkSession | null) {
@@ -17,6 +17,7 @@ function serializeSession(session: WorkSession | null) {
 
 describe('history session persistence', () => {
   beforeEach(async () => {
+    resetHistoryFallbackForTests();
     const db = await openSignliteDb();
     await db.clear('sessions');
   });
@@ -108,9 +109,33 @@ describe('history session persistence', () => {
       ]
     };
 
-    await saveSession(session);
+    expect(await saveSession(session)).toBe('persistent');
 
     const restoredSession = await loadLatestSession();
     expect(serializeSession(restoredSession)).toEqual(serializeSession(session));
+  });
+
+  it('falls back to active-tab memory when a put exceeds quota', async () => {
+    const db = await openSignliteDb();
+    const put = vi.spyOn(db, 'put').mockRejectedValueOnce(new DOMException('full', 'QuotaExceededError'));
+    const session: WorkSession = {
+      id: 'memory-session', createdAt: 1, updatedAt: 2, templatePlacements: [],
+      documents: [{ docId: 'doc', fileName: 'local.pdf', pdfBytes: new ArrayBuffer(1), pageCount: 1,
+        pageSizes: [{ w: 10, h: 10 }], placements: [], status: 'pending' }]
+    };
+    expect(await saveSession(session)).toBe('memory');
+    expect((await loadLatestSession())?.id).toBe('memory-session');
+    put.mockRestore();
+  });
+
+  it('propagates non-quota put failures', async () => {
+    const db = await openSignliteDb();
+    const put = vi.spyOn(db, 'put').mockRejectedValueOnce(new Error('disk failure'));
+    await expect(saveSession({
+      id: 'failed', createdAt: 1, updatedAt: 2, templatePlacements: [],
+      documents: [{ docId: 'doc', fileName: 'local.pdf', pdfBytes: new ArrayBuffer(1), pageCount: 1,
+        pageSizes: [{ w: 10, h: 10 }], placements: [], status: 'pending' }]
+    })).rejects.toThrow('disk failure');
+    put.mockRestore();
   });
 });

@@ -1,17 +1,11 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useMemo, useState } from 'react';
 import { useSessionStore } from './stores/session';
 import { Button, Modal, Toast } from './components/ui';
 import { STRINGS } from './lib/strings';
 import { DropZone } from './components/DropZone';
 
 const EditorView = lazy(() => import('./components/editor/EditorView').then((module) => ({ default: module.EditorView })));
-import { clearSession, saveSession } from './db/history';
-import { startupAndDiscover } from './lib/sessionLifecycle';
-import type { WorkSession } from './db/schema';
-
-function isQuotaExceededError(error: unknown) {
-  return error instanceof DOMException && error.name === 'QuotaExceededError';
-}
+import { useSessionLifecycle } from './lib/useSessionLifecycle';
 
 export default function App() {
   const session = useSessionStore((state) => state.session);
@@ -26,14 +20,9 @@ export default function App() {
   const [toasts, setToasts] = useState<Array<{ id: string; message: string }>>([
     { id: 'shell-ready', message: STRINGS.appShellReady }
   ]);
-  const [resumeSession, setResumeSession] = useState<WorkSession | null>(null);
-  const [historyWarning, setHistoryWarning] = useState<string | null>(null);
-  const [libraryWarning, setLibraryWarning] = useState<string | null>(null);
-  const [historyReady, setHistoryReady] = useState(false);
-  const staleSessionIdRef = useRef<string | null>(null);
-  const sessionRef = useRef(session);
-  sessionRef.current = session;
-  const warnedOnQuotaRef = useRef(false);
+  const lifecycle = useSessionLifecycle({ session, contentRevision, resetSession });
+  const resumeSession = lifecycle.candidate;
+  const historyWarning = lifecycle.warning;
 
   const documentCount = documents.length;
   const pageCount = useMemo(() => documents.reduce((total, document) => total + document.pageCount, 0), [documents]);
@@ -45,59 +34,6 @@ export default function App() {
   const pushToast = (message: string) => {
     setToasts((items) => [...items, { id: crypto.randomUUID(), message }]);
   };
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      const result = await startupAndDiscover();
-      if (cancelled) return;
-      setResumeSession(result.candidate);
-      setLibraryWarning(result.storageAvailable ? null : STRINGS.errors['idb-unavailable']);
-      setHistoryReady(true);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!historyReady) return;
-    const current = sessionRef.current;
-
-    // An empty active Work Session clears only a persisted record with the
-    // same Work Session identity — never a separately retained predecessor.
-    if (current.documents.length === 0) {
-      if (staleSessionIdRef.current !== current.id) {
-        void clearSession(current.id);
-      }
-      return;
-    }
-
-    // Nonempty revisions save after the approved debounce; rapid edits
-    // replace the pending save with the latest coherent revision.
-    const timeout = window.setTimeout(() => {
-      void saveSession(sessionRef.current)
-        .then(async () => {
-          // Predecessor clears only after the first successful nonempty replacement save.
-          if (staleSessionIdRef.current && staleSessionIdRef.current !== sessionRef.current.id) {
-            await clearSession(staleSessionIdRef.current);
-            staleSessionIdRef.current = null;
-          }
-        })
-        .catch((error) => {
-          if (isQuotaExceededError(error) && !warnedOnQuotaRef.current) {
-            warnedOnQuotaRef.current = true;
-            setHistoryWarning(STRINGS.warnings.autosaveOff);
-          }
-        });
-    }, 500);
-
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [historyReady, contentRevision]);
 
   return (
     <div className="min-h-screen bg-mist text-ink">
@@ -117,19 +53,13 @@ export default function App() {
             <div className="flex gap-2">
               <Button
                 variant="secondary"
-                onClick={() => {
-                  staleSessionIdRef.current = resumeSession.id;
-                  setResumeSession(null);
-                  resetSession();
-                }}
+                onClick={lifecycle.startFresh}
               >
                 {STRINGS.startFresh}
               </Button>
               <Button
                 onClick={async () => {
-                  if (await restoreSession(resumeSession)) {
-                    setResumeSession(null);
-                  }
+                  if (await restoreSession(resumeSession)) lifecycle.resumeSucceeded();
                 }}
               >
                 {STRINGS.resume}
@@ -142,7 +72,6 @@ export default function App() {
             {STRINGS.workSessionLocked(mutationLock.owner)}
           </div>
         ) : null}
-        {libraryWarning ? <div className="border-t border-warning/30 bg-warning/10 px-6 py-3 text-body text-warning">{libraryWarning}</div> : null}
         {historyWarning ? <div className="border-t border-warning/30 bg-warning/10 px-6 py-3 text-body text-warning">{historyWarning}</div> : null}
       </header>
       {view === 'dropzone' ? (

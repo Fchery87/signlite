@@ -28,6 +28,12 @@ describe('durable Work Session mutation boundary', () => {
     expect(imperativeHookUsers).toEqual([]);
   });
 
+  it('keeps persistence coordination out of the application shell', () => {
+    const app = contents.find(({ path }) => path === 'src/App.tsx')?.source ?? '';
+    expect(app).not.toMatch(/(?:saveSession|clearSession|setTimeout|QuotaExceededError|staleSessionId)/);
+    expect(app).toMatch(/useSessionLifecycle/);
+  });
+
   it('has removed legacy durable compatibility actions and direct status setters', () => {
     const forbidden = ['updateDocumentStatus', 'setDocumentBatchError', 'addPlacement', 'replaceSession:'];
     for (const name of forbidden) {

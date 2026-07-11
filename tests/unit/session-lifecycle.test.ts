@@ -1,39 +1,62 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const dbMocks = vi.hoisted(() => ({
-  pruneOldSessions: vi.fn(),
-  loadLatestSession: vi.fn()
+  pruneOldSessions: vi.fn(), loadLatestSession: vi.fn(), saveSession: vi.fn(), clearSession: vi.fn(), isUsingMemoryHistory: vi.fn()
 }));
-const sigMocks = vi.hoisted(() => ({
-  hydrateSignaturePrefs: vi.fn(),
-  isUsingMemoryStore: vi.fn()
-}));
-const normalizeMock = vi.hoisted(() => ({
-  normalizeSession: vi.fn()
-}));
+const sigMocks = vi.hoisted(() => ({ hydrateSignaturePrefs: vi.fn(), isUsingMemoryStore: vi.fn() }));
+const normalizeMock = vi.hoisted(() => ({ normalizeSession: vi.fn() }));
 
 vi.mock('../../src/db/history', () => dbMocks);
 vi.mock('../../src/db/signatures', () => sigMocks);
 vi.mock('../../src/lib/normalizeSession', () => normalizeMock);
 
-import { startupAndDiscover } from '../../src/lib/sessionLifecycle';
+import { ActiveSessionLifecycle, startupAndDiscover } from '../../src/lib/sessionLifecycle';
 import type { WorkSession } from '../../src/db/schema';
 
-function makeSession(): WorkSession {
+function makeSession(id = 's1', documents = 1): WorkSession {
   return {
-    id: 's1', createdAt: 1, updatedAt: 2,
-    documents: [{
-      docId: 'd1', fileName: 'a.pdf', pdfBytes: new ArrayBuffer(8),
-      pageCount: 1, pageSizes: [{ w: 612, h: 792 }], placements: [], status: 'pending'
-    }],
+    id, createdAt: 1, updatedAt: 2,
+    documents: Array.from({ length: documents }, (_, index) => ({
+      docId: `d${index}`, fileName: 'a.pdf', pdfBytes: new ArrayBuffer(8), pageCount: 1,
+      pageSizes: [{ w: 612, h: 792 }], placements: [], status: 'pending' as const
+    })),
     templatePlacements: []
   };
+}
+
+function harness(options: { save?: (session: WorkSession) => Promise<'persistent' | 'memory'>; stored?: string | null } = {}) {
+  const callbacks = new Map<number, () => void>();
+  let next = 1;
+  let stored = options.stored ?? null;
+  const clear = vi.fn().mockResolvedValue(undefined);
+  const save = vi.fn(options.save ?? (async () => 'persistent' as const));
+  const lifecycle = new ActiveSessionLifecycle({
+    startup: async () => ({ candidate: null, storageAvailable: true }),
+    save,
+    clear,
+    storage: {
+      getItem: () => stored,
+      setItem: (_key, value) => { stored = value; },
+      removeItem: () => { stored = null; }
+    },
+    schedule: (callback) => { const id = next++; callbacks.set(id, callback); return id; },
+    cancel: (id) => { callbacks.delete(id); }
+  });
+  const flush = async () => {
+    const pending = [...callbacks.values()];
+    callbacks.clear();
+    for (const callback of pending) callback();
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+  return { lifecycle, save, clear, flush, stored: () => stored, pending: () => callbacks.size };
 }
 
 describe('sessionLifecycle startupAndDiscover', () => {
   beforeEach(() => {
     dbMocks.pruneOldSessions.mockReset().mockResolvedValue(undefined);
     dbMocks.loadLatestSession.mockReset().mockResolvedValue(null);
+    dbMocks.isUsingMemoryHistory.mockReset().mockReturnValue(false);
     sigMocks.hydrateSignaturePrefs.mockReset().mockResolvedValue(undefined);
     sigMocks.isUsingMemoryStore.mockReset().mockReturnValue(false);
     normalizeMock.normalizeSession.mockReset();
@@ -43,45 +66,87 @@ describe('sessionLifecycle startupAndDiscover', () => {
     const order: string[] = [];
     dbMocks.pruneOldSessions.mockImplementation(async () => { order.push('prune'); });
     dbMocks.loadLatestSession.mockImplementation(async () => { order.push('load'); return null; });
-    sigMocks.hydrateSignaturePrefs.mockImplementation(async () => { order.push('hydrate'); });
-
     await startupAndDiscover();
-    expect(order.indexOf('prune')).toBeLessThan(order.indexOf('load'));
+    expect(order).toEqual(['prune', 'load']);
   });
 
-  it('returns a normalized candidate when one exists', async () => {
+  it('reports history fallback after discovery opens unavailable storage', async () => {
+    dbMocks.isUsingMemoryHistory.mockReturnValue(true);
+    expect((await startupAndDiscover()).storageAvailable).toBe(false);
+  });
+
+  it('returns a normalized candidate and rejects malformed candidates safely', async () => {
     const session = makeSession();
-    const normalized = { ...session, id: 'normalized' };
     dbMocks.loadLatestSession.mockResolvedValue(session);
-    normalizeMock.normalizeSession.mockResolvedValue(normalized);
-
-    const result = await startupAndDiscover();
-    expect(result.candidate).toEqual(normalized);
-    expect(normalizeMock.normalizeSession).toHaveBeenCalledWith(session);
-  });
-
-  it('returns null candidate when no sessions exist', async () => {
-    dbMocks.loadLatestSession.mockResolvedValue(null);
-    const result = await startupAndDiscover();
-    expect(result.candidate).toBeNull();
-  });
-
-  it('rejects a malformed candidate without preventing startup', async () => {
-    dbMocks.loadLatestSession.mockResolvedValue(makeSession());
+    normalizeMock.normalizeSession.mockResolvedValue({ ...session, id: 'normalized' });
+    expect((await startupAndDiscover()).candidate?.id).toBe('normalized');
     normalizeMock.normalizeSession.mockRejectedValue(new Error('corrupt'));
+    expect((await startupAndDiscover()).candidate).toBeNull();
+  });
+});
 
-    const result = await startupAndDiscover();
-    expect(result.candidate).toBeNull();
+describe('ActiveSessionLifecycle durability', () => {
+  it('debounces revisions, replaces the pending save, and saves the latest coherent snapshot', async () => {
+    const h = harness();
+    await h.lifecycle.startup();
+    h.lifecycle.observeRevision(makeSession('one'), 1);
+    h.lifecycle.observeRevision(makeSession('two'), 2);
+    expect(h.pending()).toBe(1);
+    await h.flush();
+    expect(h.save).toHaveBeenCalledTimes(1);
+    expect(h.save.mock.calls[0][0].id).toBe('two');
+    h.lifecycle.observeRevision(makeSession('ignored'), 2);
+    expect(h.pending()).toBe(0);
   });
 
-  it('reports storage availability', async () => {
-    sigMocks.isUsingMemoryStore.mockReturnValue(true);
-    const result = await startupAndDiscover();
-    expect(result.storageAvailable).toBe(false);
+  it('clears an empty session only by its own identity', async () => {
+    const h = harness();
+    await h.lifecycle.startup();
+    h.lifecycle.observeRevision(makeSession('empty', 0), 1);
+    expect(h.clear).toHaveBeenCalledWith('empty');
   });
 
-  it('hydrates signature preferences during startup', async () => {
-    await startupAndDiscover();
-    expect(sigMocks.hydrateSignaturePrefs).toHaveBeenCalled();
+  it('retains a Start Fresh predecessor through empty and memory-only replacement saves', async () => {
+    const h = harness({ save: async () => 'memory' });
+    await h.lifecycle.startup();
+    h.lifecycle.startFresh('predecessor', () => undefined);
+    h.lifecycle.observeRevision(makeSession('replacement', 0), 1);
+    expect(h.clear).not.toHaveBeenCalledWith('predecessor');
+    h.lifecycle.observeRevision(makeSession('replacement'), 2);
+    await h.flush();
+    expect(h.clear).not.toHaveBeenCalledWith('predecessor');
+    expect(h.lifecycle.getState().mode).toBe('memory');
+    expect(h.lifecycle.getState().warning).toContain('will not survive reload');
+  });
+
+  it('retains predecessor after failure and clears it only after a durable replacement save', async () => {
+    let fail = true;
+    const h = harness({ save: async () => { if (fail) throw new Error('disk'); return 'persistent'; } });
+    await h.lifecycle.startup();
+    h.lifecycle.startFresh('predecessor', () => undefined);
+    h.lifecycle.observeRevision(makeSession('replacement'), 1);
+    await h.flush();
+    expect(h.clear).not.toHaveBeenCalledWith('predecessor');
+    expect(h.lifecycle.getState().warning).toContain('may not survive reload');
+    fail = false;
+    h.lifecycle.observeRevision(makeSession('replacement'), 2);
+    await h.flush();
+    expect(h.clear).toHaveBeenCalledWith('predecessor');
+    expect(h.stored()).toBeNull();
+  });
+
+  it('restores predecessor retention marker after remount and warns only once', async () => {
+    const first = harness({ save: async () => 'memory' });
+    await first.lifecycle.startup();
+    first.lifecycle.startFresh('predecessor', () => undefined);
+    first.lifecycle.observeRevision(makeSession('replacement'), 1);
+    await first.flush();
+    const warning = first.lifecycle.getState().warning;
+    const remount = harness({ save: async () => 'memory', stored: first.stored() });
+    await remount.lifecycle.startup();
+    remount.lifecycle.observeRevision(makeSession('replacement'), 2);
+    await remount.flush();
+    expect(remount.clear).not.toHaveBeenCalledWith('predecessor');
+    expect(remount.lifecycle.getState().warning).toBe(warning);
   });
 });
