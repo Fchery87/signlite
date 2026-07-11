@@ -27,6 +27,7 @@ export function BatchPanel() {
   const reorderDocuments = useSessionStore((state) => state.reorderDocuments);
   const removeDocument = useSessionStore((state) => state.removeDocument);
   const setSelection = useSessionStore((state) => state.setSelection);
+  const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
   const [draggedDocumentId, setDraggedDocumentId] = useState<string | null>(null);
   const itemRefs = useRef<Array<HTMLDivElement | null>>([]);
 
@@ -37,7 +38,7 @@ export function BatchPanel() {
   }
 
   const moveDocument = (fromIndex: number, toIndex: number) => {
-    if (toIndex < 0 || toIndex >= orderedIds.length || fromIndex === toIndex) {
+    if (mutationLocked || toIndex < 0 || toIndex >= orderedIds.length || fromIndex === toIndex) {
       return;
     }
     const nextIds = [...orderedIds];
@@ -65,12 +66,15 @@ export function BatchPanel() {
               }}
               role="button"
               tabIndex={0}
-              draggable
+              draggable={!mutationLocked}
               aria-label={`${document.fileName}, ${statusLabels[document.status]}${document.needsReviewReason ? `, ${STRINGS.status.needsReview}` : ''}`}
-              onDragStart={() => setDraggedDocumentId(document.docId)}
+              onDragStart={(event) => {
+                if (mutationLocked) { event.preventDefault(); return; }
+                setDraggedDocumentId(document.docId);
+              }}
               onDragEnd={() => setDraggedDocumentId(null)}
               onDragOver={(event) => {
-                if (!draggedDocumentId || draggedDocumentId === document.docId) {
+                if (mutationLocked || !draggedDocumentId || draggedDocumentId === document.docId) {
                   return;
                 }
                 event.preventDefault();
@@ -78,7 +82,7 @@ export function BatchPanel() {
               }}
               onDrop={(event) => {
                 event.preventDefault();
-                if (!draggedDocumentId || draggedDocumentId === document.docId) {
+                if (mutationLocked || !draggedDocumentId || draggedDocumentId === document.docId) {
                   return;
                 }
                 const nextIds = orderedIds.filter((docId) => docId !== draggedDocumentId);
@@ -141,6 +145,7 @@ export function BatchPanel() {
                   type="button"
                   variant="ghost"
                   className="px-2 py-1 text-caption"
+                  disabled={mutationLocked}
                   onClick={(event) => {
                     event.stopPropagation();
                     removeDocument(document.docId);

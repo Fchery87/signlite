@@ -67,6 +67,7 @@ export function PlacementLayer({
   const duplicatePlacement = useSessionStore((state) => state.duplicatePlacement);
   const copyPlacement = useSessionStore((state) => state.copyPlacement);
   const setSelection = useSessionStore((state) => state.setSelection);
+  const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
 
   useEffect(() => {
     const selectedPlacement = placements.find((placement) => placement.id === selectedPlacementId);
@@ -86,15 +87,17 @@ export function PlacementLayer({
         return;
       }
 
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        event.preventDefault();
-        removePlacement(documentId, selectedPlacement.id);
-        return;
-      }
-
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c') {
         copyPlacement(documentId, selectedPlacement.id);
         onToast?.(STRINGS.editor.copiedHint);
+        return;
+      }
+
+      if (mutationLocked) return;
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        removePlacement(documentId, selectedPlacement.id);
         return;
       }
 
@@ -135,9 +138,10 @@ export function PlacementLayer({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [copyPlacement, documentId, duplicatePlacement, onToast, pageSize.h, pageSize.w, placements, removePlacement, scale, selectedPlacementId, setSelection, updatePlacement]);
+  }, [copyPlacement, documentId, duplicatePlacement, mutationLocked, onToast, pageSize.h, pageSize.w, placements, removePlacement, scale, selectedPlacementId, setSelection, updatePlacement]);
 
   const placeAsset = async (event: DragEvent<HTMLDivElement>) => {
+    if (mutationLocked) return;
     const asset = parseDragAsset(event);
     if (!asset) return;
 
@@ -188,14 +192,14 @@ export function PlacementLayer({
         }
       }}
       onDragOver={(event) => {
-        if (parseDragAsset(event)) {
+        if (!mutationLocked && parseDragAsset(event)) {
           event.preventDefault();
           event.dataTransfer.dropEffect = 'copy';
         }
       }}
       onDrop={(event) => {
         event.preventDefault();
-        void placeAsset(event);
+        if (!mutationLocked) void placeAsset(event);
       }}
     >
       {placements.map((placement) => (

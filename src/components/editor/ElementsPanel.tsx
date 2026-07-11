@@ -11,6 +11,7 @@ type ElementsPanelProps = {
 
 export function ElementsPanel({ document, selectedPlacementId, onSelect }: ElementsPanelProps) {
   const removePlacement = useSessionStore((state) => state.removePlacement);
+  const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
 
   return (
     <div className="surface-card min-h-0 overflow-auto p-4 shadow-panel">
@@ -41,6 +42,7 @@ export function ElementsPanel({ document, selectedPlacementId, onSelect }: Eleme
                 type="button"
                 aria-label={STRINGS.editor.deleteElement(placementLabel(placement.type), placement.pageIndex + 1)}
                 className="focus-ring px-2 py-1 text-caption text-quiet hover:text-danger"
+                disabled={mutationLocked}
                 onClick={() => removePlacement(document.docId, placement.id)}
               >
                 {STRINGS.buttons.delete}

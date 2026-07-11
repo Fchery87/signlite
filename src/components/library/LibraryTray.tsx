@@ -366,6 +366,7 @@ function AssetCard({
         type="button"
         draggable={!placementDisabled}
         onDragStart={(event) => {
+          if (placementDisabled) { event.preventDefault(); return; }
           event.dataTransfer.setData(
             ASSET_DRAG_TYPE,
             JSON.stringify({ id: asset.id, kind: asset.kind, width: asset.width, height: asset.height })
