@@ -117,6 +117,7 @@ describe('history session persistence', () => {
 
   it('falls back to memory on quota and retries durable storage on a later save', async () => {
     const db = await openSignliteDb();
+    const originalPut = db.put.bind(db);
     const put = vi.spyOn(db, 'put').mockRejectedValueOnce(new DOMException('full', 'QuotaExceededError'));
     const session: WorkSession = {
       id: 'memory-session', createdAt: 1, updatedAt: 2, templatePlacements: [],
@@ -125,6 +126,7 @@ describe('history session persistence', () => {
     };
     expect(await saveSession(session)).toBe('memory');
     expect((await loadLatestSession())?.id).toBe('memory-session');
+    put.mockImplementation(originalPut);
     expect(await saveSession({ ...session, updatedAt: 3 })).toBe('persistent');
     expect(await loadLatestSession()).toEqual(expect.objectContaining({ updatedAt: 3 }));
     put.mockRestore();
@@ -132,6 +134,7 @@ describe('history session persistence', () => {
 
   it('propagates non-quota put failures', async () => {
     const db = await openSignliteDb();
+    const originalPut = db.put.bind(db);
     const put = vi.spyOn(db, 'put').mockRejectedValueOnce(new Error('disk failure'));
     await expect(saveSession({
       id: 'failed', createdAt: 1, updatedAt: 2, templatePlacements: [],

@@ -102,6 +102,7 @@ describe('ActiveSessionLifecycle durability', () => {
     const h = harness();
     await h.lifecycle.startup();
     h.lifecycle.observeRevision(makeSession('empty', 0), 1);
+    await h.flush();
     expect(h.clear).toHaveBeenCalledWith('empty');
   });
 
