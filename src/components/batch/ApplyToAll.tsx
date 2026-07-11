@@ -1,16 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Modal } from '../ui';
 import { useSessionStore } from '../../stores/session';
-import { getAsset, getDateFormat } from '../../db/signatures';
-import { collectAssetIds, type FlattenAssetMap } from '../../pdf/assets';
-import { batchZipFileName, downloadBlob } from '../../lib/files';
-import type {
-  FlattenWorkerDoneMessage,
-  FlattenWorkerErrorMessage,
-  FlattenWorkerProgressMessage,
-  FlattenWorkerRequest,
-  FlattenWorkerResponse
-} from '../../workers/flatten.worker';
+import { createBatchSigning } from '../../stores/session';
+import type { BatchSigning, BatchAttemptProgress } from '../../lib/batchSigning';
 import { STRINGS } from '../../lib/strings';
 import type { ApplyToAllPreview } from '../../stores/session';
 
@@ -18,24 +10,17 @@ type ApplyToAllProps = {
   onToast: (message: string) => void;
 };
 
-type BatchProgress = {
-  done: number;
-  total: number;
-};
-
 export function ApplyToAll({ onToast }: ApplyToAllProps) {
   const documents = useSessionStore((state) => state.session.documents);
-  const storedSignatureSnapshots = useSessionStore((state) => state.session.signatureSnapshots);
-  const signatureSnapshots = useMemo(() => storedSignatureSnapshots ?? {}, [storedSignatureSnapshots]);
   const previewApplyTemplatePlacements = useSessionStore((state) => state.previewApplyTemplatePlacements);
   const applyTemplatePlacements = useSessionStore((state) => state.applyTemplatePlacements);
-  const transitionDocumentOutput = useSessionStore((state) => state.transitionDocumentOutput);
   const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [applyPreview, setApplyPreview] = useState<ApplyToAllPreview | null>(null);
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
-  const workerRef = useRef<Worker | null>(null);
+  const [batchProgress, setBatchProgress] = useState<BatchAttemptProgress | null>(null);
+  const [batchDelivering, setBatchDelivering] = useState(false);
+  const batchRef = useRef<BatchSigning | null>(null);
 
   const templateDocument = documents[0] ?? null;
   const targetDocuments = useMemo(() => documents.slice(1), [documents]);
@@ -49,11 +34,12 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
   const batchDisabled = mutationLocked || isBatchDownloading || documents.length < 2 || downloadableDocuments.length === 0;
 
   useEffect(() => {
-    return () => {
-      workerRef.current?.terminate();
-      workerRef.current = null;
+    const handleShortcut = () => {
+      void startBatchDownload();
     };
-  }, []);
+    window.addEventListener('signlite:batch-download', handleShortcut as EventListener);
+    return () => window.removeEventListener('signlite:batch-download', handleShortcut as EventListener);
+  });
 
   const openApplyPreview = () => {
     if (mutationLocked) return;
@@ -76,127 +62,64 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
       onToast(result.error === 'stale-preview' ? STRINGS.batch.stalePreview : STRINGS.editor.placementFailed);
       return;
     }
-
     if (result.appliedDocIds.length === 0 && result.needsReviewDocIds.length === 0) {
       onToast(STRINGS.batch.nothingToApply);
       return;
     }
-
     if (result.appliedDocIds.length > 0 && result.needsReviewDocIds.length > 0) {
       onToast(STRINGS.batch.appliedAndReviewSummary(result.appliedDocIds.length, result.needsReviewDocIds.length));
       return;
     }
-
     if (result.appliedDocIds.length > 0) {
       onToast(STRINGS.batch.appliedSummary(result.appliedDocIds.length));
       return;
     }
-
     onToast(STRINGS.batch.reviewSummary(result.needsReviewDocIds.length));
   };
 
   const startBatchDownload = async () => {
-    if (mutationLocked) return;
-    if (batchDisabled) {
-      return;
-    }
+    if (mutationLocked || isBatchDownloading) return;
+    if (downloadableDocuments.length === 0) return;
 
     setIsBatchDownloading(true);
-    setBatchProgress({ done: 0, total: downloadableDocuments.length });
+    setBatchProgress({ status: 'preparing', done: 0, total: downloadableDocuments.length, failures: {} });
+    setBatchDelivering(false);
+
+    const batch = createBatchSigning(
+      (done, total) => setBatchProgress((prev) => prev ? { ...prev, done, total } : prev),
+      (status) => {
+        if (status === 'delivering') setBatchDelivering(true);
+      }
+    );
+    batchRef.current = batch;
 
     try {
-      const assetMap: FlattenAssetMap = {};
-      const assetIds = collectAssetIds(downloadableDocuments);
-      const assets = await Promise.all(assetIds.map(async (assetId) => [assetId, await getAsset(assetId)] as const));
+      const result = await batch.attempt();
 
-      for (const [assetId, asset] of assets) {
-        if (asset) {
-          assetMap[assetId] = asset.pngBytes;
-        }
+      if (result.cancelled) {
+        onToast(STRINGS.batch.batchCancelled);
+      } else if (result.deliveryFailed) {
+        onToast(STRINGS.batch.batchDeliveryFailed);
+      } else if (result.noEligible) {
+        onToast(STRINGS.batch.batchNoEligible);
+      } else if (result.ok) {
+        onToast(STRINGS.batch.batchDone(result.successCount));
+      } else {
+        onToast(STRINGS.batch.batchFailed);
       }
-
-      for (const document of downloadableDocuments) {
-        transitionDocumentOutput(document.docId, 'signing');
-      }
-
-      const snapshots = Object.fromEntries(
-        Object.entries(signatureSnapshots).map(([id, snapshot]) => [id, { ...snapshot, pngBytes: snapshot.pngBytes.slice(0) }])
-      );
-      const request: FlattenWorkerRequest = {
-        kind: 'flatten',
-        snapshots,
-        docs: downloadableDocuments.map((document) => ({
-          ...document,
-          pdfBytes: document.pdfBytes.slice(0),
-          placements: document.placements.map((placement) => ({ ...placement })),
-          pageSizes: document.pageSizes.map((page) => ({ ...page }))
-        })),
-        assets: assetMap,
-        zip: true,
-        dateFormat: getDateFormat()
-      };
-
-      const transfers: Transferable[] = [
-        ...request.docs.map((document) => document.pdfBytes),
-        ...Object.values(assetMap),
-        ...Object.values(snapshots).map((snapshot) => snapshot.pngBytes)
-      ];
-
-      const worker = new Worker(new URL('../../workers/flatten.worker.ts', import.meta.url), { type: 'module' });
-      workerRef.current?.terminate();
-      workerRef.current = worker;
-      let successCount = 0;
-
-      const result = await new Promise<{ message: FlattenWorkerDoneMessage; successCount: number }>((resolve, reject) => {
-        worker.onmessage = (event: MessageEvent<FlattenWorkerResponse>) => {
-          const message = event.data;
-
-          if (message.kind === 'progress') {
-            const progress = message as FlattenWorkerProgressMessage;
-            successCount += 1;
-            setBatchProgress({ done: progress.done, total: progress.total });
-            transitionDocumentOutput(progress.docId, 'signed');
-            return;
-          }
-
-          if (message.kind === 'error') {
-            const errorMessage = message as FlattenWorkerErrorMessage;
-            if (errorMessage.docId) {
-              transitionDocumentOutput(errorMessage.docId, 'error', errorMessage.message);
-              return;
-            }
-
-            reject(new Error(errorMessage.message));
-            return;
-          }
-
-          resolve({ message: message as FlattenWorkerDoneMessage, successCount });
-        };
-
-        worker.onerror = () => reject(new Error(STRINGS.batch.batchFailed));
-        worker.postMessage(request, transfers);
-      });
-
-      downloadBlob(new Blob([result.message.output], { type: result.message.mime }), batchZipFileName());
-      onToast(STRINGS.batch.batchDone(result.successCount));
-    } catch (error) {
-      onToast(error instanceof Error ? error.message : STRINGS.batch.batchFailed);
+    } catch {
+      onToast(STRINGS.batch.batchFailed);
     } finally {
       setIsBatchDownloading(false);
       setBatchProgress(null);
-      workerRef.current?.terminate();
-      workerRef.current = null;
+      setBatchDelivering(false);
+      batchRef.current = null;
     }
   };
 
-  useEffect(() => {
-    const handleShortcut = () => {
-      void startBatchDownload();
-    };
-
-    window.addEventListener('signlite:batch-download', handleShortcut as EventListener);
-    return () => window.removeEventListener('signlite:batch-download', handleShortcut as EventListener);
-  });
+  const handleCancel = () => {
+    batchRef.current?.cancel();
+  };
 
   if (documents.length < 2) {
     return null;
@@ -212,11 +135,7 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
               {STRINGS.batch.applySubtitle(templateDocument?.fileName ?? 'the template')}
             </p>
           </div>
-          <Button
-            type="button"
-            disabled={disabled}
-            onClick={openApplyPreview}
-          >
+          <Button type="button" disabled={disabled} onClick={openApplyPreview}>
             {STRINGS.buttons.applyToAll}
           </Button>
         </div>
@@ -244,9 +163,16 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
                   : STRINGS.batch.readyForDownload(downloadableDocuments.length)}
               </p>
             </div>
-            <Button type="button" onClick={() => void startBatchDownload()} disabled={batchDisabled}>
-              {isBatchDownloading ? STRINGS.batch.signing : STRINGS.buttons.downloadAll}
-            </Button>
+            <div className="flex gap-2">
+              {isBatchDownloading && !batchDelivering && (
+                <Button type="button" variant="secondary" onClick={handleCancel}>
+                  {STRINGS.buttons.cancel}
+                </Button>
+              )}
+              <Button type="button" onClick={() => void startBatchDownload()} disabled={batchDisabled}>
+                {isBatchDownloading ? STRINGS.batch.signing : STRINGS.buttons.downloadAll}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

@@ -28,6 +28,12 @@ import {
   type MutationLease
 } from '../lib/workSessionEditor';
 import { normalizeSession } from '../lib/normalizeSession';
+import { BatchSigning } from '../lib/batchSigning';
+import type { BatchSigningPorts, ProcessFlattenOutcome } from '../lib/batchSigning';
+import { getAsset, getDateFormat } from '../db/signatures';
+import { type FlattenAssetMap } from '../pdf/assets';
+import { batchZipFileName, downloadBlob } from '../lib/files';
+import type { FlattenWorkerResponse } from '../workers/flatten.worker';
 
 export type { ApplyToAllPreview };
 
@@ -407,3 +413,82 @@ export const sessionStoreTestHarness = {
   getState: internalUseSessionStore.getState,
   setState: internalUseSessionStore.setState
 };
+
+// ─── BatchSigning production factory ─────────────────────────────────────────
+
+/**
+ * Creates a BatchSigning instance with production ports wired to the store
+ * adapter, IndexedDB, and the flatten Worker.  The optional callbacks let
+ * the UI observe progress and delivery-phase transitions.
+ */
+export function createBatchSigning(
+  onProgress?: (done: number, total: number) => void,
+  onStatus?: (status: string) => void
+): BatchSigning {
+  const store = internalUseSessionStore;
+
+  const ports: BatchSigningPorts = {
+    acquireLease: (owner) => store.getState().acquireMutationLease(owner),
+    releaseLease: (cap) => store.getState().releaseMutationLease(cap),
+    getDocuments: () => store.getState().session.documents,
+    getSnapshots: () => store.getState().session.signatureSnapshots ?? {},
+    getDateFormat: () => getDateFormat(),
+    resolveAssets: async (assetIds) => {
+      const assets: FlattenAssetMap = {};
+      for (const id of assetIds) {
+        const asset = await getAsset(id);
+        if (asset) assets[id] = asset.pngBytes;
+      }
+      return assets;
+    },
+    transitionOutput: (docId, status, error, cap) =>
+      store.getState().transitionDocumentOutput(docId, status, error, cap),
+    processFlatten: async (request, transfers, handlers, isCancelled) => {
+      onStatus?.('processing');
+      const worker = new Worker(
+        new URL('../workers/flatten.worker.ts', import.meta.url),
+        { type: 'module' }
+      );
+      try {
+        return await new Promise<ProcessFlattenOutcome>((resolve) => {
+          worker.onmessage = (event: MessageEvent<FlattenWorkerResponse>) => {
+            const msg = event.data;
+            if (isCancelled()) { resolve({ kind: 'cancelled' }); return; }
+            if (msg.kind === 'progress') {
+              handlers.onProgress(msg.docId, msg.done, msg.total);
+              onProgress?.(msg.done, msg.total);
+            } else if (msg.kind === 'error') {
+              if (msg.docId) {
+                handlers.onError(msg.docId, msg.message);
+              } else {
+                resolve({ kind: 'all-failed' });
+              }
+            } else if (msg.kind === 'done') {
+              resolve({ kind: 'success', output: msg.output, mime: msg.mime });
+            }
+          };
+          worker.onerror = () => { if (!isCancelled()) resolve({ kind: 'all-failed' }); };
+          worker.postMessage(request, transfers);
+        });
+      } finally {
+        worker.terminate();
+      }
+    },
+    deliverArtifact: async (artifact) => {
+      onStatus?.('delivering');
+      try {
+        const fileName = artifact.mime === 'application/zip'
+          ? batchZipFileName()
+          : 'signed.pdf';
+        downloadBlob(new Blob([artifact.output], { type: artifact.mime }), fileName);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    confirmBatchSigned: (docIds, cap) =>
+      store.getState().confirmBatchSigned([...docIds], cap)
+  };
+
+  return new BatchSigning(ports);
+}

@@ -161,6 +161,9 @@ export const STRINGS = {
     batchDone: (count: number) => `Done. ${count} document${count === 1 ? '' : 's'} signed.`,
     batchFailed: 'Could not finish this batch.',
     batchFailedAll: 'Could not sign any of these PDFs.',
+    batchCancelled: 'Batch signing cancelled.',
+    batchDeliveryFailed: 'Could not deliver the signed documents.',
+    batchNoEligible: 'No documents are ready to sign.',
     needsReviewMissingPage: 'Needs review — this document is missing a template page.',
     needsReviewAspect: 'Differs from template — review.',
     needsReviewMissingSignature: 'Needs review — a signature image could not be recovered.'
