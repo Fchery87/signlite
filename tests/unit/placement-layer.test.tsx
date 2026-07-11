@@ -1,4 +1,4 @@
-import { createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { PlacementLayer } from '../../src/components/editor/PlacementLayer';
 import { PlacedElement } from '../../src/components/editor/PlacedElement';
 import { sessionStoreTestHarness } from '../../src/stores/session';
@@ -256,9 +256,11 @@ describe('placement layer', () => {
     expect(screen.getByRole('button', { name: 'Resize se' })).toBeDisabled();
     const placementButton = screen.getAllByRole('button').find((button) => button.getAttribute('aria-disabled') === 'true');
     if (!placementButton) throw new Error('Expected locked Placement button');
-    dispatchPointer(placementButton, 'pointerdown', 8, 20, 10);
-    dispatchPointer(window, 'pointermove', 8, 60, 40);
-    dispatchPointer(window, 'pointerup', 8, 60, 40);
+    act(() => {
+      dispatchPointer(placementButton, 'pointerdown', 8, 20, 10);
+      dispatchPointer(window, 'pointermove', 8, 60, 40);
+      dispatchPointer(window, 'pointerup', 8, 60, 40);
+    });
     fireEvent.keyDown(window, { key: 'ArrowRight' });
     fireEvent.keyDown(window, { key: 'Delete' });
     fireEvent.keyDown(window, { key: 'd', ctrlKey: true });
@@ -273,7 +275,7 @@ describe('placement layer', () => {
     expect(getDateFormat()).toBe('MMM d, yyyy');
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(sessionStoreTestHarness.getState().selectedPlacementId).toBeNull();
-    expect(sessionStoreTestHarness.getState().releaseMutationLease(lease)).toBe(true);
+    act(() => { expect(sessionStoreTestHarness.getState().releaseMutationLease(lease)).toBe(true); });
   });
 
   it('offers duplicate, copy, and delete on any selected element', () => {

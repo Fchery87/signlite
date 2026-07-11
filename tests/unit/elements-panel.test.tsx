@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { ElementsPanel } from '../../src/components/editor/ElementsPanel';
 import { sessionStoreTestHarness } from '../../src/stores/session';
 
@@ -76,7 +76,7 @@ describe('elements panel', () => {
     expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(2);
     fireEvent.click(screen.getByText('Text — Signer name'));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'text-1' }));
-    expect(sessionStoreTestHarness.getState().releaseMutationLease(lease)).toBe(true);
+    act(() => { expect(sessionStoreTestHarness.getState().releaseMutationLease(lease)).toBe(true); });
   });
 
   it('shows an empty state when nothing is placed', () => {
