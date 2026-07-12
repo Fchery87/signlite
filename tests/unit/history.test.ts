@@ -134,7 +134,6 @@ describe('history session persistence', () => {
 
   it('propagates non-quota put failures', async () => {
     const db = await openSignliteDb();
-    const originalPut = db.put.bind(db);
     const put = vi.spyOn(db, 'put').mockRejectedValueOnce(new Error('disk failure'));
     await expect(saveSession({
       id: 'failed', createdAt: 1, updatedAt: 2, templatePlacements: [],
