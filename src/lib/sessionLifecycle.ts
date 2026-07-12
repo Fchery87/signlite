@@ -32,6 +32,15 @@ type RetainedPredecessor = { predecessorId: string; replacementId?: string };
 
 type LifecycleStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
+export class DurabilityCoordinator {
+  private tail: Promise<void> = Promise.resolve();
+
+  enqueue(operation: () => Promise<void>) {
+    this.tail = this.tail.catch(() => undefined).then(operation);
+    return this.tail;
+  }
+}
+
 type LifecycleDependencies = {
   startup: () => Promise<StartupResult>;
   save: (session: WorkSession) => Promise<SaveSessionOutcome>;
@@ -39,9 +48,11 @@ type LifecycleDependencies = {
   storage: LifecycleStorage | null;
   schedule: (callback: () => void, delay: number) => number;
   cancel: (handle: number) => void;
+  coordinator?: DurabilityCoordinator;
 };
 
 const RETAINED_PREDECESSOR_KEY = 'signlite:retained-predecessor';
+const productionDurabilityCoordinator = new DurabilityCoordinator();
 
 function readRetained(storage: LifecycleStorage | null): RetainedPredecessor | null {
   try {
@@ -83,13 +94,14 @@ export class ActiveSessionLifecycle {
   private lastRevision: number | null = null;
   private pendingSave: number | null = null;
   private generation = 0;
-  private operations: Promise<void> = Promise.resolve();
+  private readonly coordinator: DurabilityCoordinator;
   private disposed = false;
   private retained: RetainedPredecessor | null;
   private readonly listeners = new Set<(state: DurabilityState) => void>();
 
   constructor(private readonly deps: LifecycleDependencies) {
     this.retained = readRetained(deps.storage);
+    this.coordinator = deps.coordinator ?? new DurabilityCoordinator();
   }
 
   subscribe(listener: (state: DurabilityState) => void) {
@@ -154,7 +166,7 @@ export class ActiveSessionLifecycle {
   }
 
   private enqueue(generation: number, operation: () => Promise<void>) {
-    this.operations = this.operations.catch(() => undefined).then(async () => {
+    void this.coordinator.enqueue(async () => {
       if (this.disposed || generation !== this.generation) return;
       await operation();
     });
@@ -200,6 +212,7 @@ export function createActiveSessionLifecycle(): ActiveSessionLifecycle {
     clear: clearSession,
     storage: typeof localStorage === 'undefined' ? null : localStorage,
     schedule: (callback, delay) => window.setTimeout(callback, delay),
-    cancel: (handle) => window.clearTimeout(handle)
+    cancel: (handle) => window.clearTimeout(handle),
+    coordinator: productionDurabilityCoordinator
   });
 }

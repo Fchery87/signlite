@@ -10,7 +10,7 @@ vi.mock('../../src/db/history', () => dbMocks);
 vi.mock('../../src/db/signatures', () => sigMocks);
 vi.mock('../../src/lib/normalizeSession', () => normalizeMock);
 
-import { ActiveSessionLifecycle, startupAndDiscover } from '../../src/lib/sessionLifecycle';
+import { ActiveSessionLifecycle, DurabilityCoordinator, startupAndDiscover } from '../../src/lib/sessionLifecycle';
 import type { WorkSession } from '../../src/db/schema';
 
 function makeSession(id = 's1', documents = 1): WorkSession {
@@ -24,7 +24,7 @@ function makeSession(id = 's1', documents = 1): WorkSession {
   };
 }
 
-function harness(options: { save?: (session: WorkSession) => Promise<'persistent' | 'memory'>; stored?: string | null } = {}) {
+function harness(options: { save?: (session: WorkSession) => Promise<'persistent' | 'memory'>; stored?: string | null; coordinator?: DurabilityCoordinator } = {}) {
   const callbacks = new Map<number, () => void>();
   let next = 1;
   let stored = options.stored ?? null;
@@ -40,7 +40,8 @@ function harness(options: { save?: (session: WorkSession) => Promise<'persistent
       removeItem: () => { stored = null; }
     },
     schedule: (callback) => { const id = next++; callbacks.set(id, callback); return id; },
-    cancel: (id) => { callbacks.delete(id); }
+    cancel: (id) => { callbacks.delete(id); },
+    coordinator: options.coordinator
   });
   const flush = async () => {
     const pending = [...callbacks.values()];
@@ -184,6 +185,29 @@ describe('ActiveSessionLifecycle durability', () => {
     resolveClear();
     await h.flush();
     expect(h.save).toHaveBeenCalledWith(expect.objectContaining({ id: 'same' }));
+  });
+
+  it('serializes a disposed controller save before a replacement controller save', async () => {
+    let resolveOld!: (value: 'persistent') => void;
+    const oldSave = new Promise<'persistent'>((resolve) => { resolveOld = resolve; });
+    const coordinator = new DurabilityCoordinator();
+    const save = vi.fn().mockReturnValueOnce(oldSave).mockResolvedValueOnce('persistent');
+    const old = harness({ save, coordinator });
+    const replacement = harness({ save, coordinator });
+    await old.lifecycle.startup();
+    await replacement.lifecycle.startup();
+    old.lifecycle.observeRevision(makeSession('same'), 1);
+    await old.flush();
+    expect(save).toHaveBeenCalledTimes(1);
+    old.lifecycle.dispose();
+    replacement.lifecycle.observeRevision({ ...makeSession('same'), updatedAt: 3 }, 2);
+    await replacement.flush();
+    expect(save).toHaveBeenCalledTimes(1);
+    resolveOld('persistent');
+    await old.flush();
+    await replacement.flush();
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls.map(([session]) => session.updatedAt)).toEqual([2, 3]);
   });
 
   it('dispose cancels pending work and prevents in-flight completion consequences', async () => {

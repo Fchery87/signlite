@@ -5,7 +5,7 @@ let useMemory = false;
 
 export type SaveSessionOutcome = 'persistent' | 'memory';
 
-export function isUsingMemoryHistory() { return useMemory; }
+export function isUsingMemoryHistory() { return useMemory || memorySessions.size > 0; }
 
 function isQuotaExceeded(error: unknown) {
   return error instanceof DOMException && error.name === 'QuotaExceededError';
@@ -13,9 +13,7 @@ function isQuotaExceeded(error: unknown) {
 
 async function getDb() {
   try {
-    const db = await openSignliteDb();
-    useMemory = false;
-    return db;
+    return await openSignliteDb();
   } catch {
     useMemory = true;
     return null;
@@ -31,8 +29,8 @@ export async function saveSession(session: WorkSession): Promise<SaveSessionOutc
   }
   try {
     await db.put('sessions', session);
-    useMemory = false;
     memorySessions.delete(session.id);
+    useMemory = memorySessions.size > 0;
     return 'persistent';
   } catch (error) {
     if (!isQuotaExceeded(error)) throw error;
@@ -60,6 +58,7 @@ export async function clearSession(id: string): Promise<void> {
   const db = await getDb();
   if (!db) return;
   await db.delete('sessions', id);
+  useMemory = memorySessions.size > 0;
 }
 
 export async function pruneOldSessions(cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000) {

@@ -1,4 +1,4 @@
-import { clearSession, loadLatestSession, resetHistoryFallbackForTests, saveSession } from '../../src/db/history';
+import { clearSession, isUsingMemoryHistory, loadLatestSession, resetHistoryFallbackForTests, saveSession } from '../../src/db/history';
 import { openSignliteDb, type WorkSession } from '../../src/db/schema';
 
 function serializeSession(session: WorkSession | null) {
@@ -126,8 +126,10 @@ describe('history session persistence', () => {
     };
     expect(await saveSession(session)).toBe('memory');
     expect((await loadLatestSession())?.id).toBe('memory-session');
+    expect(isUsingMemoryHistory()).toBe(true);
     put.mockImplementation(originalPut);
     expect(await saveSession({ ...session, updatedAt: 3 })).toBe('persistent');
+    expect(isUsingMemoryHistory()).toBe(false);
     expect(await loadLatestSession()).toEqual(expect.objectContaining({ updatedAt: 3 }));
     put.mockRestore();
   });
