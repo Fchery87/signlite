@@ -82,6 +82,7 @@ export const STRINGS = {
     pagesTitle: 'Pages',
     pagesTotal: (count: number) => `${count} total`,
     pageOf: (pageNumber: number, pageCount: number) => `Page ${Math.min(pageNumber, pageCount)} of ${pageCount}`,
+    zoomLabel: 'Zoom',
     pageLabel: (pageNumber: number) => `Page ${pageNumber}`,
     dateAdded: 'Date added to page.',
     textAdded: 'Text box added to page.',
@@ -194,5 +195,11 @@ export const STRINGS = {
   },
   warnings: {
     autosaveOff: "Storage is full. Autosave is off — your changes will not survive a page reload."
+  },
+  crash: {
+    title: 'Something went wrong.',
+    body: 'Your saved signatures and the current Work Session are stored in this browser, so reloading should pick up where you left off.',
+    reload: 'Reload',
+    dismiss: 'Try to continue'
   }
 } as const;

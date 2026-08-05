@@ -210,6 +210,44 @@ describe('ActiveSessionLifecycle durability', () => {
     expect(save.mock.calls.map(([session]) => session.updatedAt)).toEqual([2, 3]);
   });
 
+
+  it('clones the session once per debounce window, not once per revision', async () => {
+    const h = harness();
+    await h.lifecycle.startup();
+
+    const original = ArrayBuffer.prototype.slice;
+    let copies = 0;
+    ArrayBuffer.prototype.slice = function (this: ArrayBuffer, ...args: [number?, number?]) {
+      copies += 1;
+      return original.apply(this, args as never);
+    };
+    try {
+      // Stands in for a placement drag: one revision per pointer move.
+      for (let i = 1; i <= 50; i += 1) h.lifecycle.observeRevision(makeSession('drag'), i);
+    } finally {
+      ArrayBuffer.prototype.slice = original;
+    }
+    expect(copies).toBe(0); // nothing copied while the debounce is still pending
+
+    await h.flush();
+    expect(h.save).toHaveBeenCalledTimes(1);
+    expect(h.save.mock.calls[0][0].documents[0].pdfBytes.byteLength).toBe(8);
+  });
+
+  it('startup revives a disposed controller so a StrictMode remount keeps autosaving', async () => {
+    const h = harness();
+    await h.lifecycle.startup();
+
+    // React StrictMode: mount -> cleanup -> mount.
+    h.lifecycle.dispose();
+    await h.lifecycle.startup();
+
+    h.lifecycle.observeRevision(makeSession('after-remount'), 1);
+    await h.flush();
+    expect(h.save).toHaveBeenCalledTimes(1);
+    expect(h.save.mock.calls[0][0].id).toBe('after-remount');
+  });
+
   it('dispose cancels pending work and prevents in-flight completion consequences', async () => {
     let resolveSave!: (value: 'persistent') => void;
     const saving = new Promise<'persistent'>((resolve) => { resolveSave = resolve; });

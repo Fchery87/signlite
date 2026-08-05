@@ -67,7 +67,8 @@ export function renderStrokes(
   context.lineJoin = 'round';
 
   for (const stroke of strokes) {
-    if (stroke.length === 0) continue;
+    // A malformed stroke must never take the whole app down with it.
+    if (!Array.isArray(stroke) || stroke.length === 0) continue;
     context.beginPath();
     context.moveTo(stroke[0].x, stroke[0].y);
     if (stroke.length === 1) {
