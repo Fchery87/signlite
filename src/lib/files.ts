@@ -15,8 +15,9 @@ export function downloadBlob(blob: Blob, fileName: string) {
 export const MAX_FILE_SIZE = 100 * 1024 * 1024;
 export const MAX_SESSION_FILES = 50;
 export const MAX_SESSION_PAGES = 500;
+export const MAX_SESSION_BYTES = 500 * 1024 * 1024;
 
-export type FileValidationError = 'pdf-only' | 'too-large' | 'session-limit' | 'session-page-limit' | 'encrypted' | 'corrupt';
+export type FileValidationError = 'pdf-only' | 'too-large' | 'session-limit' | 'session-page-limit' | 'session-byte-limit' | 'encrypted' | 'corrupt';
 
 type CreateSessionDocumentOptions = {
   currentPageCount?: number;
@@ -29,10 +30,17 @@ class SessionPageLimitError extends Error {
   }
 }
 
-export function getFileValidationError(file: File, currentCount: number, acceptedCount: number): FileValidationError | null {
+export function getFileValidationError(
+  file: File,
+  currentCount: number,
+  acceptedCount: number,
+  currentBytes = 0,
+  acceptedBytes = 0
+): FileValidationError | null {
   if (file.type !== 'application/pdf') return 'pdf-only';
   if (file.size > MAX_FILE_SIZE) return 'too-large';
   if (currentCount + acceptedCount >= MAX_SESSION_FILES) return 'session-limit';
+  if (currentBytes + acceptedBytes + file.size > MAX_SESSION_BYTES) return 'session-byte-limit';
   return null;
 }
 

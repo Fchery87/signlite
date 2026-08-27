@@ -8,6 +8,7 @@ export type SignliteErrorCode =
   | 'pdf-only'
   | 'session-limit'
   | 'session-page-limit'
+  | 'session-byte-limit'
   | 'upload-invalid'
   | 'upload-too-large';
 
@@ -17,9 +18,6 @@ export const STRINGS = {
   workSessionLocked: (owner: string) => `Work Session locked by ${owner}. Editing is temporarily disabled.`,
   footerEmpty: 'Client-side by default.',
   footerLoaded: (count: number) => `${count} document${count === 1 ? '' : 's'} loaded.`,
-  previewPrimitives: 'Preview primitives',
-  uiPrimitivesTitle: 'UI primitives',
-  uiPrimitivesBody: 'Buttons, modal focus trap, and auto-dismissing toast are wired.',
   liveRegionLabel: 'Editor status',
   shortcuts: {
     open: 'Keyboard shortcuts',
@@ -40,7 +38,9 @@ export const STRINGS = {
     title: 'Drop a PDF anywhere.',
     subtitle: 'Or choose files.',
     chooseFiles: 'Choose files',
-    loadingTitle: 'Loading files…'
+    loadingTitle: 'Loading files…',
+    loading: 'Loading…',
+    loaded: (pageCount: number) => `Ready, ${pageCount} page${pageCount === 1 ? '' : 's'}.`
   },
   resumePrompt: 'Resume last session?',
   startFresh: 'Start fresh',
@@ -186,6 +186,7 @@ export const STRINGS = {
     'pdf-only': 'PDF only for now.',
     'session-limit': 'Session limit is 50 documents.',
     'session-page-limit': 'Session limit is 500 pages total.',
+    'session-byte-limit': 'Session limit is 500 MB of PDFs total.',
     'upload-invalid': 'PNG or JPEG only, up to 10 MB.',
     'upload-too-large': 'PNG or JPEG only, up to 10 MB.'
   } satisfies Record<SignliteErrorCode, string>,

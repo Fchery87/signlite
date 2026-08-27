@@ -4,17 +4,23 @@ import { STRINGS } from '../lib/strings';
 import { createSessionDocument, getFileValidationError } from '../lib/files';
 import { Button } from './ui';
 
+type IntakeItem =
+  | { id: string; fileName: string; status: 'loading' }
+  | { id: string; fileName: string; status: 'accepted'; pageCount: number }
+  | { id: string; fileName: string; status: 'rejected'; reason: string };
+
 type DropZoneProps = {
   currentDocumentCount: number;
   currentPageCount: number;
+  currentByteCount?: number;
   onDocumentsAccepted: (documents: SessionDocument[]) => void;
   onToast: (message: string) => void;
 };
 
-export function DropZone({ currentDocumentCount, currentPageCount, onDocumentsAccepted, onToast }: DropZoneProps) {
+export function DropZone({ currentDocumentCount, currentPageCount, currentByteCount = 0, onDocumentsAccepted, onToast }: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [loadingNames, setLoadingNames] = useState<string[]>([]);
+  const [intakeItems, setIntakeItems] = useState<IntakeItem[]>([]);
 
   const overlayClassName = useMemo(
     () => (isDragging ? 'border-accent bg-accent-subtle text-ink' : 'border-line bg-surface text-ink'),
@@ -25,23 +31,38 @@ export function DropZone({ currentDocumentCount, currentPageCount, onDocumentsAc
     const files = Array.from(fileList ?? []);
     if (files.length === 0) return;
 
-    setLoadingNames(files.map((file) => file.name));
+    const items = files.map((file, index) => ({
+      id: `${file.name}-${file.lastModified}-${index}`,
+      fileName: file.name,
+      status: 'loading' as const
+    }));
+    setIntakeItems(items);
+    const updateItem = (index: number, item: IntakeItem) => {
+      setIntakeItems((current) => current.map((entry, entryIndex) => entryIndex === index ? item : entry));
+    };
 
     const accepted: SessionDocument[] = [];
     let acceptedPageCount = 0;
+    let acceptedByteCount = 0;
 
-    for (const file of files) {
-      const validationError = getFileValidationError(file, currentDocumentCount, accepted.length);
+    for (const [index, file] of files.entries()) {
+      const validationError = getFileValidationError(file, currentDocumentCount, accepted.length, currentByteCount, acceptedByteCount);
       if (validationError === 'pdf-only') {
-        onToast(`${file.name} — ${STRINGS.errors['pdf-only']}`);
+        const reason = STRINGS.errors['pdf-only'];
+        updateItem(index, { ...items[index], status: 'rejected', reason });
+        onToast(`${file.name} — ${reason}`);
         continue;
       }
       if (validationError === 'too-large') {
-        onToast(STRINGS.edgeCases.fileTooLarge(file.name));
+        const reason = STRINGS.edgeCases.fileTooLarge(file.name);
+        updateItem(index, { ...items[index], status: 'rejected', reason });
+        onToast(reason);
         continue;
       }
-      if (validationError === 'session-limit') {
-        onToast(`${file.name} — ${STRINGS.errors['session-limit']}`);
+      if (validationError === 'session-byte-limit') {
+        const reason = STRINGS.errors['session-byte-limit'];
+        updateItem(index, { ...items[index], status: 'rejected', reason });
+        onToast(`${file.name} — ${reason}`);
         continue;
       }
 
@@ -52,13 +73,13 @@ export function DropZone({ currentDocumentCount, currentPageCount, onDocumentsAc
         });
         accepted.push(document);
         acceptedPageCount += document.pageCount;
+        acceptedByteCount += document.pdfBytes.byteLength;
+        updateItem(index, { ...items[index], status: 'accepted', pageCount: document.pageCount });
       } catch (error) {
         const code = error instanceof Error && error.message in STRINGS.errors ? (error.message as keyof typeof STRINGS.errors) : 'corrupt';
-        if (code === 'corrupt') {
-          onToast(STRINGS.edgeCases.corruptFile(file.name));
-          continue;
-        }
-        onToast(`${file.name} — ${STRINGS.errors[code]}`);
+        const reason = code === 'corrupt' ? STRINGS.edgeCases.corruptFile(file.name) : STRINGS.errors[code];
+        updateItem(index, { ...items[index], status: 'rejected', reason });
+        onToast(code === 'corrupt' ? reason : `${file.name} — ${reason}`);
       }
     }
 
@@ -66,7 +87,6 @@ export function DropZone({ currentDocumentCount, currentPageCount, onDocumentsAc
       onDocumentsAccepted(accepted);
     }
 
-    setLoadingNames([]);
     if (inputRef.current) {
       inputRef.current.value = '';
     }
@@ -114,12 +134,19 @@ export function DropZone({ currentDocumentCount, currentPageCount, onDocumentsAc
             {STRINGS.dropZone.chooseFiles}
           </Button>
         </div>
-        {loadingNames.length > 0 && (
-          <div className="surface-card mt-6 p-4 text-left">
+        {intakeItems.length > 0 && (
+          <div className="surface-card mt-6 p-4 text-left" aria-live="polite">
             <p className="text-body font-medium text-ink">{STRINGS.dropZone.loadingTitle}</p>
             <ul className="mt-2 space-y-1 text-body text-quiet">
-              {loadingNames.map((name) => (
-                <li key={name}>{name}</li>
+              {intakeItems.map((item) => (
+                <li key={item.id} className="flex justify-between gap-4">
+                  <span className="truncate">{item.fileName}</span>
+                  <span className="shrink-0">
+                    {item.status === 'loading' ? STRINGS.dropZone.loading : null}
+                    {item.status === 'accepted' ? STRINGS.dropZone.loaded(item.pageCount) : null}
+                    {item.status === 'rejected' ? item.reason : null}
+                  </span>
+                </li>
               ))}
             </ul>
           </div>

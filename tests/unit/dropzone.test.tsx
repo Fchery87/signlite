@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { DropZone } from '../../src/components/DropZone';
 
 const { createSessionDocument } = vi.hoisted(() => ({
@@ -47,9 +47,11 @@ describe('DropZone', () => {
       expect(onDocumentsAccepted).toHaveBeenCalledWith([
         expect.objectContaining({ fileName: 'lease.pdf' })
       ]);
+      expect(screen.getByText('Ready, 1 page.')).toBeVisible();
     });
 
     expect(onToast).toHaveBeenCalledWith('lease.docx — PDF only for now.');
+    expect(screen.getByText('PDF only for now.')).toBeVisible();
   });
 
   it('reports page-ceiling rejections without accepting the file', async () => {

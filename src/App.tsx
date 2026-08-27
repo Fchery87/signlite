@@ -1,6 +1,6 @@
 import { Suspense, lazy, useMemo, useState } from 'react';
 import { useSessionStore } from './stores/session';
-import { Button, Modal, Toast } from './components/ui';
+import { Button, Toast } from './components/ui';
 import { STRINGS } from './lib/strings';
 import { DropZone } from './components/DropZone';
 
@@ -16,7 +16,6 @@ export default function App() {
   const restoreSession = useSessionStore((state) => state.restoreSession);
   const resetSession = useSessionStore((state) => state.resetSession);
   const mutationLock = useSessionStore((state) => state.mutationLock);
-  const [modalOpen, setModalOpen] = useState(false);
   const [toasts, setToasts] = useState<Array<{ id: string; message: string }>>([
     { id: 'shell-ready', message: STRINGS.appShellReady }
   ]);
@@ -25,7 +24,8 @@ export default function App() {
   const historyWarning = lifecycle.warning;
 
   const documentCount = documents.length;
-  const pageCount = useMemo(() => documents.reduce((total, document) => total + document.pageCount, 0), [documents]);
+  const currentPageCount = useMemo(() => documents.reduce((total, document) => total + document.pageCount, 0), [documents]);
+  const currentByteCount = useMemo(() => documents.reduce((total, document) => total + document.pdfBytes.byteLength, 0), [documents]);
   const footerText = useMemo(
     () => (documentCount === 0 ? STRINGS.footerEmpty : STRINGS.footerLoaded(documentCount)),
     [documentCount]
@@ -43,9 +43,6 @@ export default function App() {
             <p className="text-caption uppercase text-quiet">{STRINGS.appName}</p>
             <p className="mt-1 text-body text-quiet">{footerText}</p>
           </div>
-          <Button variant="secondary" onClick={() => setModalOpen(true)}>
-            {STRINGS.previewPrimitives}
-          </Button>
         </div>
         {resumeSession && view === 'dropzone' && documents.length === 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-3">
@@ -77,7 +74,8 @@ export default function App() {
       {view === 'dropzone' ? (
         <DropZone
           currentDocumentCount={documentCount}
-          currentPageCount={pageCount}
+          currentPageCount={currentPageCount}
+          currentByteCount={currentByteCount}
           onDocumentsAccepted={addDocuments}
           onToast={pushToast}
         />
@@ -98,21 +96,6 @@ export default function App() {
           />
         ))}
       </div>
-      <Modal open={modalOpen} title={STRINGS.uiPrimitivesTitle} onClose={() => setModalOpen(false)}>
-        <div className="space-y-4">
-          <p className="text-body text-quiet">{STRINGS.uiPrimitivesBody}</p>
-          <div className="flex flex-wrap gap-3">
-            <Button>Primary</Button>
-            <Button variant="secondary">Secondary</Button>
-            <Button variant="ghost">Ghost</Button>
-          </div>
-          <div className="flex justify-end">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>
-              {STRINGS.buttons.close}
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

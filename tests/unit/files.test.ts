@@ -5,6 +5,7 @@ import {
   MAX_FILE_SIZE,
   MAX_SESSION_FILES,
   MAX_SESSION_PAGES,
+  MAX_SESSION_BYTES,
   signedPdfFileName,
   stemFromFileName
 } from '../../src/lib/files';
@@ -27,6 +28,11 @@ describe('file helpers', () => {
 
   it('exports the total page ceiling for batch sessions', () => {
     expect(MAX_SESSION_PAGES).toBe(500);
+  });
+
+  it('rejects files beyond the total byte limit', () => {
+    const file = new File([new Uint8Array(10)], 'large-session.pdf', { type: 'application/pdf' });
+    expect(getFileValidationError(file, 0, 0, MAX_SESSION_BYTES - 5, 0)).toBe('session-byte-limit');
   });
 
   it('extracts filename stems', () => {
