@@ -54,6 +54,25 @@ describe('DropZone', () => {
     expect(screen.getByText('PDF only for now.')).toBeVisible();
   });
 
+  it('reports aggregate byte-limit rejections without accepting the file', async () => {
+    const onDocumentsAccepted = vi.fn();
+    const onToast = vi.fn();
+    const { container } = render(
+      <DropZone currentDocumentCount={0} currentPageCount={0} currentByteCount={500 * 1024 * 1024 - 1} onDocumentsAccepted={onDocumentsAccepted} onToast={onToast} />
+    );
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const pdf = new File([new Uint8Array(2)], 'overflow.pdf', { type: 'application/pdf' });
+
+    fireEvent.change(input, { target: { files: [pdf] } });
+
+    await waitFor(() => {
+      expect(onToast).toHaveBeenCalledWith('overflow.pdf — Session limit is 500 MB of PDFs total.');
+      expect(screen.getByText('Session limit is 500 MB of PDFs total.')).toBeVisible();
+    });
+    expect(onDocumentsAccepted).not.toHaveBeenCalled();
+  });
+
   it('reports page-ceiling rejections without accepting the file', async () => {
     createSessionDocument.mockRejectedValue(new Error('session-page-limit'));
 

@@ -13,17 +13,17 @@ import {
 describe('file helpers', () => {
   it('rejects non-pdf files', () => {
     const file = new File(['hello'], 'note.txt', { type: 'text/plain' });
-    expect(getFileValidationError(file, 0, 0)).toBe('pdf-only');
+    expect(getFileValidationError(file, { documentCount: 0, pageCount: 0, byteCount: 0 })).toBe('pdf-only');
   });
 
   it('rejects files above the size limit', () => {
     const file = new File([new Uint8Array(MAX_FILE_SIZE + 1)], 'big.pdf', { type: 'application/pdf' });
-    expect(getFileValidationError(file, 0, 0)).toBe('too-large');
+    expect(getFileValidationError(file, { documentCount: 0, pageCount: 0, byteCount: 0 })).toBe('too-large');
   });
 
   it('rejects files beyond the session limit', () => {
     const file = new File(['a'], 'lease.pdf', { type: 'application/pdf' });
-    expect(getFileValidationError(file, MAX_SESSION_FILES, 0)).toBe('session-limit');
+    expect(getFileValidationError(file, { documentCount: MAX_SESSION_FILES, pageCount: 0, byteCount: 0 })).toBe('session-limit');
   });
 
   it('exports the total page ceiling for batch sessions', () => {
@@ -32,7 +32,7 @@ describe('file helpers', () => {
 
   it('rejects files beyond the total byte limit', () => {
     const file = new File([new Uint8Array(10)], 'large-session.pdf', { type: 'application/pdf' });
-    expect(getFileValidationError(file, 0, 0, MAX_SESSION_BYTES - 5, 0)).toBe('session-byte-limit');
+    expect(getFileValidationError(file, { documentCount: 0, pageCount: 0, byteCount: MAX_SESSION_BYTES - 5 })).toBe('session-byte-limit');
   });
 
   it('extracts filename stems', () => {

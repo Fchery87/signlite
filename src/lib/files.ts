@@ -17,6 +17,12 @@ export const MAX_SESSION_FILES = 50;
 export const MAX_SESSION_PAGES = 500;
 export const MAX_SESSION_BYTES = 500 * 1024 * 1024;
 
+export type SessionResourceBudget = {
+  documentCount: number;
+  pageCount: number;
+  byteCount: number;
+};
+
 export type FileValidationError = 'pdf-only' | 'too-large' | 'session-limit' | 'session-page-limit' | 'session-byte-limit' | 'encrypted' | 'corrupt';
 
 type CreateSessionDocumentOptions = {
@@ -32,15 +38,13 @@ class SessionPageLimitError extends Error {
 
 export function getFileValidationError(
   file: File,
-  currentCount: number,
-  acceptedCount: number,
-  currentBytes = 0,
-  acceptedBytes = 0
+  budget: SessionResourceBudget
 ): FileValidationError | null {
   if (file.type !== 'application/pdf') return 'pdf-only';
   if (file.size > MAX_FILE_SIZE) return 'too-large';
-  if (currentCount + acceptedCount >= MAX_SESSION_FILES) return 'session-limit';
-  if (currentBytes + acceptedBytes + file.size > MAX_SESSION_BYTES) return 'session-byte-limit';
+  if (budget.documentCount >= MAX_SESSION_FILES) return 'session-limit';
+  if (budget.pageCount > MAX_SESSION_PAGES) return 'session-page-limit';
+  if (budget.byteCount + file.size > MAX_SESSION_BYTES) return 'session-byte-limit';
   return null;
 }
 

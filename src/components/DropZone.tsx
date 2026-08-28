@@ -46,7 +46,11 @@ export function DropZone({ currentDocumentCount, currentPageCount, currentByteCo
     let acceptedByteCount = 0;
 
     for (const [index, file] of files.entries()) {
-      const validationError = getFileValidationError(file, currentDocumentCount, accepted.length, currentByteCount, acceptedByteCount);
+      const validationError = getFileValidationError(file, {
+        documentCount: currentDocumentCount + accepted.length,
+        pageCount: currentPageCount + acceptedPageCount,
+        byteCount: currentByteCount + acceptedByteCount
+      });
       if (validationError === 'pdf-only') {
         const reason = STRINGS.errors['pdf-only'];
         updateItem(index, { ...items[index], status: 'rejected', reason });
