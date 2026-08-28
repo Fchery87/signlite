@@ -68,16 +68,21 @@ function ThumbnailItem({ pdf, documentId, pageIndex, isActive, onSelectPage }: T
       type="button"
     >
       <div className="text-caption font-medium uppercase text-quiet">{STRINGS.editor.pageLabel(pageIndex + 1)}</div>
-      <div className="mt-2 overflow-hidden border border-line bg-mist">
+      <div className="relative mt-2 overflow-hidden border border-line bg-mist">
         {error ? (
           <div className="flex h-36 items-center justify-center text-caption text-quiet">{STRINGS.editor.pagePreviewUnavailable}</div>
-        ) : isLoading ? (
-          <div className="flex h-36 flex-col items-center justify-center gap-2 px-3">
-            <div className="skeleton-block h-24 w-full" />
-            <span className="text-caption text-quiet">{STRINGS.loading.thumbnail}</span>
-          </div>
         ) : (
-          <canvas ref={canvasRef} className="block h-auto w-full" />
+          <>
+            {/* The canvas stays mounted so the draw effect can reach it; the
+                skeleton covers it until the first paint lands. */}
+            <canvas ref={canvasRef} className="block h-auto w-full" />
+            {isLoading && (
+              <div className="absolute inset-0 flex h-36 flex-col items-center justify-center gap-2 bg-mist px-3">
+                <div className="skeleton-block h-24 w-full" />
+                <span className="text-caption text-quiet">{STRINGS.loading.thumbnail}</span>
+              </div>
+            )}
+          </>
         )}
       </div>
     </button>

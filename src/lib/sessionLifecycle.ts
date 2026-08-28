@@ -120,6 +120,10 @@ export class ActiveSessionLifecycle {
   }
 
   async startup() {
+    // startup() is the mount half of the dispose() pair. React StrictMode runs
+    // mount -> cleanup -> mount, so an instance must be usable again after
+    // dispose() or autosave stays dead for the life of the tab.
+    this.disposed = false;
     const result = await this.deps.startup();
     if (this.disposed) return;
     this.update({
@@ -158,9 +162,13 @@ export class ActiveSessionLifecycle {
       return;
     }
 
-    const snapshot = cloneSession(session);
+    // Clone inside the debounce, not per revision. Every pointer move during a
+    // placement drag lands here, and cloning eagerly copied every pdfBytes buffer
+    // in the Work Session on each one. The captured session is already an
+    // immutable snapshot, so deferring the copy preserves the same bytes.
     this.pendingSave = this.deps.schedule(() => {
       this.pendingSave = null;
+      const snapshot = cloneSession(session);
       this.enqueue(generation, async () => this.persist(snapshot, generation));
     }, 500);
   }

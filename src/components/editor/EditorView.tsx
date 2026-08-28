@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Modal } from '../ui';
+import { Button, Modal, isAnyModalOpen } from '../ui';
 import { BatchPanel } from '../batch/BatchPanel';
 import { ApplyToAll } from '../batch/ApplyToAll';
 import { useSessionStore } from '../../stores/session';
@@ -47,6 +47,30 @@ const shortcutRows = [
 type EditorViewProps = {
   onToast: (message: string) => void;
 };
+
+/**
+ * Undo glyph; `mirrored` flips it into the redo direction.
+ * The explicit box and shrink-0 matter: as a flex child the SVG collapses to 0 width.
+ */
+function HistoryIcon({ mirrored = false }: { mirrored?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className="h-[15px] w-[15px] shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+      style={mirrored ? { transform: 'scaleX(-1)' } : undefined}
+    >
+      <path d="M3.2 6.6h6.3a3.4 3.4 0 0 1 0 6.8H6.4" />
+      <path d="M5.9 3.9 3.2 6.6l2.7 2.7" />
+    </svg>
+  );
+}
 
 function isEditableTarget(target: EventTarget | null) {
   return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
@@ -236,7 +260,10 @@ export function EditorView({ onToast }: EditorViewProps) {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (isEditableTarget(event.target)) {
+      // A dialog owns the keyboard while it is open. Without this, Ctrl+Z while
+      // drawing a signature undoes Work Session placements instead of a pen stroke,
+      // and Ctrl+S downloads the document from under the user.
+      if (isEditableTarget(event.target) || isAnyModalOpen()) {
         return;
       }
 
@@ -323,32 +350,64 @@ export function EditorView({ onToast }: EditorViewProps) {
           />
         </aside>
 
-        <main className="surface-card flex min-h-0 flex-col shadow-panel">
-          <div className="flex items-center justify-between gap-4 border-b border-line px-6 py-4">
-            <div>
-              <h1 className="text-h1 text-ink">{selectedDocument.fileName}</h1>
+        <main className="surface-card flex min-h-0 min-w-0 flex-col shadow-panel">
+          {/* Document identity leads and truncates; the control cluster never shrinks
+              and wraps to its own line rather than spilling past the card edge. */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-line px-6 py-4">
+            <div className="min-w-[9rem] flex-1 basis-0">
+              <h1 className="truncate text-h1 text-ink" title={selectedDocument.fileName}>
+                {selectedDocument.fileName}
+              </h1>
               <p className="mt-1 text-body text-quiet">{STRINGS.editor.pageOf(activePage + 1, selectedDocument.pageCount)}</p>
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" onClick={() => setShortcutOpen(true)}>
+            <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+              <Button
+                variant="ghost"
+                className="w-[30px] px-0"
+                aria-label={STRINGS.shortcuts.open}
+                onClick={() => setShortcutOpen(true)}
+              >
                 ?
               </Button>
-              <Button variant="ghost" onClick={undo} disabled={!canUndo || mutationLocked}>
-                {STRINGS.buttons.undo}
-              </Button>
-              <Button variant="ghost" onClick={redo} disabled={!canRedo || mutationLocked}>
-                {STRINGS.buttons.redo}
-              </Button>
-              {zoomOptions.map((option) => (
+              <div className="flex items-center gap-1">
                 <Button
-                  key={option.label}
-                  type="button"
-                  variant={zoom === option.value ? 'primary' : 'secondary'}
-                  onClick={() => setZoom(option.value)}
+                  variant="ghost"
+                  className="w-[30px] px-0"
+                  aria-label={STRINGS.buttons.undo}
+                  title={STRINGS.buttons.undo}
+                  onClick={undo}
+                  disabled={!canUndo || mutationLocked}
                 >
-                  {option.label}
+                  <HistoryIcon />
                 </Button>
-              ))}
+                <Button
+                  variant="ghost"
+                  className="w-[30px] px-0"
+                  aria-label={STRINGS.buttons.redo}
+                  title={STRINGS.buttons.redo}
+                  onClick={redo}
+                  disabled={!canRedo || mutationLocked}
+                >
+                  <HistoryIcon mirrored />
+                </Button>
+              </div>
+              {/* One setting, three options — a segmented group says that better than
+                  three peer buttons, and costs far less horizontal room. */}
+              <div role="group" aria-label={STRINGS.editor.zoomLabel} className="flex items-center rounded-md border border-line p-[2px]">
+                {zoomOptions.map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    aria-pressed={zoom === option.value}
+                    onClick={() => setZoom(option.value)}
+                    className={`focus-ring inline-flex h-[26px] items-center justify-center rounded-sm px-[10px] text-body font-medium transition-colors duration-100 ease-out ${
+                      zoom === option.value ? 'bg-accent text-white' : 'text-quiet hover:bg-sunken hover:text-ink'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
               <Button
                 onClick={() => void handleDownload()}
                 disabled={isDownloading || !hasPlacements || mutationLocked}

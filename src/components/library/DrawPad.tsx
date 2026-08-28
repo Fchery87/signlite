@@ -34,6 +34,20 @@ export function DrawPad({ open, onClose, onSaved, onToast }: DrawPadProps) {
     }
   }, [open]);
 
+  // Undo the last pen stroke. Without this the shortcut falls through to the
+  // editor and undoes the Work Session instead.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setStrokes((current) => current.slice(0, -1));
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [open]);
+
   const label = useMemo(() => (kind === 'signature' ? 'Signature' : 'Initials'), [kind]);
 
   const toCanvasPoint = (event: PointerEvent | ReactPointerEvent<HTMLCanvasElement>) => {
@@ -61,10 +75,14 @@ export function DrawPad({ open, onClose, onSaved, onToast }: DrawPadProps) {
     if (!drawingRef.current || !draftStrokeRef.current) return;
     const point = toCanvasPoint(event);
     if (!point) return;
-    draftStrokeRef.current = [...draftStrokeRef.current, point];
+    // Capture the extended stroke here. React runs this updater at render time, by
+    // which point finishStroke (pointerup/leave/cancel, which can land in the same
+    // batch as this move) may have already cleared the ref.
+    const extended: DrawStroke = [...draftStrokeRef.current, point];
+    draftStrokeRef.current = extended;
     setStrokes((current) => {
       if (current.length === 0) return current;
-      return [...current.slice(0, -1), draftStrokeRef.current as DrawStroke];
+      return [...current.slice(0, -1), extended];
     });
   };
 

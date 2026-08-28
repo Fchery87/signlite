@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from 'react';
 import { Button } from './Button';
 import { STRINGS } from '../../lib/strings';
+import { registerOpenModal } from './modalRegistry';
 
 type ModalProps = {
   open: boolean;
@@ -12,6 +13,11 @@ type ModalProps = {
 export function Modal({ open, title, onClose, children }: ModalProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    return registerOpenModal();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
