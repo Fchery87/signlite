@@ -77,14 +77,18 @@ function cloneSession(session: WorkSession): WorkSession {
     ...session,
     documents: session.documents.map((document) => ({
       ...document,
-      pdfBytes: document.pdfBytes.slice(0),
+      // Source PDF buffers are immutable after intake. Keep the reference here
+      // and let IndexedDB perform its structured clone during save. Copying
+      // every source buffer during a batch status update creates avoidable
+      // main-thread long tasks.
+      pdfBytes: document.pdfBytes,
       pageSizes: document.pageSizes.map((page) => ({ ...page })),
       placements: document.placements.map((placement) => ({ ...placement }))
     })),
     templatePlacements: session.templatePlacements.map((placement) => ({ ...placement })),
     signatureSnapshots: Object.fromEntries(Object.entries(session.signatureSnapshots ?? {}).map(([id, snapshot]) => [
       id,
-      { ...snapshot, pngBytes: snapshot.pngBytes.slice(0) }
+      { ...snapshot, pngBytes: snapshot.pngBytes }
     ]))
   };
 }

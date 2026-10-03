@@ -4,7 +4,7 @@
 
 This repository now includes a static-hosting workflow skeleton in `.github/workflows/deploy.yml`.
 
-**Not yet complete:** this task still needs a real hosting target, the production URL, and a manual verification pass that signs a real document with the Network tab open and silent.
+The repository deployment workflow is complete and targets GitHub Pages. The task remains operationally pending until the workflow runs on `main`, a public URL is recorded, and a real-document verification pass is completed.
 
 ## Recommended host
 
@@ -88,3 +88,11 @@ Hostinger shared hosting is also a viable deployment target for this project bec
 ## Verification log
 
 - Pending: production verification has not been run from this environment.
+
+### Acceptance record
+
+Complete this after deployment:
+
+| Date | URL | Browser | Real PDF signed | Network tab silent | Result |
+| --- | --- | --- | --- | --- | --- |
+| pending | pending | pending | pending | pending | pending |

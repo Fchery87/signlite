@@ -16,6 +16,8 @@ Use this log for the 30-day exclusive-use test from TASK-040.
 - Delta: pending real-world run
 - Notes: TASK-029 requires a founder-run real batch timing check that is not available in this environment.
 
+Synthetic validation is recorded in `docs/batch-performance.md`; it is not a substitute for the founder's real batch timing.
+
 ## Daily entries
 
 | Date | Documents signed in SignLite | Fallbacks to old tool | Notes |
@@ -35,3 +37,10 @@ Use this log for the 30-day exclusive-use test from TASK-040.
   - None
 - Follow-up:
   - None
+
+## Acceptance checklist
+
+- [ ] Run one real batch through SignLite.
+- [ ] Run the same batch through the previous tool.
+- [ ] Record both elapsed times above.
+- [ ] Continue one dated entry for each day of the 30-day exclusive-use test.

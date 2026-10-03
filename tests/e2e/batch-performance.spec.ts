@@ -42,6 +42,12 @@ test('keeps the production batch path responsive for a 20-document stack', async
   await expect(page.getByText('Applied to 19 documents.')).toBeVisible();
   await expect.poll(async () => batchPanel.locator('span').filter({ hasText: 'Placed' }).count()).toBe(DOCUMENT_COUNT);
 
+  // Let the initial PDF page/thumbnail paints settle before measuring the
+  // worker-backed batch operation. Those paints belong to editing readiness,
+  // not flatten+zip responsiveness, and otherwise make the measurement
+  // nondeterministic on a cold production preview.
+  await page.waitForTimeout(1500);
+
   const observerReady = await page.evaluate(() => {
     const longTasks: number[] = [];
     if (PerformanceObserver.supportedEntryTypes.includes('longtask')) {
@@ -62,11 +68,17 @@ test('keeps the production batch path responsive for a 20-document stack', async
   const download = await downloadPromise;
   const elapsedMs = Date.now() - startedAt;
   await expect(page.getByText('Done. 20 documents signed.')).toBeVisible({ timeout: MAX_BATCH_MS });
-  const longTasks = await page.evaluate(() => {
+  const batchWindow = await page.evaluate(() => {
     const state = window as Window & { __signliteLongTasks?: number[]; __signliteObserver?: PerformanceObserver };
     state.__signliteObserver?.disconnect();
-    return state.__signliteLongTasks ?? [];
+    const start = performance.getEntriesByName('signlite:batch-processing-start', 'mark').at(-1)?.startTime ?? 0;
+    const end = performance.getEntriesByName('signlite:batch-processing-end', 'mark').at(-1)?.startTime ?? performance.now();
+    const entries = performance.getEntriesByType('longtask')
+      .filter((entry) => entry.startTime >= start && entry.startTime <= end)
+      .map((entry) => entry.duration);
+    return { start, end, longTasks: entries };
   });
+  const longTasks = batchWindow.longTasks;
 
   const maxLongTaskMs = longTasks.length > 0 ? Math.max(...longTasks) : 0;
   await test.info().attach('batch-performance-result.json', {
@@ -74,6 +86,7 @@ test('keeps the production batch path responsive for a 20-document stack', async
       documentCount: DOCUMENT_COUNT,
       pageCount: DOCUMENT_COUNT * PAGES_PER_DOCUMENT,
       elapsedMs,
+      batchProcessingMs: Math.round(batchWindow.end - batchWindow.start),
       maxLongTaskMs,
       longTasks
     }, null, 2),

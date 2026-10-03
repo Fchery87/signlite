@@ -64,6 +64,25 @@ describe('signature store', () => {
     expect(restored.typedText).toBe('NN');
   });
 
+  it('requests persistent storage when saving a library item', async () => {
+    const persist = vi.fn().mockResolvedValue(true);
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: { persist }
+    });
+
+    await saveAsset({
+      kind: 'signature',
+      source: 'drawn',
+      pngBytes: new Uint8Array([1, 2]).buffer,
+      width: 20,
+      height: 10,
+      label: 'Durability check'
+    });
+
+    expect(persist).toHaveBeenCalledOnce();
+  });
+
   it('keeps quota-failed assets available for the current session', async () => {
     const quotaError = new DOMException('Quota exceeded', 'QuotaExceededError');
     const openDbSpy = vi.spyOn(schema, 'openSignliteDb').mockResolvedValue({
