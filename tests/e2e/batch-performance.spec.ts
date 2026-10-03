@@ -1,29 +1,15 @@
 import { expect, test } from '@playwright/test';
-import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { Buffer } from 'node:buffer';
+import { createPerformancePdf, pdfFixture } from './helpers/fixtures';
 
 const DOCUMENT_COUNT = 20;
-const PAGES_PER_DOCUMENT = 10;
 const MAX_BATCH_MS = 30_000;
-
-async function createPerformancePdf(label: string) {
-  const pdf = await PDFDocument.create();
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  for (let pageIndex = 0; pageIndex < PAGES_PER_DOCUMENT; pageIndex += 1) {
-    const page = pdf.addPage([612, 792]);
-    page.drawText(`${label} page ${pageIndex + 1}`, { x: 72, y: 700, size: 18, font });
-  }
-  return Buffer.from(await pdf.save({ useObjectStreams: false }));
-}
 
 test('keeps the production batch path responsive for a 20-document stack', async ({ page }) => {
   test.setTimeout(120_000);
   const fixtures = await Promise.all(
-    Array.from({ length: DOCUMENT_COUNT }, async (_, index) => ({
-      name: `performance-${String(index + 1).padStart(2, '0')}.pdf`,
-      mimeType: 'application/pdf',
-      buffer: await createPerformancePdf(`Performance ${index + 1}`)
-    }))
+    Array.from({ length: DOCUMENT_COUNT }, async (_, index) =>
+      pdfFixture(`performance-${String(index + 1).padStart(2, '0')}.pdf`, await createPerformancePdf(`Performance ${index + 1}`))
+    )
   );
 
   await page.goto('/');
@@ -84,7 +70,7 @@ test('keeps the production batch path responsive for a 20-document stack', async
   await test.info().attach('batch-performance-result.json', {
     body: JSON.stringify({
       documentCount: DOCUMENT_COUNT,
-      pageCount: DOCUMENT_COUNT * PAGES_PER_DOCUMENT,
+      pageCount: DOCUMENT_COUNT * 10,
       elapsedMs,
       batchProcessingMs: Math.round(batchWindow.end - batchWindow.start),
       maxLongTaskMs,

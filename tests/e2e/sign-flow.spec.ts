@@ -1,35 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { Buffer } from 'node:buffer';
-
-const SAMPLE_UPLOAD_PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGNgYGD4z8DAwMDEAAUAGCUBg0b07W8AAAAASUVORK5CYII=',
-  'base64'
-);
-
-async function createSamplePdf() {
-  const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([612, 792]);
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-  page.drawText('SignLite sign-flow fixture', {
-    x: 72,
-    y: 700,
-    size: 24,
-    font,
-    color: rgb(0.07, 0.09, 0.15)
-  });
-
-  page.drawText('Single-document signing should stay local.', {
-    x: 72,
-    y: 660,
-    size: 14,
-    font,
-    color: rgb(0.25, 0.3, 0.38)
-  });
-
-  return Buffer.from(await pdfDoc.save());
-}
+import { SAMPLE_UPLOAD_PNG, createSamplePdf } from './helpers/fixtures';
 
 test('completes a quiet single-doc sign flow with library inputs and keyboard download', async ({ page }) => {
   test.setTimeout(90000);

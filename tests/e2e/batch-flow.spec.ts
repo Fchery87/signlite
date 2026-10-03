@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { unzipSync } from 'fflate';
-import { PDFArray, PDFDocument, PDFRawStream, StandardFonts, decodePDFRawStream, rgb } from 'pdf-lib';
+import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 import { readFile } from 'node:fs/promises';
 import { Buffer } from 'node:buffer';
+import { createBatchPdf } from './helpers/fixtures';
 
 const BATCH_SENTINEL = 'SIGNLITE BATCH OK';
 const BATCH_SENTINEL_HEX = Buffer.from(BATCH_SENTINEL, 'utf8').toString('hex').toUpperCase();
@@ -19,32 +20,6 @@ function readPageContent(pdf: PDFDocument, pageIndex: number) {
     .filter((stream): stream is PDFRawStream => stream instanceof PDFRawStream)
     .map((stream) => Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1'))
     .join('\n');
-}
-
-async function createBatchPdf(label: string) {
-  const pdfDoc = await PDFDocument.create();
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-  for (let pageNumber = 1; pageNumber <= 2; pageNumber += 1) {
-    const page = pdfDoc.addPage([612, 792]);
-    page.drawText(`${label} — page ${pageNumber}`, {
-      x: 72,
-      y: 700,
-      size: 24,
-      font,
-      color: rgb(0.07, 0.09, 0.15)
-    });
-
-    page.drawText('Batch signing should stay local.', {
-      x: 72,
-      y: 660,
-      size: 14,
-      font,
-      color: rgb(0.25, 0.3, 0.38)
-    });
-  }
-
-  return Buffer.from(await pdfDoc.save());
 }
 
 test('restores a batch session and downloads a quiet signed zip', async ({ page }) => {

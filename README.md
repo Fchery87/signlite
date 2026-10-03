@@ -4,6 +4,11 @@ SignLite is a privacy-first PDF signing app that runs entirely in the browser.
 
 It is designed for fast single-document signing and batch signing without uploading files to a server. Documents, signatures, and work history stay local to the browser.
 
+## Requirements
+
+- Node.js 24 (the version CI pins and the version this repository is developed against)
+- npm 11
+
 ## Current status
 
 - Roadmap progress: **33/41 tasks complete**

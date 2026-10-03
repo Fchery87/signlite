@@ -11,13 +11,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - run: node --version
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm test
+      - run: node scripts/check-deploy-gate.mjs
+      - run: npm test -- --maxWorkers=2
       - run: npm run build
       - run: npm run verify:production
       - run: npm run test:e2e
