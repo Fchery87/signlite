@@ -255,4 +255,16 @@ describe('normalizeSession page geometry reconstruction', () => {
 
     expect(result.documents[0]?.pageGeometry).toBe(existing);
   });
+
+  it('preserves the stored updatedAt instead of refreshing it on discovery', async () => {
+    const session = makeSession([makeDoc('doc-1')], { updatedAt: 12345 });
+    const result = await normalizeSession(session);
+    expect(result.updatedAt).toBe(12345);
+  });
+
+  it('preserves the base storage revision through normalization', async () => {
+    const session = makeSession([makeDoc('doc-1')], { storageRevision: 9 });
+    const result = await normalizeSession(session);
+    expect(result.storageRevision).toBe(9);
+  });
 });

@@ -47,6 +47,7 @@ export const STRINGS = {
   },
   resumePrompt: 'Resume last session?',
   startFresh: 'Start fresh',
+  readOnly: 'Another tab is editing this Work Session. This view is read-only.',
   resume: 'Resume',
   buttons: {
     close: 'Close',

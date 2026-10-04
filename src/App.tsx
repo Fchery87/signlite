@@ -46,6 +46,9 @@ export default function App() {
               {lifecycle.status && lifecycle.status !== 'initializing' ? (
                 <p className="text-caption text-quiet" data-testid="durability-status">{STRINGS.durability[lifecycle.status]}</p>
               ) : null}
+              {lifecycle.authority === 'read-only' ? (
+                <p className="text-caption text-warning" data-testid="read-only-banner">{STRINGS.readOnly}</p>
+              ) : null}
             </div>
           </div>
         </div>

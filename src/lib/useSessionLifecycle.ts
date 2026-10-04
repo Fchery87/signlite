@@ -29,6 +29,13 @@ export function useSessionLifecycle({ session, contentRevision, resetSession }: 
     lifecycle.observeRevision(sessionRef.current, contentRevision);
   }, [contentRevision, lifecycle]);
 
+  // One editing lock per session identity. A changed id (Start Fresh, fork)
+  // releases the old lock and acquires the new one; contention downgrades the
+  // tab to read-only for that session.
+  useEffect(() => {
+    void lifecycle.assumeSession(sessionRef.current.id);
+  }, [lifecycle, session.id]);
+
   // Leave protection and flush-on-hide, registered only while work is
   // undurable. beforeunload only prevents navigation (browser-native
   // protection); an asynchronous save started during unload is not guaranteed

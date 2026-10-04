@@ -65,6 +65,9 @@ export interface WorkSession {
   templatePlacements: Placement[];
   /** Optional while reading legacy sessions; normalized to an empty map by the store. */
   signatureSnapshots?: SignatureSnapshotMap;
+  /** Optimistic-concurrency token written only by the history repository.
+   *  Independent of the in-memory content revision. Legacy records read as 0. */
+  storageRevision?: number;
 }
 
 export interface Prefs {
@@ -91,9 +94,13 @@ interface SignLiteDb extends DBSchema {
 
 let dbPromise: Promise<IDBPDatabase<SignLiteDb>> | null = null;
 
+/** The lowest database version this bundle can read. Old bundles below the
+ *  current version must stop and request refresh, never overwrite. */
+export const MIN_COMPATIBLE_DB_VERSION = 1;
+
 export async function openSignliteDb() {
   if (!dbPromise) {
-    dbPromise = openDB<SignLiteDb>('signlite', 1, {
+    dbPromise = openDB<SignLiteDb>('signlite', MIN_COMPATIBLE_DB_VERSION, {
       upgrade(db) {
         const signatures = db.createObjectStore('signatures', { keyPath: 'id' });
         signatures.createIndex('by-kind', 'kind');
@@ -103,6 +110,20 @@ export async function openSignliteDb() {
         sessions.createIndex('by-updated-at', 'updatedAt');
 
         db.createObjectStore('prefs');
+      },
+      // Another tab holds an older connection and is blocking this upgrade.
+      blocked() {
+      },
+      // This (older) connection is blocking another tab's upgrade; close so
+      // the upgrade can proceed.
+      blocking() {
+        void dbPromise?.then((db) => db.close());
+        dbPromise = null;
+      },
+      // The browser killed the connection (e.g. under storage pressure); the
+      // next open re-establishes it instead of reusing a dead handle.
+      terminated() {
+        dbPromise = null;
       }
     });
   }

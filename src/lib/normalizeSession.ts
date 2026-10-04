@@ -156,7 +156,6 @@ export async function normalizeSession(session: WorkSession): Promise<WorkSessio
     ...session,
     documents,
     templatePlacements,
-    signatureSnapshots: snapshots,
-    updatedAt: Date.now()
+    signatureSnapshots: snapshots
   };
 }

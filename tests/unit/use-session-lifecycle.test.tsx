@@ -28,8 +28,9 @@ function controller() {
   const unsubscribe = vi.fn();
   return {
     subscribe: vi.fn(() => unsubscribe),
-    getState: vi.fn(() => ({ ready: true, candidate: session('predecessor'), mode: 'persistent' as const, warning: null })),
+    getState: vi.fn(() => ({ ready: true, candidate: session('predecessor'), mode: 'persistent' as const, warning: null, authority: 'owner' as const })),
     startup: vi.fn().mockResolvedValue(undefined),
+    assumeSession: vi.fn().mockResolvedValue(undefined),
     observeRevision: vi.fn(),
     dismissCandidate: vi.fn(),
     startFresh: vi.fn(),
@@ -43,15 +44,16 @@ type TimerHarness = {
   drain: () => Promise<void>;
 };
 
-function realLifecycle(options: { startup?: () => Promise<StartupResult>; save?: (session: WorkSession) => Promise<'persistent' | 'memory'> } = {}) {
+function realLifecycle(options: { startup?: () => Promise<StartupResult>; commit?: (session: WorkSession) => Promise<unknown> } = {}) {
   const timers = new Map<number, () => void>();
   let next = 1;
   const fallbackStartup = async (): Promise<StartupResult> => ({ candidate: null, storageAvailable: true });
-  const save = vi.fn(options.save ?? (async () => 'persistent' as const));
+  const commit = vi.fn(options.commit ?? (async () => ({ status: 'saved' as const, storageRevision: 1 })));
   const lifecycle = new ActiveSessionLifecycle({
     startup: options.startup ?? fallbackStartup,
-    save,
-    clear: vi.fn(async () => undefined),
+    commit: commit as never,
+    deleteRecord: vi.fn(async () => 'deleted' as const),
+    acquireOwnership: vi.fn(async () => ({ status: 'owned' as const, release: async () => undefined })),
     storage: null,
     schedule: (callback) => {
       const id = next;
@@ -75,7 +77,7 @@ function realLifecycle(options: { startup?: () => Promise<StartupResult>; save?:
       });
     }
   };
-  return { lifecycle, save, ...harness };
+  return { lifecycle, commit, ...harness };
 }
 
 describe('useSessionLifecycle', () => {
@@ -103,7 +105,7 @@ describe('useSessionLifecycle', () => {
 
   it('saves the latest revision observed before startup resolves, without another edit', async () => {
     let resolveStartup!: (value: StartupResult) => void;
-    const { lifecycle, save, flushDebounces, drain } = realLifecycle({
+    const { lifecycle, commit, flushDebounces, drain } = realLifecycle({
       startup: () => new Promise<StartupResult>((resolve) => { resolveStartup = resolve; })
     });
     mocks.createActiveSessionLifecycle.mockReturnValue(lifecycle);
@@ -115,29 +117,30 @@ describe('useSessionLifecycle', () => {
     // An edit lands while startup is still pending.
     rerender({ revision: 2 });
     await drain();
-    expect(save).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
 
     resolveStartup({ candidate: null, storageAvailable: true });
     await drain();
     // No further edit: the buffered latest revision must save on its own.
     flushDebounces();
     await drain();
-    expect(save).toHaveBeenCalledTimes(1);
-    expect(save.mock.calls[0][0].id).toBe('before-startup');
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(commit.mock.calls[0][0].id).toBe('before-startup');
   });
 
   it('keeps autosaving after a StrictMode mount-cleanup-mount cycle', async () => {
     const timers = new Map<number, () => void>();
     let next = 1;
-    const save = vi.fn(async (session: WorkSession) => {
+    const commit = vi.fn(async (session: WorkSession) => {
       void session;
-      return 'persistent' as const;
+      return { status: 'saved' as const, storageRevision: 1 };
     });
     const startup = vi.fn(async (): Promise<StartupResult> => ({ candidate: null, storageAvailable: true }));
     const lifecycle = new ActiveSessionLifecycle({
       startup,
-      save,
-      clear: vi.fn(async () => undefined),
+      commit,
+      deleteRecord: vi.fn(async () => 'deleted' as const),
+      acquireOwnership: vi.fn(async () => ({ status: 'owned' as const, release: async () => undefined })),
       storage: null,
       schedule: (callback) => {
         const id = next;
@@ -170,20 +173,20 @@ describe('useSessionLifecycle', () => {
     await act(async () => {
       for (let index = 0; index < 10; index += 1) await Promise.resolve();
     });
-    expect(save).toHaveBeenCalledTimes(1);
-    expect(save.mock.calls[0][0].id).toBe('strict');
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(commit.mock.calls[0][0].id).toBe('strict');
   });
 
   it('flushes the undurable revision when the tab hides', async () => {
-    const { lifecycle, save, drain } = realLifecycle();
+    const { lifecycle, commit, drain } = realLifecycle();
     mocks.createActiveSessionLifecycle.mockReturnValue(lifecycle);
 
-    const { result } = renderHook(
+    renderHook(
       ({ revision }) => useSessionLifecycle({ session: sessionWithDoc('hidden'), contentRevision: revision, resetSession: () => undefined }),
       { initialProps: { revision: 1 } }
     );
     await drain();
-    expect(save).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
 
     let hidden = true;
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
@@ -191,8 +194,8 @@ describe('useSessionLifecycle', () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
     await drain();
-    expect(save).toHaveBeenCalledTimes(1);
-    expect(save.mock.calls[0][0].id).toBe('hidden');
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(commit.mock.calls[0][0].id).toBe('hidden');
 
     hidden = false;
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
@@ -200,7 +203,28 @@ describe('useSessionLifecycle', () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
     await drain();
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('assumes ownership for each session id, including after Start Fresh changes it', async () => {
+    const lifecycle = controller();
+    mocks.createActiveSessionLifecycle.mockReturnValue(lifecycle);
+    const { rerender } = renderHook(({ current, revision }) => useSessionLifecycle({ session: current, contentRevision: revision, resetSession: () => undefined }), { initialProps: { current: session('first-id'), revision: 1 } });
+    await act(async () => {
+      for (let index = 0; index < 4; index += 1) await Promise.resolve();
+    });
+    expect(lifecycle.assumeSession).toHaveBeenCalledWith('first-id');
+    rerender({ current: session('second-id'), revision: 1 });
+    await act(async () => {
+      for (let index = 0; index < 4; index += 1) await Promise.resolve();
+    });
+    expect(lifecycle.assumeSession).toHaveBeenLastCalledWith('second-id');
+    // Edits do not re-assume ownership: only identity changes do.
+    rerender({ current: session('second-id'), revision: 2 });
+    await act(async () => {
+      for (let index = 0; index < 4; index += 1) await Promise.resolve();
+    });
+    expect(lifecycle.assumeSession).toHaveBeenCalledTimes(2);
   });
 
   it('registers beforeunload protection only while work is undurable', async () => {
