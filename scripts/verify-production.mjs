@@ -5,7 +5,8 @@ import { join, relative, resolve, sep } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const dist = resolve(root, 'dist');
-const receiptDir = resolve(root, 'test-results', 'readiness', 'R01');
+// Outside test-results/ so Playwright runs cannot wipe the receipt.
+const receiptDir = resolve(root, 'artifacts', 'readiness', 'R01');
 
 async function listFiles(dir) {
   const entries = await readdir(dir, { withFileTypes: true, recursive: true });

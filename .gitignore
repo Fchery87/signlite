@@ -35,3 +35,6 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Readiness evidence artifacts (regenerable; receipts live in docs/readiness/)
+artifacts/
