@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const dbMocks = vi.hoisted(() => ({
-  pruneOldSessions: vi.fn(), loadLatestSession: vi.fn(), saveSession: vi.fn(), clearSession: vi.fn(), isUsingMemoryHistory: vi.fn()
+  pruneOldSessions: vi.fn(), loadLatestSession: vi.fn(), saveSession: vi.fn(), clearSession: vi.fn(), isUsingMemoryHistory: vi.fn(), historyStorageProblem: vi.fn()
 }));
 const sigMocks = vi.hoisted(() => ({ hydrateSignaturePrefs: vi.fn(), isUsingMemoryStore: vi.fn() }));
 const normalizeMock = vi.hoisted(() => ({ normalizeSession: vi.fn() }));
@@ -24,14 +24,14 @@ function makeSession(id = 's1', documents = 1): WorkSession {
   };
 }
 
-function harness(options: { save?: (session: WorkSession) => Promise<'persistent' | 'memory'>; stored?: string | null; coordinator?: DurabilityCoordinator } = {}) {
+function harness(options: { save?: (session: WorkSession) => Promise<'persistent' | 'memory'>; stored?: string | null; coordinator?: DurabilityCoordinator; startup?: () => Promise<{ candidate: WorkSession | null; storageAvailable: boolean; storageProblem?: 'unavailable' | 'upgrade-blocked' | null }> } = {}) {
   const callbacks = new Map<number, () => void>();
   let next = 1;
   let stored = options.stored ?? null;
   const clear = vi.fn().mockResolvedValue(undefined);
   const save = vi.fn(options.save ?? (async () => 'persistent' as const));
   const lifecycle = new ActiveSessionLifecycle({
-    startup: async () => ({ candidate: null, storageAvailable: true }),
+    startup: options.startup ?? (async () => ({ candidate: null, storageAvailable: true })),
     save,
     clear,
     storage: {
@@ -73,6 +73,27 @@ describe('sessionLifecycle startupAndDiscover', () => {
   it('reports history fallback after discovery opens unavailable storage', async () => {
     dbMocks.isUsingMemoryHistory.mockReturnValue(true);
     expect((await startupAndDiscover()).storageAvailable).toBe(false);
+  });
+
+  it('reports upgrade-blocked storage as its own problem', async () => {
+    dbMocks.historyStorageProblem.mockReturnValue('upgrade-blocked');
+    const result = await startupAndDiscover();
+    expect(result.storageProblem).toBe('upgrade-blocked');
+    expect(result.storageAvailable).toBe(true);
+  });
+
+  it('survives a pruning failure and still discovers the candidate', async () => {
+    dbMocks.pruneOldSessions.mockRejectedValue(new Error('prune failed'));
+    dbMocks.loadLatestSession.mockResolvedValue(makeSession());
+    normalizeMock.normalizeSession.mockResolvedValue({ ...makeSession(), id: 'normalized' });
+    expect((await startupAndDiscover()).candidate?.id).toBe('normalized');
+  });
+
+  it('survives a preference hydration failure and still discovers the candidate', async () => {
+    sigMocks.hydrateSignaturePrefs.mockRejectedValue(new Error('prefs failed'));
+    dbMocks.loadLatestSession.mockResolvedValue(makeSession());
+    normalizeMock.normalizeSession.mockResolvedValue({ ...makeSession(), id: 'normalized' });
+    expect((await startupAndDiscover()).candidate?.id).toBe('normalized');
   });
 
   it('returns a normalized candidate and rejects malformed candidates safely', async () => {
@@ -268,6 +289,121 @@ describe('ActiveSessionLifecycle durability', () => {
     pending.lifecycle.dispose();
     await pending.flush();
     expect(pending.save).not.toHaveBeenCalled();
+  });
+
+  it('maps upgrade-blocked storage to the conflict status with visible copy', async () => {
+    const h = harness({
+      startup: async () => ({ candidate: null, storageAvailable: true, storageProblem: 'upgrade-blocked' as const })
+    });
+    await h.lifecycle.startup();
+    expect(h.lifecycle.getState().status).toBe('conflict');
+    expect(h.lifecycle.getState().warning).toContain('blocked');
+  });
+
+  it('starts in the initializing status and reports memory-only, never saved, when storage is unavailable', async () => {
+    const h = harness({
+      save: async () => 'memory' as const,
+      startup: async () => ({ candidate: null, storageAvailable: false, storageProblem: 'unavailable' as const })
+    });
+    expect(h.lifecycle.getState().status).toBe('initializing');
+    await h.lifecycle.startup();
+    expect(h.lifecycle.getState().status).toBe('memory-only');
+    h.lifecycle.observeRevision(makeSession('volatile'), 1);
+    await h.flush();
+    expect(h.save).toHaveBeenCalledTimes(1);
+    expect(h.lifecycle.getState().status).toBe('memory-only');
+  });
+
+  it('saves the revision observed before startup completes without another edit', async () => {
+    let resolveStartup!: (value: { candidate: WorkSession | null; storageAvailable: boolean }) => void;
+    const startup = vi.fn(
+      () => new Promise<{ candidate: WorkSession | null; storageAvailable: boolean }>((resolve) => { resolveStartup = resolve; })
+    );
+    const h = harness({ startup });
+    const settling = h.lifecycle.startup();
+    h.lifecycle.observeRevision(makeSession('before-startup'), 1);
+    resolveStartup({ candidate: null, storageAvailable: true });
+    await settling;
+    await h.flush();
+    expect(h.save).toHaveBeenCalledTimes(1);
+    expect(h.save.mock.calls[0][0].id).toBe('before-startup');
+    expect(h.lifecycle.getState().status).toBe('saved');
+  });
+
+  it('keeps the latest revision dirty until its own save transaction completes', async () => {
+    let resolveFirst!: (value: 'persistent') => void;
+    const first = new Promise<'persistent'>((resolve) => { resolveFirst = resolve; });
+    const h = harness({ save: vi.fn().mockReturnValueOnce(first).mockResolvedValue('persistent' as const) });
+    await h.lifecycle.startup();
+
+    h.lifecycle.observeRevision(makeSession('one'), 1);
+    await h.flush();
+    expect(h.lifecycle.getState().status).toBe('saving');
+
+    h.lifecycle.observeRevision(makeSession('two'), 2);
+    expect(h.lifecycle.getState().status).toBe('dirty');
+
+    resolveFirst('persistent');
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    expect(h.lifecycle.getState().durableRevision).toBe(1);
+    expect(h.lifecycle.getState().status).toBe('dirty');
+
+    await h.flush();
+    expect(h.lifecycle.getState().durableRevision).toBe(2);
+    expect(h.lifecycle.getState().status).toBe('saved');
+  });
+
+  it('flushLatest persists the undurable revision immediately', async () => {
+    let resolveSave!: (value: 'persistent') => void;
+    const h = harness({ save: () => new Promise<'persistent'>((resolve) => { resolveSave = resolve; }) });
+    await h.lifecycle.startup();
+    h.lifecycle.observeRevision(makeSession('pending'), 1);
+    expect(h.pending()).toBe(1);
+    expect(h.save).not.toHaveBeenCalled();
+    h.lifecycle.flushLatest();
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    expect(h.save).toHaveBeenCalledTimes(1);
+    expect(h.lifecycle.getState().status).toBe('saving');
+    resolveSave('persistent');
+    await h.flush();
+    expect(h.lifecycle.getState().status).toBe('saved');
+  });
+
+  it('flushLatest is a no-op once the latest revision is durable', async () => {
+    const h = harness();
+    await h.lifecycle.startup();
+    h.lifecycle.observeRevision(makeSession('done'), 1);
+    await h.flush();
+    expect(h.save).toHaveBeenCalledTimes(1);
+    h.lifecycle.flushLatest();
+    expect(h.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the error status with visible copy when a save throws and clears it after a durable save', async () => {
+    let fail = true;
+    const h = harness({ save: async () => { if (fail) throw new Error('disk'); return 'persistent' as const; } });
+    await h.lifecycle.startup();
+    h.lifecycle.observeRevision(makeSession('doomed'), 1);
+    await h.flush();
+    expect(h.lifecycle.getState().status).toBe('error');
+    expect(h.lifecycle.getState().warning).toContain('may not survive reload');
+    fail = false;
+    h.lifecycle.observeRevision(makeSession('recovered'), 2);
+    await h.flush();
+    expect(h.lifecycle.getState().status).toBe('saved');
+    expect(h.lifecycle.getState().warning).toBeNull();
+  });
+
+  it('hands the save the same source buffer references it captured', async () => {
+    const h = harness();
+    await h.lifecycle.startup();
+    const source = new ArrayBuffer(8);
+    const session = makeSession('shared');
+    session.documents[0].pdfBytes = source;
+    h.lifecycle.observeRevision(session, 1);
+    await h.flush();
+    expect(h.save).toHaveBeenCalledTimes(1);
+    expect(h.save.mock.calls[0][0].documents[0].pdfBytes).toBe(source);
   });
 
 });

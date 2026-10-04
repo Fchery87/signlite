@@ -41,7 +41,12 @@ export default function App() {
         <div className="flex items-center justify-between px-6 py-4">
           <div>
             <p className="text-caption uppercase text-quiet">{STRINGS.appName}</p>
-            <p className="mt-1 text-body text-quiet">{footerText}</p>
+            <div className="mt-1 flex items-center gap-3">
+              <p className="text-body text-quiet">{footerText}</p>
+              {lifecycle.status && lifecycle.status !== 'initializing' ? (
+                <p className="text-caption text-quiet" data-testid="durability-status">{STRINGS.durability[lifecycle.status]}</p>
+              ) : null}
+            </div>
           </div>
         </div>
         {resumeSession && view === 'dropzone' && documents.length === 0 ? (

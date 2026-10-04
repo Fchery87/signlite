@@ -29,6 +29,26 @@ export function useSessionLifecycle({ session, contentRevision, resetSession }: 
     lifecycle.observeRevision(sessionRef.current, contentRevision);
   }, [contentRevision, lifecycle]);
 
+  // Leave protection and flush-on-hide, registered only while work is
+  // undurable. beforeunload only prevents navigation (browser-native
+  // protection); an asynchronous save started during unload is not guaranteed
+  // to complete, so none is attempted there.
+  useEffect(() => {
+    if (!state.ready || state.status === 'saved') return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) lifecycle.flushLatest();
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [lifecycle, state.ready, state.status]);
+
   return {
     ...state,
     resumeSucceeded: () => lifecycle.dismissCandidate(),

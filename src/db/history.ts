@@ -2,10 +2,15 @@ import { openSignliteDb, type WorkSession } from './schema';
 
 const memorySessions = new Map<string, WorkSession>();
 let useMemory = false;
+let storageProblem: 'unavailable' | 'upgrade-blocked' | null = null;
 
 export type SaveSessionOutcome = 'persistent' | 'memory';
 
 export function isUsingMemoryHistory() { return useMemory || memorySessions.size > 0; }
+
+/** Why IndexedDB is unavailable, when it is: a blocked schema upgrade is a
+ *  different user-facing problem than a missing or failed open. */
+export function historyStorageProblem() { return storageProblem; }
 
 function isQuotaExceeded(error: unknown) {
   return error instanceof DOMException && error.name === 'QuotaExceededError';
@@ -14,8 +19,9 @@ function isQuotaExceeded(error: unknown) {
 async function getDb() {
   try {
     return await openSignliteDb();
-  } catch {
+  } catch (error) {
     useMemory = true;
+    storageProblem = error instanceof DOMException && error.name === 'VersionError' ? 'upgrade-blocked' : 'unavailable';
     return null;
   }
 }
@@ -77,4 +83,5 @@ export async function pruneOldSessions(cutoff = Date.now() - 7 * 24 * 60 * 60 * 
 export function resetHistoryFallbackForTests() {
   useMemory = false;
   memorySessions.clear();
+  storageProblem = null;
 }

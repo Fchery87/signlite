@@ -8,7 +8,7 @@
 
 **Stack.** TypeScript, React, Vite, IndexedDB through idb, PDF.js, pdf-lib, Vitest, Playwright, GitHub Actions, and Cloudflare Pages.
 
-**Status.** In progress. Host choice confirmed by the user on October 3, 2026. R01 and R02 are complete with receipts under `docs/readiness/`. Execution continues in plan order.
+**Status.** In progress. Host choice confirmed by the user on October 3, 2026. R01 through R04 are complete with receipts under `docs/readiness/`. Execution continues in plan order.
 
 ## How to execute the plan
 
@@ -136,12 +136,12 @@ R04 delivers standalone startup and status corrections. R05 integrates those sta
 
 **Data shape.** Represent durability as initializing, saved, dirty, saving, memory-only, error, or conflict. Track the observed content revision separately from the revision confirmed durable. Keep the session candidate independent of save status.
 
-- [ ] Add a delayed-startup regression through the actual React hook. Load or edit before startup resolves, then resolve startup without another edit. Assert that the latest nonempty session saves.
-- [ ] Observe the latest revision when readiness changes. Preserve StrictMode startup and cleanup behavior without restoring disposed listeners or stale generations.
-- [ ] Treat pruning failure as cleanup failure rather than an autosave initialization failure. Catch discovery and preference failures. Expose storage-unavailable and storage-upgrade-blocked states accurately.
-- [ ] Keep Save status dirty until the latest revision's transaction completes. A prior save completion must not mark a newer edit saved.
-- [ ] Add `flushLatest` behavior for visibility changes and explicit close-session actions. Register `beforeunload` only while work is undurable. Do not claim that asynchronous unload saves are guaranteed.
-- [ ] Keep source buffers structurally shared while the debounce is pending. Do not copy every source PDF on pointer movement or status updates.
+- [x] Add a delayed-startup regression through the actual React hook. Load or edit before startup resolves, then resolve startup without another edit. Assert that the latest nonempty session saves.
+- [x] Observe the latest revision when readiness changes. Preserve StrictMode startup and cleanup behavior without restoring disposed listeners or stale generations.
+- [x] Treat pruning failure as cleanup failure rather than an autosave initialization failure. Catch discovery and preference failures. Expose storage-unavailable and storage-upgrade-blocked states accurately.
+- [x] Keep Save status dirty until the latest revision's transaction completes. A prior save completion must not mark a newer edit saved.
+- [x] Add `flushLatest` behavior for visibility changes and explicit close-session actions. Register `beforeunload` only while work is undurable. Do not claim that asynchronous unload saves are guaranteed.
+- [x] Keep source buffers structurally shared while the debounce is pending. Do not copy every source PDF on pointer movement or status updates.
 
 **Checks.** Run `npm test -- tests/unit/session-lifecycle.test.ts tests/unit/use-session-lifecycle.test.tsx tests/unit/app-history.test.tsx` and `npm run test:e2e -- durability.spec.ts`.
 

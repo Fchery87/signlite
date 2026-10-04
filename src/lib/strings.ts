@@ -202,6 +202,15 @@ export const STRINGS = {
     corruptFile: (fileName: string) => `Couldn't read ${fileName}. The file may be damaged.`,
     fileTooLarge: (fileName: string) => `${fileName} is too large (limit 100 MB).`
   },
+  durability: {
+    initializing: '',
+    saved: 'Saved.',
+    dirty: 'Unsaved changes.',
+    saving: 'Saving…',
+    'memory-only': 'Memory only.',
+    error: 'Autosave problem.',
+    conflict: 'Storage conflict.'
+  } satisfies Record<'initializing' | 'saved' | 'dirty' | 'saving' | 'memory-only' | 'error' | 'conflict', string>,
   warnings: {
     autosaveOff: "Storage is full. Autosave is off — your changes will not survive a page reload."
   },
