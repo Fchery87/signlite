@@ -1,5 +1,7 @@
 import type { Placement, SessionDocument, SignatureSnapshotMap, WorkSession } from '../db/schema';
 import { getAsset } from '../db/signatures';
+import { loadDocument, capturePageGeometry } from '../pdf/render';
+import type { PageGeometry } from '../pdf/coords';
 import { createSignatureSnapshot } from './signatureSnapshots';
 import { STRINGS } from './strings';
 
@@ -12,6 +14,26 @@ function readPngDimensions(bytes: ArrayBuffer): { width: number; height: number 
 
 function isSignaturePlacement(placement: Placement): placement is Placement & { type: 'signature' | 'initials' } {
   return placement.type === 'signature' || placement.type === 'initials';
+}
+
+/**
+ * Recomputes page geometry from the immutable source bytes for sessions stored
+ * before geometry was captured. The stored document bytes are never mutated:
+ * pdf.js receives a slice copy. Returns undefined when the source cannot be read.
+ */
+async function reconstructPageGeometry(pdfBytes: ArrayBuffer, expectedCount: number): Promise<PageGeometry[] | undefined> {
+  try {
+    const pdf = await loadDocument(pdfBytes.slice(0));
+    try {
+      const geometries = await capturePageGeometry(pdf);
+      if (geometries.length !== expectedCount) return undefined;
+      return geometries;
+    } finally {
+      pdf.destroy();
+    }
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -110,7 +132,21 @@ export async function normalizeSession(session: WorkSession): Promise<WorkSessio
       needsReviewReason = STRINGS.batch.needsReviewMissingSignature;
     }
 
-    documents.push({ ...doc, placements: normalizedPlacements, status, batchError, needsReviewReason });
+    // Legacy sessions predate stored page geometry; reconstruct it from the
+    // source bytes so exports honor rotation, CropBox origin, and UserUnit.
+    let pageGeometry = doc.pageGeometry;
+    if (!pageGeometry || pageGeometry.length !== doc.pageCount) {
+      const reconstructed = await reconstructPageGeometry(doc.pdfBytes, doc.pageCount);
+      if (reconstructed) {
+        pageGeometry = reconstructed;
+      } else if (doc.placements.length > 0 && !needsReviewReason) {
+        // Placements on this document cannot be exported faithfully without
+        // geometry; surface the gap instead of silently degrading the output.
+        needsReviewReason = STRINGS.batch.needsReviewPageGeometry;
+      }
+    }
+
+    documents.push({ ...doc, placements: normalizedPlacements, status, batchError, needsReviewReason, pageGeometry });
   }
 
   // Repair template-derived state from the first document

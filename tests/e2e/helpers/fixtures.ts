@@ -69,3 +69,23 @@ export async function createPerformancePdf(label: string, pages = 10): Promise<B
 export function pdfFixture(name: string, buffer: Buffer) {
   return { name, mimeType: 'application/pdf', buffer };
 }
+
+/** One-page PDF with MediaBox 200x400, CropBox [10,20,180,360] and /Rotate 90.
+ *  The effective preview viewport is 340x170 and pdf.js builds the transform
+ *  [0,1,1,0,-20,-10] for it (verified against the installed pdfjs-dist source). */
+export async function createRotatedCroppedPdf(): Promise<Buffer> {
+  const { degrees, PDFDocument } = await import('pdf-lib');
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([200, 400]);
+  page.setCropBox(10, 20, 170, 340);
+  page.setRotation(degrees(90));
+  const bytes = await pdf.save();
+  return Buffer.from(bytes);
+}
+
+/** Effective page geometry for createRotatedCroppedPdf, as captured at intake. */
+export const ROTATED_CROPPED_GEOMETRY = {
+  width: 340,
+  height: 170,
+  transform: [0, 1, 1, 0, -20, -10] as [number, number, number, number, number, number]
+};

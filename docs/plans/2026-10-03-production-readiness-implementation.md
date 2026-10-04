@@ -8,7 +8,7 @@
 
 **Stack.** TypeScript, React, Vite, IndexedDB through idb, PDF.js, pdf-lib, Vitest, Playwright, GitHub Actions, and Cloudflare Pages.
 
-**Status.** Planned. Host choice confirmed by the user on October 3, 2026. No implementation task is complete.
+**Status.** In progress. Host choice confirmed by the user on October 3, 2026. R01 and R02 are complete with receipts under `docs/readiness/`. Execution continues in plan order.
 
 ## How to execute the plan
 
@@ -22,10 +22,10 @@ Use the Feature or Bug fix playbook during implementation, as appropriate. Use t
 
 ### Preserve the current work
 
-- [ ] Capture `git status --short`, the tracked diff, and the relevant untracked files before implementation. Preserve the user's current changes and the review report.
-- [ ] Establish a reproducible implementation baseline in an isolated checkout or worktree. Apply the reviewed working-tree changes there when they belong to the baseline.
-- [ ] Record the exact baseline SHA and applied patch in the execution receipt. Do not assume `HEAD` contains the reviewed scripts and lifecycle changes.
-- [ ] Run the baseline checks before changing application behavior. Record known failures without describing them as new regressions.
+- [x] Capture `git status --short`, the tracked diff, and the relevant untracked files before implementation. Preserve the user's current changes and the review report. (Preserved as commit `d6d6b17`.)
+- [x] Establish a reproducible implementation baseline in an isolated checkout or worktree. Apply the reviewed working-tree changes there when they belong to the baseline. (The reviewed tree is the baseline commit; later tasks branch from it.)
+- [x] Record the exact baseline SHA and applied patch in the execution receipt. Do not assume `HEAD` contains the reviewed scripts and lifecycle changes. (`docs/readiness/R01.md` records baseline `d6d6b17`.)
+- [x] Run the baseline checks before changing application behavior. Record known failures without describing them as new regressions. (Baseline lint failure recorded in the R01 receipt.)
 
 ### Use the throughput checkpoint
 
@@ -78,13 +78,13 @@ R04 delivers standalone startup and status corrections. R05 integrates those sta
 
 **Files.** Modify `eslint.config.js`, `package.json`, `playwright.config.ts`, `vite.config.ts`, `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`, and `scripts/verify-production.mjs`. Create `scripts/serve-production.mjs` if Vite preview cannot serve the exact headers and base paths needed by the tests. Create reusable fixture helpers under `tests/helpers/`.
 
-- [ ] Add a scoped Node environment for `scripts/**/*.mjs`. Keep application lint rules enabled. Verify `npm run lint` passes without suppressing `no-undef` globally.
-- [ ] Pin the same supported Node major in local documentation and both workflows. Use Node 24 as the initial candidate because the reviewed environment uses it. Verify a clean `npm ci` and all tools on that version before adopting it.
-- [ ] Make Playwright serve an existing `dist/` build in CI. Remove the implicit second build from the browser-test startup command. Preserve an explicit command for developers who need build plus preview.
-- [ ] Emit a Vite build manifest and have `verify-production.mjs` resolve initial static imports from the HTML entry instead of guessing chunk names. Account for all initial dependencies once. Retain the initial JavaScript budget below 300 KiB gzip.
-- [ ] Build once, verify `dist/`, and test that directory. Record a file-hash manifest and commit SHA outside the published application directory.
-- [ ] Make the existing deployment job depend on successful verification until R11 replaces it. Include a test failure in a temporary branch or workflow test fixture and demonstrate that no publish job becomes eligible.
-- [ ] Extract generated PDF and PNG fixtures that later tasks can use. Keep private real documents outside the repository and CI artifacts.
+- [x] Add a scoped Node environment for `scripts/**/*.mjs`. Keep application lint rules enabled. Verify `npm run lint` passes without suppressing `no-undef` globally.
+- [x] Pin the same supported Node major in local documentation and both workflows. Use Node 24 as the initial candidate because the reviewed environment uses it. Verify a clean `npm ci` and all tools on that version before adopting it.
+- [x] Make Playwright serve an existing `dist/` build in CI. Remove the implicit second build from the browser-test startup command. Preserve an explicit command for developers who need build plus preview.
+- [x] Emit a Vite build manifest and have `verify-production.mjs` resolve initial static imports from the HTML entry instead of guessing chunk names. Account for all initial dependencies once. Retain the initial JavaScript budget below 300 KiB gzip.
+- [x] Build once, verify `dist/`, and test that directory. Record a file-hash manifest and commit SHA outside the published application directory. (Receipt now at `artifacts/readiness/R01/`; see the R02 receipt for why it left `test-results/`.)
+- [x] Make the existing deployment job depend on successful verification until R11 replaces it. Include a test failure in a temporary branch or workflow test fixture and demonstrate that no publish job becomes eligible.
+- [x] Extract generated PDF and PNG fixtures that later tasks can use. Keep private real documents outside the repository and CI artifacts.
 
 **Checks.** Run `npm run typecheck`, `npm run lint`, `npm test -- --maxWorkers=2`, `npm run build`, `npm run verify:production`, and `npm run test:e2e` against the existing artifact.
 
@@ -98,12 +98,12 @@ R04 delivers standalone startup and status corrections. R05 integrates those sta
 
 **Data shape.** Store serializable page geometry with viewport width and height, the scale-1 affine transform, rotation, effective view box, and UserUnit. Keep normalized placements in viewer coordinates. Treat stored geometry as derived metadata that must agree with the immutable source PDF.
 
-- [ ] Add generated fixtures for all four right-angle rotations, nonzero MediaBox and CropBox origins, differing boxes, mixed page sizes, and UserUnit values other than 1.
-- [ ] Verify the current exporter fails literal corner and center expectations. Include the review's 200 by 400 point rotated and cropped example.
-- [ ] Add a pure geometry transform that maps the placement's full rectangle and orientation into PDF user space. Derive text baselines and image basis vectors from the transform. Do not fix only the top-left point.
-- [ ] Update single and worker export through the same transform. Preserve source page rotation and crop boxes. Keep original PDF bytes unchanged.
-- [ ] Reconstruct missing geometry for legacy sessions from their source bytes before editing or export. Reject inconsistent metadata with a visible recovery path. Dispose PDFs opened only for migration.
-- [ ] Migrate callers together and remove obsolete page-size-only export conversions when no production caller needs them.
+- [x] Add generated fixtures for all four right-angle rotations, nonzero MediaBox and CropBox origins, differing boxes, mixed page sizes, and UserUnit values other than 1.
+- [x] Verify the current exporter fails literal corner and center expectations. Include the review's 200 by 400 point rotated and cropped example.
+- [x] Add a pure geometry transform that maps the placement's full rectangle and orientation into PDF user space. Derive text baselines and image basis vectors from the transform. Do not fix only the top-left point.
+- [x] Update single and worker export through the same transform. Preserve source page rotation and crop boxes. Keep original PDF bytes unchanged.
+- [x] Reconstruct missing geometry for legacy sessions from their source bytes before editing or export. Reject inconsistent metadata with a visible recovery path. Dispose PDFs opened only for migration.
+- [x] Migrate callers together and remove obsolete page-size-only export conversions when no production caller needs them. (The size-only path remains only as the degraded fallback for sessions whose geometry cannot be reconstructed; those documents surface needs-review. See the R02 receipt.)
 
 **Checks.** Run `npm test -- tests/unit/coords.test.ts tests/unit/flatten.test.ts tests/unit/create-session-document.test.ts tests/unit/normalize-session.test.ts` and `npm run test:e2e -- pdf-output.spec.ts`.
 

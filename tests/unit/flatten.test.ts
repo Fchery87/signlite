@@ -1,5 +1,5 @@
 import { inflateSync } from 'node:zlib';
-import { PDFDocument } from 'pdf-lib';
+import { degrees, PDFDocument } from 'pdf-lib';
 import { collectAssetIds, flattenDocument } from '../../src/pdf/flatten';
 import type { SessionDocument, SignatureAsset } from '../../src/db/schema';
 
@@ -187,4 +187,140 @@ describe('flattenDocument', () => {
 
     expect(collectAssetIds([firstDocument, secondDocument])).toEqual(['asset-1', 'asset-2']);
   });
+});
+
+describe('flattenDocument page geometry', () => {
+  // pdf-lib emits full float precision (cos(90deg) = 6.12e-17), so compare
+  // number tokens rounded to 4 decimals with trailing zeros stripped.
+  function normalizeNumbers(content: string): string {
+    return content.replace(/-?\d+(?:\.\d+)?(?:e-?\d+)?/g, (token) => {
+      const n = Number(token);
+      const rounded = n.toFixed(4);
+      return String(Number(rounded));
+    });
+  }
+
+  const rotatedGeometry = {
+    width: 340,
+    height: 170,
+    rotation: 90,
+    transform: [0, 1, 1, 0, -20, -10] as [number, number, number, number, number, number],
+    viewBox: { x: 10, y: 20, w: 170, h: 340 },
+    userUnit: 1
+  };
+
+  async function makeRotatedDocument(placements: SessionDocument['placements']): Promise<SessionDocument> {
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([200, 400]);
+    page.setCropBox(10, 20, 170, 340);
+    page.setRotation(degrees(90));
+    const pdfBytes = await pdf.save({ useObjectStreams: false });
+    const sourceBytes = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer;
+    return {
+      docId: 'doc-rot',
+      fileName: 'rotated.pdf',
+      pdfBytes: sourceBytes,
+      pageCount: 1,
+      pageSizes: [{ w: 340, h: 170 }],
+      pageGeometry: [rotatedGeometry],
+      placements,
+      status: 'placed'
+    };
+  }
+
+  it('maps a signature rectangle through the 90-degree rotated cropped geometry', async () => {
+    const document = await makeRotatedDocument([
+      { id: 'sig-1', type: 'signature', assetId: 'asset-1', pageIndex: 0, x: 0.25, y: 0.25, w: 0.2, h: 0.1 }
+    ]);
+    const loadAsset = vi.fn<() => Promise<SignatureAsset | null>>().mockResolvedValue({
+      id: 'asset-1',
+      kind: 'signature',
+      source: 'uploaded',
+      pngBytes: PNG_BYTES,
+      width: 1,
+      height: 1,
+      label: 'Sig',
+      createdAt: 1,
+      lastUsedAt: 1
+    });
+
+    const output = await flattenDocument(document, { loadAsset });
+    const content = normalizeNumbers(inflateContentStreams(output));
+    // viewer rect (85,42.5)-(153,59.5); anchor = viewer bottom-left (85,59.5)
+    // -> user (69.5,105); size 68x17 user units; rotate 90 so the content stays upright
+    expect(content).toContain('1 0 0 1 69.5 105 cm');
+    expect(content).toContain('0 1 -1 0 0 0 cm');
+    expect(content).toContain('68 0 0 17 0 0 cm');
+  });
+
+  it('maps text through the same geometry with a rotated baseline', async () => {
+    const document = await makeRotatedDocument([
+      { id: 'text-1', type: 'text', pageIndex: 0, x: 0.1, y: 0.6, w: 0.3, h: 0.08, value: 'OK', fontSize: 12 }
+    ]);
+
+    const output = await flattenDocument(document);
+    const content = normalizeNumbers(inflateContentStreams(output));
+    // baseline starts fontSize below the box top in viewer space: (34, 114) -> user (124, 54)
+    expect(content).toContain('0 1 -1 0 124 54 Tm');
+    expect(content).toContain('12 Tf');
+  });
+});
+
+describe('flattenDocument across all right-angle rotations', () => {
+  function normalizeTestNumbers(content: string): string {
+    return content.replace(/-?\d+(?:\.\d+)?(?:e-?\d+)?/g, (token) => String(Number(Number(token).toFixed(4))));
+  }
+
+  // Pinned to pdf.js PageViewport construction for a 200x400 MediaBox with
+  // CropBox [10,20,180,360]: effective viewer 340x170, centerX 95, centerY 190.
+  // pdf-lib composes translate ∘ rotate ∘ scale: the scale stays 102x34 and the
+  // rotation matrix carries the axis swap that keeps the marker upright.
+  const cases: { rotation: number; transform: [number, number, number, number, number, number]; anchor: [number, number]; rotate: string }[] = [
+    { rotation: 0, transform: [1, 0, 0, -1, -10, 360], anchor: [78, 292], rotate: '1 0 0 1 0 0 cm' },
+    { rotation: 90, transform: [0, 1, 1, 0, -20, -10], anchor: [78, 88], rotate: '0 1 -1 0 0 0 cm' },
+    { rotation: 180, transform: [-1, 0, 0, 1, 180, -20], anchor: [112, 88], rotate: '-1 0 0 -1 0 0 cm' },
+    { rotation: 270, transform: [0, -1, -1, 0, 360, 180], anchor: [112, 292], rotate: '0 -1 1 0 0 0 cm' }
+  ];
+
+  for (const { rotation, transform, anchor, rotate } of cases) {
+    it(`keeps the marker bounds and orientation at ${rotation} degrees`, async () => {
+      const pdf = await PDFDocument.create();
+      const page = pdf.addPage([200, 400]);
+      page.setCropBox(10, 20, 170, 340);
+      page.setRotation(degrees(rotation));
+      const pdfBytes = await pdf.save({ useObjectStreams: false });
+      const document: SessionDocument = {
+        docId: `doc-rot-${rotation}`,
+        fileName: 'rot.pdf',
+        pdfBytes: pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer,
+        pageCount: 1,
+        pageSizes: [{ w: 340, h: 170 }],
+        pageGeometry: [{ width: 340, height: 170, rotation, transform, viewBox: { x: 10, y: 20, w: 170, h: 340 }, userUnit: 1 }],
+        placements: [
+          { id: 'sig-1', type: 'signature', assetId: 'asset-1', pageIndex: 0, x: 0.2, y: 0.2, w: 0.3, h: 0.2 }
+        ],
+        status: 'placed'
+      };
+      const loadAsset = vi.fn<() => Promise<SignatureAsset | null>>().mockResolvedValue({
+        id: 'asset-1',
+        kind: 'signature',
+        source: 'uploaded',
+        pngBytes: PNG_BYTES,
+        width: 1,
+        height: 1,
+        label: 'Sig',
+        createdAt: 1,
+        lastUsedAt: 1
+      });
+
+      const output = await flattenDocument(document, { loadAsset });
+      const content = normalizeTestNumbers(inflateContentStreams(output));
+
+      // Anchor: viewer rect bottom-left (68, 68) mapped through the inverse transform.
+      expect(content).toContain(`1 0 0 1 ${anchor[0]} ${anchor[1]} cm`);
+      // Orientation matrix for the page rotation and the rotation-invariant size.
+      expect(content).toContain(rotate);
+      expect(content).toContain('102 0 0 34 0 0 cm');
+    });
+  }
 });

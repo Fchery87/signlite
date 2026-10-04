@@ -25,13 +25,20 @@ describe('createSessionDocument', () => {
     loadDocument.mockReset();
   });
 
-  it('extracts page sizes from a loaded pdf', async () => {
+  it('extracts page sizes and viewport geometry from a loaded pdf', async () => {
+    const makePage = (width: number, height: number) => ({
+      // Real PDF.js page/viewport shape: transform maps user space to the scale-1 viewport.
+      rotate: 0,
+      view: [0, 0, width, height],
+      userUnit: 1,
+      getViewport: () => ({ width, height, transform: [1, 0, 0, -1, 0, height] })
+    });
     loadDocument.mockResolvedValue({
       numPages: 2,
       getPage: vi
         .fn()
-        .mockResolvedValueOnce({ getViewport: () => ({ width: 612, height: 792 }) })
-        .mockResolvedValueOnce({ getViewport: () => ({ width: 612, height: 1008 }) })
+        .mockResolvedValueOnce(makePage(612, 792))
+        .mockResolvedValueOnce(makePage(612, 1008))
     });
 
     const doc = await createSessionDocument(makePdfFile('lease.pdf'));
@@ -41,6 +48,10 @@ describe('createSessionDocument', () => {
     expect(doc.pageSizes).toEqual([
       { w: 612, h: 792 },
       { w: 612, h: 1008 }
+    ]);
+    expect(doc.pageGeometry).toEqual([
+      { width: 612, height: 792, rotation: 0, transform: [1, 0, 0, -1, 0, 792], viewBox: { x: 0, y: 0, w: 612, h: 792 }, userUnit: 1 },
+      { width: 612, height: 1008, rotation: 0, transform: [1, 0, 0, -1, 0, 1008], viewBox: { x: 0, y: 0, w: 612, h: 1008 }, userUnit: 1 }
     ]);
   });
 

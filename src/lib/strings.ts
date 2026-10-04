@@ -167,7 +167,8 @@ export const STRINGS = {
     batchNoEligible: 'No documents are ready to sign.',
     needsReviewMissingPage: 'Needs review — this document is missing a template page.',
     needsReviewAspect: 'Differs from template — review.',
-    needsReviewMissingSignature: 'Needs review — a signature image could not be recovered.'
+    needsReviewMissingSignature: 'Needs review — a signature image could not be recovered.',
+    needsReviewPageGeometry: 'Needs review — page layout could not be read from this document.',
   },
   announcements: {
     placedOnPage: (label: string, pageNumber: number) => `${label} placed on page ${pageNumber}.`

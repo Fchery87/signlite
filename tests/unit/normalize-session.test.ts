@@ -1,6 +1,7 @@
 import { saveAsset } from '../../src/db/signatures';
 import { normalizeSession } from '../../src/lib/normalizeSession';
 import type { WorkSession, Placement, SessionDocument } from '../../src/db/schema';
+import { PDFDocument } from 'pdf-lib';
 
 // Minimal valid PNG (1x1 transparent) with correct IHDR dimensions.
 const PNG_1x1 = new Uint8Array([
@@ -36,11 +37,19 @@ const PNG_2x3 = new Uint8Array([
   0xae, 0x42, 0x60, 0x82
 ]).buffer;
 
+// A real one-page PDF so page-geometry reconstruction from source bytes succeeds.
+const REAL_PDF_BYTES: ArrayBuffer = await (async () => {
+  const pdf = await PDFDocument.create();
+  pdf.addPage([612, 792]);
+  const bytes = await pdf.save();
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+})();
+
 function makeDoc(docId: string, placements: Placement[] = [], overrides: Partial<SessionDocument> = {}): SessionDocument {
   return {
     docId,
     fileName: `${docId}.pdf`,
-    pdfBytes: new ArrayBuffer(0),
+    pdfBytes: REAL_PDF_BYTES.slice(0),
     pageCount: 1,
     pageSizes: [{ w: 612, h: 792 }],
     placements,
@@ -199,4 +208,51 @@ describe('normalizeSession', () => {
     });
   });
 
+});
+
+describe('normalizeSession page geometry reconstruction', () => {
+  it('reconstructs page geometry for legacy documents from their source bytes', async () => {
+    const session = makeSession([makeDoc('doc-1')]);
+    const result = await normalizeSession(session);
+
+    const geometry = result.documents[0]?.pageGeometry;
+    expect(geometry).toHaveLength(1);
+    expect(geometry?.[0]?.width).toBeCloseTo(612);
+    expect(geometry?.[0]?.height).toBeCloseTo(792);
+    expect(geometry?.[0]?.rotation).toBe(0);
+    expect(geometry?.[0]?.userUnit).toBe(1);
+    // transform maps user space to the viewport: y is flipped, origin moves to the bottom
+    expect(geometry?.[0]?.transform.slice(0, 4)).toEqual([1, 0, 0, -1]);
+    expect(geometry?.[0]?.transform[5]).toBeCloseTo(792);
+    // reconstruction must not detach the stored bytes (pdf.js transfers buffers)
+    expect(result.documents[0]?.pdfBytes.byteLength).toBeGreaterThan(0);
+  });
+
+  it('marks a placed legacy document needs-review when geometry cannot be reconstructed', async () => {
+    const session = makeSession([
+      makeDoc('doc-1', [legacySig('sig-1', { assetPngBytes: PNG_1x1.slice(0) })], { pdfBytes: new ArrayBuffer(8), status: 'placed' }),
+      makeDoc('doc-2', [], { pdfBytes: new ArrayBuffer(8) })
+    ]);
+    const result = await normalizeSession(session);
+
+    expect(result.documents[0]?.needsReviewReason).toBeTruthy();
+    expect(result.documents[0]?.pageGeometry).toBeUndefined();
+    // a document with nothing to export is not blocked by the missing geometry
+    expect(result.documents[1]?.needsReviewReason).toBeUndefined();
+  });
+
+  it('keeps existing page geometry untouched', async () => {
+    const existing = [{
+      width: 340,
+      height: 170,
+      rotation: 90,
+      transform: [0, 1, 1, 0, -20, -10] as [number, number, number, number, number, number],
+      viewBox: { x: 10, y: 20, w: 170, h: 340 },
+      userUnit: 1
+    }];
+    const session = makeSession([makeDoc('doc-1', [], { pageGeometry: existing })]);
+    const result = await normalizeSession(session);
+
+    expect(result.documents[0]?.pageGeometry).toBe(existing);
+  });
 });

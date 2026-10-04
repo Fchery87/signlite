@@ -1,10 +1,10 @@
 import { format } from 'date-fns';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { degrees, PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { Placement, SessionDocument, SignatureAsset, SignatureSnapshotMap } from '../db/schema';
 import { getAsset, getDateFormat } from '../db/signatures';
 import { STRINGS } from '../lib/strings';
 import { collectAssetIds, type FlattenAssetMap } from './assets';
-import { normalizedToPdf } from './coords';
+import { normalizedToPdf, pdfPointFromViewer, viewerRectToPdf } from './coords';
 
 export { collectAssetIds };
 
@@ -56,13 +56,28 @@ export async function flattenDocument(document: SessionDocument, options: Flatte
       const page = pdf.getPage(placement.pageIndex);
       if (!page) continue;
 
-      const { width, height } = page.getSize();
-      const rect = normalizedToPdf(placement, { w: width, h: height });
+      const geometry = document.pageGeometry?.[placement.pageIndex];
 
       if (placement.type === 'signature' || placement.type === 'initials') {
         const pngBytes = await resolveAssetBytes(placement, options);
         if (!pngBytes) continue;
         const image = await pdf.embedPng(pngBytes);
+        if (geometry) {
+          // The anchor is the on-screen bottom-left corner mapped through the
+          // page transform; rotate keeps the content upright on the rotated page.
+          const anchor = pdfPointFromViewer(placement.x * geometry.width, (placement.y + placement.h) * geometry.height, geometry);
+          const { rotation } = viewerRectToPdf(placement, geometry);
+          page.drawImage(image, {
+            x: anchor.x,
+            y: anchor.y,
+            width: (placement.w * geometry.width) / geometry.userUnit,
+            height: (placement.h * geometry.height) / geometry.userUnit,
+            rotate: degrees(rotation)
+          });
+          continue;
+        }
+        const { width, height } = page.getSize();
+        const rect = normalizedToPdf(placement, { w: width, h: height });
         // drawImage expects width/height; passing the Rect's w/h keys would be
         // silently ignored and the image drawn at its natural size.
         page.drawImage(image, { x: rect.x, y: rect.y, width: rect.w, height: rect.h });
@@ -75,6 +90,22 @@ export async function flattenDocument(document: SessionDocument, options: Flatte
 
       const renderedText = placement.type === 'date' ? format(new Date(), text) : text;
       const fontSize = Math.max(8, placement.fontSize ?? 12);
+      if (geometry) {
+        // Baseline starts one font size below the box top in viewer space, matching the preview.
+        const baseline = pdfPointFromViewer(placement.x * geometry.width, (placement.y * geometry.height) + fontSize, geometry);
+        const { rotation } = viewerRectToPdf(placement, geometry);
+        page.drawText(renderedText, {
+          x: baseline.x,
+          y: baseline.y,
+          size: fontSize / geometry.userUnit,
+          font,
+          rotate: degrees(rotation),
+          color: rgb(0, 0, 0)
+        });
+        continue;
+      }
+      const { width, height } = page.getSize();
+      const rect = normalizedToPdf(placement, { w: width, h: height });
       page.drawText(renderedText, {
         x: rect.x,
         y: rect.y + Math.max(rect.h - fontSize, 0),

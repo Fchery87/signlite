@@ -1,4 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import type { PageGeometry } from '../pdf/coords';
 
 export interface SignatureAsset {
   id: string;
@@ -47,6 +48,8 @@ export interface SessionDocument {
   pdfBytes: ArrayBuffer;
   pageCount: number;
   pageSizes: { w: number; h: number }[];
+  /** Derived from the source PDF at intake; must agree with the immutable bytes. Reconstructed for legacy sessions. */
+  pageGeometry?: PageGeometry[];
   placements: Placement[];
   status: 'pending' | 'placed' | 'signing' | 'signed' | 'needs-review' | 'error';
   batchError?: string;

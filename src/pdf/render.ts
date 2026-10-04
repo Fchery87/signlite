@@ -1,9 +1,33 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import type { PageGeometry } from './coords';
 import { getPdfJsRuntime } from './runtime';
 
 export type LoadedPdf = PDFDocumentProxy;
 
 const thumbnailCache = new Map<string, Promise<ImageBitmap>>();
+
+/**
+ * Captures the serializable scale-1 viewport geometry for every page. The
+ * transform maps PDF user space into viewport points and includes UserUnit,
+ * so the exporter can invert it without re-opening the PDF.
+ */
+export async function capturePageGeometry(pdf: LoadedPdf): Promise<PageGeometry[]> {
+  const geometries: PageGeometry[] = [];
+  for (let index = 0; index < pdf.numPages; index++) {
+    const page = await pdf.getPage(index + 1);
+    const viewport = page.getViewport({ scale: 1 });
+    const [a, b, c, d, e, f] = viewport.transform;
+    geometries.push({
+      width: viewport.width,
+      height: viewport.height,
+      rotation: page.rotate,
+      transform: [a, b, c, d, e, f],
+      viewBox: { x: page.view[0], y: page.view[1], w: page.view[2] - page.view[0], h: page.view[3] - page.view[1] },
+      userUnit: page.userUnit ?? 1
+    });
+  }
+  return geometries;
+}
 
 export class SignlitePdfError extends Error {
   constructor(public code: 'encrypted' | 'corrupt') {
