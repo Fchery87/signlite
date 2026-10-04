@@ -131,3 +131,40 @@ test('completes a quiet single-doc sign flow with library inputs and keyboard do
   await expect(page.locator('main img[alt="signature"]')).toHaveCount(0);
   expect(requests).toEqual([]);
 });
+
+// Native mouse drags protect dataTransfer.getData outside dragstart/drop;
+// dragTo drives the real drag data store, unlike synthetic dispatched events.
+test('accepts a native mouse drag from the library onto the page', async ({ page }) => {
+  test.setTimeout(90000);
+
+  await page.goto('/');
+  await expect(page.getByText('Drop a PDF anywhere.')).toBeVisible();
+  await page.locator('input[accept="application/pdf"]').setInputFiles({
+    name: 'native-drag.pdf',
+    mimeType: 'application/pdf',
+    buffer: await createSamplePdf()
+  });
+  await expect(page.getByRole('heading', { name: 'native-drag.pdf' })).toBeVisible();
+  const layer = page.getByTestId('placement-layer');
+  await expect(layer).toBeVisible();
+  await page.waitForTimeout(1000);
+
+  await page.getByRole('button', { name: 'Add library item' }).click();
+  await page.getByRole('button', { name: 'Type' }).click();
+  await page.getByPlaceholder('Type your name').fill('Drag Signer');
+  await expect(page.getByAltText('Typed signature preview')).toBeVisible();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Drag Signer', { exact: true })).toBeVisible();
+
+  const card = page.locator('article').filter({ has: page.getByText('Drag Signer', { exact: true }) }).first();
+  const layerBox = await layer.boundingBox();
+  if (!layerBox) {
+    throw new Error('Expected placement layer bounds');
+  }
+  await card.dragTo(layer, {
+    targetPosition: { x: Math.round(layerBox.width * 0.4), y: Math.round(layerBox.height * 0.4) }
+  });
+
+  await expect(page.getByRole('status').filter({ hasText: 'Signature placed on page 1.' })).toBeVisible();
+  await expect(page.getByRole('main').getByRole('button', { name: 'signature' })).toHaveCount(1);
+});

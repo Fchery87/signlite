@@ -9,6 +9,9 @@ export type SignliteErrorCode =
   | 'session-limit'
   | 'session-page-limit'
   | 'session-byte-limit'
+  | 'intake-lease-refused'
+  | 'intake-session-changed'
+  | 'intake-budget-refused'
   | 'upload-invalid'
   | 'upload-too-large';
 
@@ -98,7 +101,8 @@ export const STRINGS = {
     elementPageLabel: (pageNumber: number) => `Page ${pageNumber}`,
     deleteElement: (label: string, pageNumber: number) => `Delete ${label} on page ${pageNumber}`,
     copiedHint: 'Copied. Press Ctrl+V to paste on the page you are viewing.',
-    placementFailed: 'Could not place this signature.'
+    placementFailed: 'Could not place this signature.',
+    invalidDropPayload: 'That item cannot be placed here.'
   },
   loading: {
     editor: 'Loading editor…',
@@ -188,6 +192,9 @@ export const STRINGS = {
     'session-limit': 'Session limit is 50 documents.',
     'session-page-limit': 'Session limit is 500 pages total.',
     'session-byte-limit': 'Session limit is 500 MB of PDFs total.',
+    'intake-lease-refused': 'Not added — signing is in progress.',
+    'intake-session-changed': 'That import no longer matches this session.',
+    'intake-budget-refused': 'Not added — session limits reached.',
     'upload-invalid': 'PNG or JPEG only, up to 10 MB.',
     'upload-too-large': 'PNG or JPEG only, up to 10 MB.'
   } satisfies Record<SignliteErrorCode, string>,

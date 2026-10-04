@@ -1,5 +1,6 @@
 import type { Placement, SessionDocument, WorkSession } from '../db/schema';
 import { createSignatureSnapshot } from './signatureSnapshots';
+import { MAX_SESSION_BYTES, MAX_SESSION_FILES, MAX_SESSION_PAGES } from './sessionLimits';
 import { STRINGS } from './strings';
 
 // ─── History (owned by WorkSessionEditor) ────────────────────────────
@@ -73,7 +74,8 @@ export type WorkSessionEditorError = {
     | 'missing-snapshot'
     | 'empty-clipboard'
     | 'nothing-to-apply'
-    | 'stale-preview';
+    | 'stale-preview'
+    | 'session-limit-exceeded';
   message: string;
 };
 
@@ -242,6 +244,11 @@ export function addDocuments(state: WorkSessionEditorState, addedDocuments: Sess
     return { ok: false, error: { reason: 'duplicate-document-id', message: 'Document identities must be unique' } };
   }
   const documents = [...state.session.documents, ...addedDocuments];
+  const totalBytes = documents.reduce((sum, doc) => sum + doc.pdfBytes.byteLength, 0);
+  const totalPages = documents.reduce((sum, doc) => sum + doc.pageCount, 0);
+  if (documents.length > MAX_SESSION_FILES || totalPages > MAX_SESSION_PAGES || totalBytes > MAX_SESSION_BYTES) {
+    return { ok: false, error: { reason: 'session-limit-exceeded', message: 'Session resource limits reached' } };
+  }
   const session = {
     ...state.session,
     updatedAt: Date.now(),

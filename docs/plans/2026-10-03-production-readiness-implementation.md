@@ -117,12 +117,12 @@ R04 delivers standalone startup and status corrections. R05 integrates those sta
 
 **Data shape.** Use one resource-budget value with document count, page count, and source-byte count. Return a typed intake result containing accepted documents and per-file rejection reasons. Commit against the current session identity and current budget.
 
-- [ ] Reproduce a native mouse drag with Playwright `dragTo` or mouse movement. Assert one persisted placement and a visible preview. Keep synthetic tests for malformed payloads only.
-- [ ] Check the supported MIME type through `dataTransfer.types` during `dragover`. Read the payload only during `drop`. Validate IDs and positive dimensions before placement.
-- [ ] Handle every non-null file validation result, including document and page ceilings. Add an exhaustive error mapping so new variants cannot be ignored.
-- [ ] Serialize intake within the drop component or explicitly cancel a superseded run. Recheck the current resource budget at the store boundary before committing accepted documents.
-- [ ] Reject a result prepared for a different session or a session now under a batch mutation lease. Report rejected documents rather than silently losing the intake result.
-- [ ] Preserve per-file reporting for valid files mixed with unsupported, encrypted, corrupt, or oversized files. Keep MIME validation behavior explicit and covered by browser fixtures.
+- [x] Reproduce a native mouse drag with Playwright `dragTo` or mouse movement. Assert one persisted placement and a visible preview. Keep synthetic tests for malformed payloads only.
+- [x] Check the supported MIME type through `dataTransfer.types` during `dragover`. Read the payload only during `drop`. Validate IDs and positive dimensions before placement.
+- [x] Handle every non-null file validation result, including document and page ceilings. Add an exhaustive error mapping so new variants cannot be ignored.
+- [x] Serialize intake within the drop component or explicitly cancel a superseded run. Recheck the current resource budget at the store boundary before committing accepted documents.
+- [x] Reject a result prepared for a different session or a session now under a batch mutation lease. Report rejected documents rather than silently losing the intake result.
+- [x] Preserve per-file reporting for valid files mixed with unsupported, encrypted, corrupt, or oversized files. Keep MIME validation behavior explicit and covered by browser fixtures.
 
 **Checks.** Run `npm test -- tests/unit/files.test.ts tests/unit/dropzone.test.tsx tests/unit/placement-layer.test.tsx tests/unit/store.test.ts tests/unit/work-session-editor.test.ts` and `npm run test:e2e -- sign-flow.spec.ts intake-limits.spec.ts`.
 

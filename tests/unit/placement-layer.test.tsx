@@ -1,5 +1,5 @@
 import { act, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { PlacementLayer } from '../../src/components/editor/PlacementLayer';
+import { ASSET_DRAG_TYPE, PlacementLayer } from '../../src/components/editor/PlacementLayer';
 import { PlacedElement } from '../../src/components/editor/PlacedElement';
 import { sessionStoreTestHarness } from '../../src/stores/session';
 import { getDateFormat, saveAsset, setDateFormat } from '../../src/db/signatures';
@@ -471,6 +471,100 @@ describe('placement layer', () => {
     expect(sessionStoreTestHarness.getState().history.past).toHaveLength(1);
     sessionStoreTestHarness.getState().undo();
     expect(sessionStoreTestHarness.getState().session.documents[0]?.placements[0]).toMatchObject({ w: 0.2, h: 0.1 });
+  });
+
+  describe('native drag acceptance', () => {
+    function renderLayer() {
+      render(
+        <div className="relative" style={{ width: 200, height: 100 }}>
+          <PlacementLayer
+            documentId="doc-1"
+            pageIndex={0}
+            pageSize={{ w: 200, h: 100 }}
+            placements={[]}
+            scale={1}
+            selectedPlacementId={null}
+          />
+        </div>
+      );
+      const layer = screen.getByTestId('placement-layer');
+      Object.defineProperty(layer, 'getBoundingClientRect', {
+        value: () => ({ left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100 })
+      });
+      return layer;
+    }
+
+    // Native drags protect getData outside dragstart/drop; dragover can only
+    // inspect types. The layer must accept the drop on that signal alone.
+    it('accepts a dragover whose payload is protected and reads data only on drop', async () => {
+      const savedAsset = await saveAsset({
+        kind: 'signature', source: 'uploaded', pngBytes: new Uint8Array([1, 2, 3]).buffer,
+        width: 400, height: 100, label: 'Native drag asset'
+      });
+      const layer = renderLayer();
+
+      const protectedTransfer = {
+        types: [ASSET_DRAG_TYPE],
+        getData: () => {
+          throw new Error('native dragover payloads are protected');
+        },
+        dropEffect: 'none'
+      };
+      const dragOverEvent = createEvent.dragOver(layer, { dataTransfer: protectedTransfer });
+      Object.defineProperties(dragOverEvent, { clientX: { value: 100 }, clientY: { value: 50 } });
+      fireEvent(layer, dragOverEvent);
+
+      expect(dragOverEvent.defaultPrevented).toBe(true);
+      expect(protectedTransfer.dropEffect).toBe('copy');
+
+      const readableTransfer = {
+        types: [ASSET_DRAG_TYPE],
+        getData: (type: string) => (type === ASSET_DRAG_TYPE ? JSON.stringify({ id: savedAsset.id, kind: 'signature', width: 400, height: 100 }) : ''),
+        dropEffect: 'copy'
+      };
+      const dropEvent = createEvent.drop(layer, { dataTransfer: readableTransfer });
+      Object.defineProperties(dropEvent, { clientX: { value: 100 }, clientY: { value: 50 } });
+      fireEvent(layer, dropEvent);
+
+      await waitFor(() => expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(1));
+    });
+
+    it('refuses a payload with non-positive dimensions and reports it', async () => {
+      const savedAsset = await saveAsset({
+        kind: 'signature', source: 'uploaded', pngBytes: new Uint8Array([1, 2, 3]).buffer,
+        width: 400, height: 100, label: 'Zero dimension asset'
+      });
+      const onToast = vi.fn();
+      render(
+        <div className="relative" style={{ width: 200, height: 100 }}>
+          <PlacementLayer
+            documentId="doc-1"
+            pageIndex={0}
+            pageSize={{ w: 200, h: 100 }}
+            placements={[]}
+            scale={1}
+            selectedPlacementId={null}
+            onToast={onToast}
+          />
+        </div>
+      );
+      const layer = screen.getByTestId('placement-layer');
+      Object.defineProperty(layer, 'getBoundingClientRect', {
+        value: () => ({ left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100 })
+      });
+
+      const dataTransfer = {
+        types: [ASSET_DRAG_TYPE],
+        getData: () => JSON.stringify({ id: savedAsset.id, kind: 'signature', width: 0, height: 100 }),
+        dropEffect: 'copy'
+      };
+      const dropEvent = createEvent.drop(layer, { dataTransfer });
+      Object.defineProperties(dropEvent, { clientX: { value: 100 }, clientY: { value: 50 } });
+      fireEvent(layer, dropEvent);
+
+      expect(dropEvent.defaultPrevented).toBe(true);
+      expect(onToast).toHaveBeenCalledWith('That item cannot be placed here.');
+    });
   });
 
 });

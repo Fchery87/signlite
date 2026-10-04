@@ -76,6 +76,7 @@ export default function App() {
           currentDocumentCount={documentCount}
           currentPageCount={currentPageCount}
           currentByteCount={currentByteCount}
+          sessionId={session?.id}
           onDocumentsAccepted={addDocuments}
           onToast={pushToast}
         />

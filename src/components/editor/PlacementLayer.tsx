@@ -28,6 +28,8 @@ function isEditableTarget(target: EventTarget | null) {
 }
 
 function parseDragAsset(event: DragEvent<HTMLDivElement>): DragAssetPayload | null {
+  // Native drags protect getData outside dragstart and drop; only call this
+  // from drop. dragover gates on dataTransfer.types instead.
   const raw = event.dataTransfer.getData(ASSET_DRAG_TYPE);
   if (!raw) return null;
   try {
@@ -36,7 +38,11 @@ function parseDragAsset(event: DragEvent<HTMLDivElement>): DragAssetPayload | nu
       typeof payload.id !== 'string' ||
       (payload.kind !== 'signature' && payload.kind !== 'initials') ||
       typeof payload.width !== 'number' ||
-      typeof payload.height !== 'number'
+      typeof payload.height !== 'number' ||
+      !Number.isFinite(payload.width) ||
+      !Number.isFinite(payload.height) ||
+      payload.width <= 0 ||
+      payload.height <= 0
     ) {
       return null;
     }
@@ -143,7 +149,15 @@ export function PlacementLayer({
   const placeAsset = async (event: DragEvent<HTMLDivElement>) => {
     if (mutationLocked) return;
     const asset = parseDragAsset(event);
-    if (!asset) return;
+    if (!asset) {
+      // A drop that carried our drag type but failed validation must still
+      // tell the user why nothing was placed.
+      if (event.dataTransfer.types.includes(ASSET_DRAG_TYPE)) {
+        event.preventDefault();
+        onToast?.(STRINGS.editor.invalidDropPayload);
+      }
+      return;
+    }
 
     const bounds = event.currentTarget.getBoundingClientRect();
     const width = 0.2;
@@ -192,7 +206,10 @@ export function PlacementLayer({
         }
       }}
       onDragOver={(event) => {
-        if (!mutationLocked && parseDragAsset(event)) {
+        // Native drag payloads are protected outside dragstart/drop, so
+        // dragover can only check types; getData here would throw and the
+        // browser would refuse the drop.
+        if (!mutationLocked && event.dataTransfer.types.includes(ASSET_DRAG_TYPE)) {
           event.preventDefault();
           event.dataTransfer.dropEffect = 'copy';
         }

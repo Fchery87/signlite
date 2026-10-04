@@ -58,6 +58,44 @@ describe('session store', () => {
     expect(state.session.documents).toHaveLength(1);
   });
 
+  it('refuses intake that would exceed the document, page, or byte ceilings and mutates nothing', () => {
+    const full = Array.from({ length: 50 }, (_, index) => makeDocument(`full-${index}`));
+    sessionStoreTestHarness.setState({ session: { ...sessionStoreTestHarness.getState().session, id: 'session-1', documents: full } });
+
+    expect(sessionStoreTestHarness.getState().addDocuments([makeDocument('doc-51')])).toBe('budget');
+    expect(sessionStoreTestHarness.getState().session.documents).toHaveLength(50);
+
+    const nearPageCeiling = [makeDocument('pages-a', 499)];
+    sessionStoreTestHarness.setState({ session: { ...sessionStoreTestHarness.getState().session, documents: nearPageCeiling } });
+    expect(sessionStoreTestHarness.getState().addDocuments([makeDocument('pages-b', 2)])).toBe('budget');
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.docId).toBe('pages-a');
+
+    const bigDocument = { ...makeDocument('big'), pdfBytes: new Uint8Array(10).buffer as ArrayBuffer };
+    sessionStoreTestHarness.setState({
+      session: {
+        ...sessionStoreTestHarness.getState().session,
+        documents: [{ ...makeDocument('sized'), pdfBytes: new Uint8Array(500 * 1024 * 1024 - 5).buffer as ArrayBuffer }]
+      }
+    });
+    expect(sessionStoreTestHarness.getState().addDocuments([bigDocument])).toBe('budget');
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.docId).toBe('sized');
+  });
+
+  it('refuses intake prepared for a different session', () => {
+    const outcome = sessionStoreTestHarness.getState().addDocuments([makeDocument('doc-1')], 'session-2');
+    expect(outcome).toBe('session-changed');
+    expect(sessionStoreTestHarness.getState().session.documents).toHaveLength(0);
+    expect(sessionStoreTestHarness.getState().view).toBe('dropzone');
+  });
+
+  it('refuses intake while a batch mutation lease is held', () => {
+    const lease = sessionStoreTestHarness.getState().acquireMutationLease('Batch Signing attempt-1');
+    expect(lease).not.toBeNull();
+
+    expect(sessionStoreTestHarness.getState().addDocuments([makeDocument('doc-1')])).toBe('lease');
+    expect(sessionStoreTestHarness.getState().session.documents).toHaveLength(0);
+  });
+
   it('atomically inserts and deduplicates immutable signature snapshots', async () => {
     sessionStoreTestHarness.getState().addDocuments([makeDocument('doc-1')]);
     const asset = {

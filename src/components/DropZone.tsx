@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import type { SessionDocument } from '../db/schema';
 import { STRINGS } from '../lib/strings';
-import { createSessionDocument, getFileValidationError } from '../lib/files';
+import { createSessionDocument, getFileValidationError, type FileValidationError } from '../lib/files';
+import type { IntakeCommitOutcome } from '../stores/session';
 import { Button } from './ui';
 
 type IntakeItem =
@@ -9,28 +10,65 @@ type IntakeItem =
   | { id: string; fileName: string; status: 'accepted'; pageCount: number }
   | { id: string; fileName: string; status: 'rejected'; reason: string };
 
+/** Outcome the store returns when committing an intake result. */
+type CommitOutcome = IntakeCommitOutcome;
+
+/** One toast-and-item copy per validation variant; a new variant without copy is a compile error. */
+const REJECTION_REASONS: Record<FileValidationError, (fileName: string) => string> = {
+  'pdf-only': (fileName) => `${fileName} — ${STRINGS.errors['pdf-only']}`,
+  'too-large': (fileName) => STRINGS.edgeCases.fileTooLarge(fileName),
+  'session-limit': (fileName) => `${fileName} — ${STRINGS.errors['session-limit']}`,
+  'session-page-limit': (fileName) => `${fileName} — ${STRINGS.errors['session-page-limit']}`,
+  'session-byte-limit': (fileName) => `${fileName} — ${STRINGS.errors['session-byte-limit']}`,
+  encrypted: (fileName) => `${fileName} — ${STRINGS.errors.encrypted}`,
+  corrupt: (fileName) => STRINGS.edgeCases.corruptFile(fileName)
+};
+
+const COMMIT_REFUSALS: Record<Exclude<CommitOutcome, 'ok'>, string> = {
+  lease: STRINGS.errors['intake-lease-refused'],
+  'session-changed': STRINGS.errors['intake-session-changed'],
+  budget: STRINGS.errors['intake-budget-refused']
+};
+
 type DropZoneProps = {
   currentDocumentCount: number;
   currentPageCount: number;
   currentByteCount?: number;
-  onDocumentsAccepted: (documents: SessionDocument[]) => void;
+  sessionId?: string;
+  onDocumentsAccepted: (documents: SessionDocument[], expectedSessionId?: string) => CommitOutcome;
   onToast: (message: string) => void;
 };
 
-export function DropZone({ currentDocumentCount, currentPageCount, currentByteCount = 0, onDocumentsAccepted, onToast }: DropZoneProps) {
+export function DropZone({ currentDocumentCount, currentPageCount, currentByteCount = 0, sessionId, onDocumentsAccepted, onToast }: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [intakeItems, setIntakeItems] = useState<IntakeItem[]>([]);
+  // Intake runs are queued so overlapping drops commit in order against fresh
+  // budgets; the store rechecks ceilings and session identity authoritatively.
+  const intakeQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const budgetRef = useRef({ currentDocumentCount, currentPageCount, currentByteCount });
+  budgetRef.current = { currentDocumentCount, currentPageCount, currentByteCount };
 
   const overlayClassName = useMemo(
     () => (isDragging ? 'border-accent bg-accent-subtle text-ink' : 'border-line bg-surface text-ink'),
     [isDragging]
   );
 
-  const processFiles = async (fileList: FileList | null) => {
+  const processFiles = (fileList: FileList | null) => {
     const files = Array.from(fileList ?? []);
     if (files.length === 0) return;
 
+    // Capture session identity now; a session swap during intake must not
+    // commit this result into the new session.
+    const preparedForSessionId = sessionId;
+    if (inputRef.current) {
+      inputRef.current.value = '';
+    }
+
+    intakeQueue.current = intakeQueue.current.then(() => runIntake(files, preparedForSessionId));
+  };
+
+  const runIntake = async (files: File[], preparedForSessionId: string | undefined) => {
     const items = files.map((file, index) => ({
       id: `${file.name}-${file.lastModified}-${index}`,
       fileName: file.name,
@@ -46,33 +84,24 @@ export function DropZone({ currentDocumentCount, currentPageCount, currentByteCo
     let acceptedByteCount = 0;
 
     for (const [index, file] of files.entries()) {
+      const budget = budgetRef.current;
       const validationError = getFileValidationError(file, {
-        documentCount: currentDocumentCount + accepted.length,
-        pageCount: currentPageCount + acceptedPageCount,
-        byteCount: currentByteCount + acceptedByteCount
+        documentCount: budget.currentDocumentCount + accepted.length,
+        pageCount: budget.currentPageCount + acceptedPageCount,
+        byteCount: budget.currentByteCount + acceptedByteCount
       });
-      if (validationError === 'pdf-only') {
-        const reason = STRINGS.errors['pdf-only'];
-        updateItem(index, { ...items[index], status: 'rejected', reason });
-        onToast(`${file.name} — ${reason}`);
-        continue;
-      }
-      if (validationError === 'too-large') {
-        const reason = STRINGS.edgeCases.fileTooLarge(file.name);
+      if (validationError !== null) {
+        // Exhaustive: every non-null validation result rejects the file before
+        // any parse work, with per-file copy from the registry.
+        const reason = REJECTION_REASONS[validationError](file.name);
         updateItem(index, { ...items[index], status: 'rejected', reason });
         onToast(reason);
-        continue;
-      }
-      if (validationError === 'session-byte-limit') {
-        const reason = STRINGS.errors['session-byte-limit'];
-        updateItem(index, { ...items[index], status: 'rejected', reason });
-        onToast(`${file.name} — ${reason}`);
         continue;
       }
 
       try {
         const document = await createSessionDocument(file, {
-          currentPageCount,
+          currentPageCount: budgetRef.current.currentPageCount,
           acceptedPageCount
         });
         accepted.push(document);
@@ -88,11 +117,10 @@ export function DropZone({ currentDocumentCount, currentPageCount, currentByteCo
     }
 
     if (accepted.length > 0) {
-      onDocumentsAccepted(accepted);
-    }
-
-    if (inputRef.current) {
-      inputRef.current.value = '';
+      const outcome = onDocumentsAccepted(accepted, preparedForSessionId);
+      if (outcome !== 'ok') {
+        onToast(COMMIT_REFUSALS[outcome]);
+      }
     }
   };
 

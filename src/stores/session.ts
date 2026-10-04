@@ -39,6 +39,9 @@ export type { ApplyToAllPreview };
 
 export type ViewState = 'dropzone' | 'editor';
 
+/** Outcome of committing an intake result. Non-'ok' values are surfaced to the user. */
+export type IntakeCommitOutcome = 'ok' | 'lease' | 'session-changed' | 'budget';
+
 export type ApplyTemplatePlacementsResult = {
   ok: boolean;
   appliedDocIds: string[];
@@ -57,7 +60,7 @@ type SessionState = {
   contentRevision: number;
   mutationLease: MutationLease | null;
   mutationLock: Readonly<{ owner: string }> | null;
-  addDocuments: (docs: SessionDocument[]) => void;
+  addDocuments: (docs: SessionDocument[], expectedSessionId?: string) => IntakeCommitOutcome;
   removeDocument: (docId: string) => void;
   reorderDocuments: (docIds: string[]) => void;
   addTextPlacement: (docId: string, placement: Placement) => void;
@@ -121,10 +124,13 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
   mutationLease: null,
   mutationLock: null,
 
-  addDocuments: (docs) => {
-    if (get().mutationLease) return;
+  addDocuments: (docs, expectedSessionId) => {
+    if (get().mutationLease) return 'lease';
+    if (expectedSessionId !== undefined && get().session.id !== expectedSessionId) return 'session-changed';
     const result = editorAddDocuments(toEditorState(get()), docs);
-    if (!result.ok) return;
+    if (!result.ok) {
+      return result.error.reason === 'session-limit-exceeded' ? 'budget' : 'lease';
+    }
     set({
       session: result.session,
       history: result.history,
@@ -135,6 +141,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
       ownershipRevision: get().ownershipRevision + 1,
       contentRevision: get().contentRevision + 1
     });
+    return 'ok';
   },
 
   removeDocument: (docId) => {

@@ -1,7 +1,10 @@
 import { loadDocument, SignlitePdfError } from '../pdf/render';
 import type { SessionDocument } from '../db/schema';
+import { MAX_FILE_SIZE, MAX_SESSION_BYTES, MAX_SESSION_FILES, MAX_SESSION_PAGES, type SessionResourceBudget } from './sessionLimits';
 
 export { batchZipFileName, dedupeFileName, signedPdfFileName, stemFromFileName } from './downloadNames';
+export { MAX_FILE_SIZE, MAX_SESSION_BYTES, MAX_SESSION_FILES, MAX_SESSION_PAGES } from './sessionLimits';
+export type { SessionResourceBudget } from './sessionLimits';
 
 export function downloadBlob(blob: Blob, fileName: string) {
   const href = URL.createObjectURL(blob);
@@ -11,17 +14,6 @@ export function downloadBlob(blob: Blob, fileName: string) {
   anchor.click();
   window.setTimeout(() => URL.revokeObjectURL(href), 0);
 }
-
-export const MAX_FILE_SIZE = 100 * 1024 * 1024;
-export const MAX_SESSION_FILES = 50;
-export const MAX_SESSION_PAGES = 500;
-export const MAX_SESSION_BYTES = 500 * 1024 * 1024;
-
-export type SessionResourceBudget = {
-  documentCount: number;
-  pageCount: number;
-  byteCount: number;
-};
 
 export type FileValidationError = 'pdf-only' | 'too-large' | 'session-limit' | 'session-page-limit' | 'session-byte-limit' | 'encrypted' | 'corrupt';
 
