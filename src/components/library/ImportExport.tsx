@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { exportLibrary, getLastExportAt, hydrateSignaturePrefs, importLibrary } from '../../db/signatures';
+import { exportLibrary, getLastExportAt, hydrateSignaturePrefs, importLibrary, markLibraryExportOffered } from '../../db/signatures';
 import { STRINGS } from '../../lib/strings';
 import { Button } from '../ui';
 
@@ -18,7 +18,7 @@ export function ImportExport({ onImported, onToast }: ImportExportProps) {
 
   const lastExportLabel = useMemo(() => {
     if (!lastExportAt) return STRINGS.imports.noBackupYet;
-    return STRINGS.imports.lastBackedUp(new Date(lastExportAt).toLocaleString());
+    return STRINGS.imports.exportOffered(new Date(lastExportAt).toLocaleString());
   }, [lastExportAt]);
 
   const handleExport = async () => {
@@ -30,6 +30,7 @@ export function ImportExport({ onImported, onToast }: ImportExportProps) {
       anchor.download = 'signlite-library.json';
       anchor.click();
       URL.revokeObjectURL(url);
+      await markLibraryExportOffered();
       const next = getLastExportAt();
       setLastExportAt(next);
       onToast(STRINGS.library.exportSuccess);

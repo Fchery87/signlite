@@ -1,3 +1,5 @@
+import { normalizedUploadDimensions } from '../../lib/imagePolicy';
+
 const PNG_TYPE = 'image/png';
 
 export type DrawStroke = Array<{ x: number; y: number }>;
@@ -124,14 +126,25 @@ export async function imageFileToCanvas(file: File): Promise<HTMLCanvasElement> 
       value.src = url;
     });
 
+    const natural = { width: image.naturalWidth, height: image.naturalHeight };
+    if (natural.width <= 0 || natural.height <= 0) {
+      throw new Error('Could not read this image.');
+    }
+    // Uploads are normalized into the processing caps before any canvas
+    // allocation, preserving aspect ratio; imports (exact bytes) reject
+    // beyond the caps instead.
+    const target = normalizedUploadDimensions(natural);
+
     const canvas = document.createElement('canvas');
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
+    canvas.width = target.width;
+    canvas.height = target.height;
     const context = canvas.getContext('2d');
     if (!context) {
       throw new Error('2d context unavailable');
     }
-    context.drawImage(image, 0, 0);
+    context.drawImage(image, 0, 0, target.width, target.height);
+    // The decoded bitmap is no longer needed once it is drawn.
+    image.src = '';
     return canvas;
   } finally {
     URL.revokeObjectURL(url);
@@ -140,4 +153,73 @@ export async function imageFileToCanvas(file: File): Promise<HTMLCanvasElement> 
 
 export function bufferToObjectUrl(buffer: ArrayBuffer): string {
   return URL.createObjectURL(new Blob([buffer], { type: PNG_TYPE }));
+}
+
+/** Bundled font faces with their URLs, for recovery loads: a font face that
+ *  failed on a transient network error is stuck in `error` status and a plain
+ *  re-check never recovers it, so a fresh FontFace must be added. */
+const BUNDLED_FONTS: Array<{ family: string; url: string }> = [
+  { family: 'SignLite Caveat', url: '/fonts/Caveat-Regular.ttf' },
+  { family: 'SignLite Homemade Apple', url: '/fonts/HomemadeApple-Regular.ttf' }
+];
+const fontRecovery = new Map<string, Promise<boolean>>();
+
+function firstBundledFamily(fontFamily: string) {
+  const quoted = /"([^"]+)"/.exec(fontFamily);
+  const name = quoted?.[1] ?? fontFamily.split(',')[0]?.trim();
+  return BUNDLED_FONTS.find((font) => font.family === name) ?? null;
+}
+
+const unquote = (value: string) => value.replace(/^["']|["']$/g, '').toLowerCase();
+
+/** Whether a face for this family has finished loading.
+ *
+ *  `document.fonts.check` is deliberately not used here: it consults every face
+ *  matching the family, so one face left in `error` by an earlier failed fetch
+ *  reports false even after a recovery face loaded successfully. Face status is
+ *  the authoritative signal, and families round-trip through the FontFaceSet
+ *  quoted when they contain spaces. */
+function familyIsLoaded(family: string): boolean {
+  const target = unquote(family);
+  return [...document.fonts].some((face) => unquote(face.family) === target && face.status === 'loaded');
+}
+
+/** Waits for the requested bundled font and verifies it actually loaded, so a
+ *  generated PNG never captures fallback typography. Returns false when the
+ *  font cannot be confirmed; callers surface a retryable failure. */
+export async function ensureFontReady(fontFamily: string, sampleText: string): Promise<boolean> {
+  if (typeof document === 'undefined' || !document.fonts) return true;
+  const bundled = firstBundledFamily(fontFamily);
+  const primary = bundled?.family ?? unquote(fontFamily.split(',')[0] ?? fontFamily);
+  try {
+    await document.fonts.load(`68px ${fontFamily}`, sampleText);
+  } catch {
+    // A rejected load leaves the face unusable; the status check below decides
+    // whether a recovery load is still worth attempting.
+  }
+  if (familyIsLoaded(primary)) return true;
+  if (!bundled || typeof FontFace === 'undefined') return false;
+
+  // Share one in-flight recovery per family, but never remember a failed
+  // attempt: a transient network failure must not poison every later retry.
+  const inFlight = fontRecovery.get(bundled.family);
+  if (inFlight) return inFlight;
+
+  const attempt = (async () => {
+    try {
+      const face = new FontFace(bundled.family, `url(${bundled.url})`);
+      document.fonts.add(face);
+      await face.load();
+    } catch {
+      // Fall through to the status check below.
+    }
+    return familyIsLoaded(primary);
+  })();
+
+  fontRecovery.set(bundled.family, attempt);
+  try {
+    return await attempt;
+  } finally {
+    if (fontRecovery.get(bundled.family) === attempt) fontRecovery.delete(bundled.family);
+  }
 }

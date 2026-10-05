@@ -1,14 +1,19 @@
 import { openSignliteDb, type Prefs, type SignatureAsset } from './schema';
 import { STRINGS } from '../lib/strings';
+import {
+  dimensionsExceedProcessingCaps,
+  IMPORT_MAX_ASSETS,
+  IMPORT_MAX_DECODED_BYTES,
+  IMPORT_MAX_JSON_BYTES,
+  IMPORT_MAX_PNG_BYTES
+} from '../lib/imagePolicy';
 
 export type SaveAssetInput = Omit<SignatureAsset, 'id' | 'createdAt' | 'lastUsedAt'>;
 export type UpdateAssetInput = Partial<Pick<SignatureAsset, 'label' | 'lastUsedAt'>>;
 
-type ExportedSignatureAsset = Omit<SignatureAsset, 'pngBytes'> & { pngBytes: string };
-
 type ExportEnvelope = {
   version: 1;
-  signatures: ExportedSignatureAsset[];
+  signatures: Array<Omit<SignatureAsset, 'pngBytes'> & { pngBytes: string }>;
 };
 
 class MemoryStore {
@@ -40,11 +45,15 @@ function sortByLastUsedDesc(assets: SignatureAsset[]) {
 }
 
 function encodeBase64(buffer: ArrayBuffer) {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
-}
-
-function decodeBase64(value: string) {
-  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0)).buffer;
+  // A single spread over the whole buffer overflows the call stack above a few
+  // hundred kilobytes; bounded chunks keep every valid PNG encodable.
+  const bytes = new Uint8Array(buffer);
+  const CHUNK = 0x4000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
 }
 
 async function readBlobText(blob: Blob): Promise<string> {
@@ -62,7 +71,52 @@ async function readBlobText(blob: Blob): Promise<string> {
   return new Response(blob).text();
 }
 
-function parseImportPayload(payload: unknown): ExportEnvelope {
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+function isValidBase64(value: string) {
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(value) || value.length % 4 !== 0) return false;
+  try {
+    atob(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Decoded size implied by a base64 string, read from its length and trailing
+ *  padding without decoding it. Lets the byte ceilings reject an oversized
+ *  asset before the regex scan and `atob` ever touch a multi-megabyte payload,
+ *  and stays exact so a payload of exactly the limit is still accepted. */
+function impliedDecodedBytes(value: string) {
+  const padding = (value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0);
+  return Math.floor((value.length * 3) / 4) - padding;
+}
+
+function pngHeaderDimensions(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length < 33) return null;
+  for (let i = 0; i < PNG_MAGIC.length; i += 1) {
+    if (bytes[i] !== PNG_MAGIC[i]) return null;
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (view.getUint32(8) !== 13) return null;
+  if (bytes[12] !== 0x49 || bytes[13] !== 0x48 || bytes[14] !== 0x44 || bytes[15] !== 0x52) return null;
+  return { width: view.getUint32(16), height: view.getUint32(20) };
+}
+
+/** Every complete PNG ends with the 12-byte IEND chunk. A payload whose
+ *  header parses but whose image data was cut short would import cleanly and
+ *  then fail to render, so the trailer is checked as well. */
+function pngIsComplete(bytes: Uint8Array) {
+  if (bytes.length < 45) return false;
+  const end = bytes.length - 8;
+  return bytes[end] === 0x49 && bytes[end + 1] === 0x45 && bytes[end + 2] === 0x4e && bytes[end + 3] === 0x44;
+}
+
+type ValidatedImport = { assets: SignatureAsset[]; identicalDuplicates: number };
+
+/** Validates and decodes the whole envelope before anything is written: a
+ *  failed import must leave every previous record unchanged. */
+function validateImportEnvelope(payload: unknown): ValidatedImport {
   if (typeof payload !== 'object' || payload === null) {
     throw new Error(STRINGS.errors['import-invalid']);
   }
@@ -72,32 +126,57 @@ function parseImportPayload(payload: unknown): ExportEnvelope {
   if (version !== 1 || !Array.isArray(signatures)) {
     throw new Error(STRINGS.errors['import-invalid']);
   }
+  if (signatures.length > IMPORT_MAX_ASSETS) {
+    throw new Error(STRINGS.errors['import-too-many']);
+  }
 
-  const normalized = signatures.map((item) => {
-    if (typeof item !== 'object' || item === null) {
-      throw new Error(STRINGS.errors['import-invalid']);
-    }
+  const byId = new Map<string, SignatureAsset>();
+  let identicalDuplicates = 0;
+  let decodedTotal = 0;
+  const invalid = () => new Error(STRINGS.errors['import-invalid']);
 
+  for (const item of signatures) {
+    if (typeof item !== 'object' || item === null) throw invalid();
     const candidate = item as Record<string, unknown>;
     if (
-      typeof candidate.id !== 'string' ||
+      typeof candidate.id !== 'string' || candidate.id.length === 0 ||
       (candidate.kind !== 'signature' && candidate.kind !== 'initials') ||
       (candidate.source !== 'drawn' && candidate.source !== 'typed' && candidate.source !== 'uploaded') ||
       typeof candidate.pngBytes !== 'string' ||
-      typeof candidate.width !== 'number' ||
-      typeof candidate.height !== 'number' ||
+      typeof candidate.width !== 'number' || typeof candidate.height !== 'number' ||
       typeof candidate.label !== 'string' ||
-      typeof candidate.createdAt !== 'number' ||
-      typeof candidate.lastUsedAt !== 'number'
+      typeof candidate.createdAt !== 'number' || !Number.isFinite(candidate.createdAt) ||
+      typeof candidate.lastUsedAt !== 'number' || !Number.isFinite(candidate.lastUsedAt) ||
+      !Number.isInteger(candidate.width) || !Number.isInteger(candidate.height) ||
+      candidate.width <= 0 || candidate.height <= 0 ||
+      dimensionsExceedProcessingCaps({ width: candidate.width, height: candidate.height })
     ) {
-      throw new Error(STRINGS.errors['import-invalid']);
+      throw invalid();
     }
 
-    return {
+    // Byte ceilings first, from the encoded length alone: a single oversized
+    // payload must not cost a regex scan and a decode before it is refused.
+    const impliedBytes = impliedDecodedBytes(candidate.pngBytes);
+    if (impliedBytes > IMPORT_MAX_PNG_BYTES) throw invalid();
+    decodedTotal += impliedBytes;
+    if (decodedTotal > IMPORT_MAX_DECODED_BYTES) {
+      throw new Error(STRINGS.errors['import-too-large']);
+    }
+
+    if (!isValidBase64(candidate.pngBytes)) throw invalid();
+
+    const png = atob(candidate.pngBytes);
+    const bytes = new Uint8Array(png.length);
+    for (let i = 0; i < png.length; i += 1) bytes[i] = png.charCodeAt(i);
+    if (bytes.byteLength === 0) throw invalid();
+    const header = pngHeaderDimensions(bytes);
+    if (!header || !pngIsComplete(bytes) || header.width !== candidate.width || header.height !== candidate.height) throw invalid();
+
+    const asset: SignatureAsset = {
       id: candidate.id,
       kind: candidate.kind,
       source: candidate.source,
-      pngBytes: candidate.pngBytes,
+      pngBytes: bytes.buffer,
       width: candidate.width,
       height: candidate.height,
       strokeData: typeof candidate.strokeData === 'string' ? candidate.strokeData : undefined,
@@ -106,10 +185,21 @@ function parseImportPayload(payload: unknown): ExportEnvelope {
       label: candidate.label,
       createdAt: candidate.createdAt,
       lastUsedAt: candidate.lastUsedAt
-    } satisfies ExportedSignatureAsset;
-  });
+    };
 
-  return { version: 1, signatures: normalized };
+    const previous = byId.get(asset.id);
+    if (previous) {
+      if (previous.label !== asset.label || previous.kind !== asset.kind || previous.width !== asset.width ||
+        previous.height !== asset.height || previous.pngBytes.byteLength !== asset.pngBytes.byteLength) {
+        throw new Error(STRINGS.errors['import-conflict']);
+      }
+      identicalDuplicates += 1;
+      continue;
+    }
+    byId.set(asset.id, asset);
+  }
+
+  return { assets: Array.from(byId.values()), identicalDuplicates };
 }
 
 async function getPrefsRecord() {
@@ -127,12 +217,6 @@ async function putPrefsRecord(prefs: Prefs) {
     return;
   }
   await db.put('prefs', prefs, 'prefs');
-}
-
-async function setLastExportAt(value: number) {
-  lastExportAtCache = value;
-  const prefs = await getPrefsRecord();
-  await putPrefsRecord({ ...prefs, lastExportAt: value });
 }
 
 export function getLastExportAt() {
@@ -187,12 +271,14 @@ export async function saveAsset(input: SaveAssetInput): Promise<SignatureAsset> 
   const db = await getDb();
   if (!db) {
     memoryStore.signatures.set(asset.id, asset);
+    await bumpAssetsAddedSinceExport();
     return asset;
   }
 
   try {
     await db.put('signatures', asset);
     void navigator.storage?.persist?.();
+    await bumpAssetsAddedSinceExport();
     return asset;
   } catch (error) {
     if (isQuotaExceededError(error)) {
@@ -201,6 +287,29 @@ export async function saveAsset(input: SaveAssetInput): Promise<SignatureAsset> 
     }
     throw error;
   }
+}
+
+async function bumpAssetsAddedSinceExport(count = 1) {
+  const prefs = await getPrefsRecord();
+  await putPrefsRecord({ ...prefs, assetsAddedSinceExport: (prefs.assetsAddedSinceExport ?? 0) + count });
+}
+
+export type BackupReminder = { due: boolean; reason: 'days' | 'count' | null };
+
+const REMINDER_DAYS = 30;
+const REMINDER_NEW_ASSETS = 10;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The backup reminder fires 30 days after the export-offer watermark or once
+ *  10 assets were added since it, whichever comes first. Legacy prefs without
+ *  the fields start clean. */
+export async function getBackupReminderState(now = Date.now()): Promise<BackupReminder> {
+  const prefs = await getPrefsRecord();
+  const added = prefs.assetsAddedSinceExport ?? 0;
+  if (added >= REMINDER_NEW_ASSETS) return { due: true, reason: 'count' };
+  const lastExportAt = prefs.lastExportAt ?? null;
+  if (lastExportAt !== null && now - lastExportAt >= REMINDER_DAYS * DAY_MS) return { due: true, reason: 'days' };
+  return { due: false, reason: null };
 }
 
 export async function updateAsset(id: string, updates: UpdateAssetInput): Promise<SignatureAsset | null> {
@@ -242,13 +351,32 @@ export async function exportLibrary(): Promise<Blob> {
     ...asset,
     pngBytes: encodeBase64(asset.pngBytes)
   }));
-  await setLastExportAt(Date.now());
   return new Blob([JSON.stringify({ version: 1, signatures } satisfies ExportEnvelope, null, 2)], {
     type: 'application/json'
   });
 }
 
+/** Records that an export file was offered for download. Called by the UI only
+ *  after the browser accepts the offer, never during envelope creation: an
+ *  offer is not proof the user retained the file. */
+export async function markLibraryExportOffered(now = Date.now()) {
+  const prefs = await getPrefsRecord();
+  await putPrefsRecord({ ...prefs, lastExportAt: now, assetsAddedSinceExport: 0 });
+  lastExportAtCache = now;
+}
+
+/** Test-only reset for the cached backup watermark. */
+export function resetSignaturePrefsCacheForTests() {
+  lastExportAtCache = null;
+}
+
 export async function importLibrary(file: File): Promise<{ added: number; skipped: number }> {
+  // Bound the work before reading: an oversized file is rejected on its size
+  // alone, without parsing or decoding a byte of it.
+  if (file.size > IMPORT_MAX_JSON_BYTES) {
+    throw new Error(STRINGS.errors['import-too-large']);
+  }
+
   let payload: unknown;
   try {
     payload = JSON.parse(await readBlobText(file));
@@ -256,18 +384,10 @@ export async function importLibrary(file: File): Promise<{ added: number; skippe
     throw new Error(STRINGS.errors['import-invalid']);
   }
 
-  const parsed = parseImportPayload(payload);
+  const { assets, identicalDuplicates } = validateImportEnvelope(payload);
   const existing = new Set((await listAssets()).map((asset) => asset.id));
-  const additions = parsed.signatures
-    .filter((item) => !existing.has(item.id))
-    .map(
-      (item) =>
-        ({
-          ...item,
-          pngBytes: decodeBase64(item.pngBytes)
-        }) satisfies SignatureAsset
-    );
-  const skipped = parsed.signatures.length - additions.length;
+  const additions = assets.filter((asset) => !existing.has(asset.id));
+  const skipped = identicalDuplicates + (assets.length - additions.length);
   const db = await getDb();
 
   if (!db) {
@@ -280,6 +400,9 @@ export async function importLibrary(file: File): Promise<{ added: number; skippe
     await tx.store.put(asset);
   }
   await tx.done;
+  // One increment for the whole import, not one per asset: an N-asset import
+  // would otherwise run 2N transactions and lose counts under concurrency.
+  if (additions.length > 0) await bumpAssetsAddedSinceExport(additions.length);
   return { added: additions.length, skipped };
 }
 

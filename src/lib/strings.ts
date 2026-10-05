@@ -4,6 +4,9 @@ export type SignliteErrorCode =
   | 'too-large'
   | 'quota'
   | 'import-invalid'
+  | 'import-too-large'
+  | 'import-too-many'
+  | 'import-conflict'
   | 'idb-unavailable'
   | 'pdf-only'
   | 'session-limit'
@@ -135,6 +138,8 @@ export const STRINGS = {
     imageSaved: 'Image saved to your library.',
     drawTitle: 'Draw signature',
     typeTitle: 'Type signature',
+    fontNotReady: 'Fonts are still loading. Try again in a moment.',
+    retryFont: 'Retry font load',
     typeNamePlaceholder: 'Type your name',
     typeInitialsPlaceholder: 'Type your initials',
     typedPreviewAlt: 'Typed signature preview',
@@ -180,7 +185,9 @@ export const STRINGS = {
   },
   imports: {
     noBackupYet: 'No backup yet.',
-    lastBackedUp: (value: string) => `Last backed up ${value}.`
+    exportOffered: (value: string) => `Export offered ${value}. Keep the downloaded file safe.`,
+    backupReminderDays: 'Back up your signatures. It has been over 30 days since the last export offer.',
+    backupReminderCount: 'Back up your signatures. 10 or more new items were added since the last export offer.'
   },
   errors: {
     encrypted: 'This PDF is password-protected. Unlock it and drop it again.',
@@ -188,6 +195,9 @@ export const STRINGS = {
     'too-large': 'This file is too large (limit 100 MB).',
     quota: "Couldn't save — browser storage is full.",
     'import-invalid': "This isn't a SignLite library file.",
+    'import-too-large': 'This library file is too large (limit 64 MB).',
+    'import-too-many': 'This library file has too many signatures (limit 1,000).',
+    'import-conflict': "This file has two different signatures with the same ID.",
     'idb-unavailable': "This browser can't save your library. Signing works; saved signatures won't survive this tab.",
     'pdf-only': 'PDF only for now.',
     'session-limit': 'Session limit is 50 documents.',

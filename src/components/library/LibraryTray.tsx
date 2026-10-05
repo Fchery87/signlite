@@ -8,6 +8,7 @@ import { TypePad } from './TypePad';
 import { ImportExport } from './ImportExport';
 import { bufferToObjectUrl, canvasToPngBytes, imageFileToCanvas } from './canvas';
 import { ASSET_DRAG_TYPE } from '../editor/PlacementLayer';
+import { UPLOAD_MAX_FILE_BYTES } from '../../lib/imagePolicy';
 
 type LibraryTrayProps = {
   onToast: (message: string) => void;
@@ -17,8 +18,6 @@ type LibraryTrayProps = {
   activePage?: number;
   placementDisabled?: boolean;
 };
-
-const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
 
 export function LibraryTray({ onToast, onAddDate, onAddText, onPlaceAsset, activePage = 0, placementDisabled = false }: LibraryTrayProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -49,8 +48,8 @@ export function LibraryTray({ onToast, onAddDate, onAddText, onPlaceAsset, activ
   const handleUpload = async (file: File | null) => {
     if (!file) return;
 
-    if (!['image/png', 'image/jpeg'].includes(file.type) || file.size > MAX_UPLOAD_SIZE) {
-      onToast(STRINGS.errors[file.size > MAX_UPLOAD_SIZE ? 'upload-too-large' : 'upload-invalid']);
+    if (!['image/png', 'image/jpeg'].includes(file.type) || file.size > UPLOAD_MAX_FILE_BYTES) {
+      onToast(STRINGS.errors[file.size > UPLOAD_MAX_FILE_BYTES ? 'upload-too-large' : 'upload-invalid']);
       return;
     }
 

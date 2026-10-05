@@ -8,7 +8,7 @@
 
 **Stack.** TypeScript, React, Vite, IndexedDB through idb, PDF.js, pdf-lib, Vitest, Playwright, GitHub Actions, and Cloudflare Pages.
 
-**Status.** In progress. Host choice confirmed by the user on October 3, 2026. R01 through R04 are complete with receipts under `docs/readiness/`. Execution continues in plan order.
+**Status.** In progress. Host choice confirmed by the user on October 3, 2026. R01 through R06 are complete with receipts under `docs/readiness/`. Execution continues in plan order.
 
 ## How to execute the plan
 
@@ -186,15 +186,15 @@ Keep these operations behind the history repository: `load(id)` returns the sess
 
 **Data shape.** Parse a versioned envelope into validated signature assets before writing. Store a backup watermark independently from mutable labels and timestamps. Use a validated image with decoded bytes and intrinsic dimensions.
 
-- [ ] Reproduce backup failure with a valid PNG above 250 KB. Replace the spread encoder with bounded base64 conversion.
-- [ ] Bound JSON bytes and asset count before expensive parsing and decoding. Define and document initial import limits of 64 MiB JSON, 1,000 assets, and 64 MiB decoded image bytes. Verify these limits against the intended library fixture before adopting them.
-- [ ] Apply the existing 10 MiB image-file limit to individual imported PNGs too. Require nonempty IDs, supported enums, finite timestamps, valid base64, positive dimensions, and decoded PNG content matching metadata.
-- [ ] Cap processing dimensions at 4,096 pixels per edge and 16 million pixels before canvas allocation. Reject dimensions beyond that boundary. Normalize valid uploaded signatures to a bounded resolution without changing aspect ratio.
-- [ ] Decode and validate every incoming asset before opening the write transaction. Reject conflicting duplicate IDs inside one file. Count identical duplicates and existing IDs consistently. Verify failed import leaves all previous records unchanged.
-- [ ] Retain valid imported PNG bytes exactly. Re-encode external PNG and JPEG uploads through the existing canvas path. Release object URLs and decoded resources on success, cancellation, and failure.
-- [ ] Move backup timestamp and watermark acknowledgement out of envelope creation. Update them after the browser accepts the download offer. Label the status as an export offer, not proof that the user retained the file.
-- [ ] Implement the specified reminder after 30 days or 10 newly added assets. Use fake time and additions since the successful export watermark. Preserve legacy preference defaults.
-- [ ] Await `document.fonts.load` and verify the selected bundled font before generating preview or save PNGs. Surface a retryable font-loading failure instead of saving fallback typography.
+- [x] Reproduce backup failure with a valid PNG above 250 KB. Replace the spread encoder with bounded base64 conversion.
+- [x] Bound JSON bytes and asset count before expensive parsing and decoding. Define and document initial import limits of 64 MiB JSON, 1,000 assets, and 64 MiB decoded image bytes. Verify these limits against the intended library fixture before adopting them.
+- [x] Apply the existing 10 MiB image-file limit to individual imported PNGs too. Require nonempty IDs, supported enums, finite timestamps, valid base64, positive dimensions, and decoded PNG content matching metadata.
+- [x] Cap processing dimensions at 4,096 pixels per edge and 16 million pixels before canvas allocation. Reject dimensions beyond that boundary. Normalize valid uploaded signatures to a bounded resolution without changing aspect ratio.
+- [x] Decode and validate every incoming asset before opening the write transaction. Reject conflicting duplicate IDs inside one file. Count identical duplicates and existing IDs consistently. Verify failed import leaves all previous records unchanged.
+- [x] Retain valid imported PNG bytes exactly. Re-encode external PNG and JPEG uploads through the existing canvas path. Release object URLs and decoded resources on success, cancellation, and failure.
+- [x] Move backup timestamp and watermark acknowledgement out of envelope creation. Update them after the browser accepts the download offer. Label the status as an export offer, not proof that the user retained the file.
+- [x] Implement the specified reminder after 30 days or 10 newly added assets. Use fake time and additions since the successful export watermark. Preserve legacy preference defaults.
+- [x] Await `document.fonts.load` and verify the selected bundled font before generating preview or save PNGs. Surface a retryable font-loading failure instead of saving fallback typography.
 
 **Checks.** Run `npm test -- tests/unit/signatures.test.ts` and `npm run test:e2e -- library-backup.spec.ts`.
 

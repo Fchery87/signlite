@@ -73,6 +73,9 @@ export interface WorkSession {
 export interface Prefs {
   dateFormat: string;
   lastExportAt?: number;
+  /** Newly added signature assets since the last export-offer watermark; the
+   *  backup reminder fires at 10. Absent in legacy prefs and read as 0. */
+  assetsAddedSinceExport?: number;
 }
 
 interface SignLiteDb extends DBSchema {
