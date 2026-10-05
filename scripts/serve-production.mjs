@@ -34,6 +34,35 @@ const MIME = {
   '.ttf': 'font/ttf'
 };
 
+/** The same rule file Cloudflare Pages reads. Local verification has to see
+ *  the headers the host would send, not only the meta tag in the HTML. */
+export function headersFor(pathname, rulesText) {
+  const headers = {};
+  let current = null;
+  for (const rawLine of rulesText.split('\n')) {
+    const line = rawLine.trim();
+    if (line === '' || line.startsWith('#')) continue;
+    if (!rawLine.startsWith(' ') && !rawLine.startsWith('\t')) {
+      current = matchRule(pathname, line) ? {} : null;
+      if (current) Object.assign(headers, current);
+      continue;
+    }
+    if (!current) continue;
+    const split = line.indexOf(':');
+    if (split === -1) continue;
+    headers[line.slice(0, split).trim()] = line.slice(split + 1).trim();
+  }
+  return headers;
+}
+
+function matchRule(pathname, rule) {
+  if (rule === '/*') return true;
+  if (rule.endsWith('/*')) return pathname.startsWith(rule.slice(0, -1));
+  return pathname === rule;
+}
+
+const headerRules = await readFile(join(dist, '_headers'), 'utf8').catch(() => '');
+
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
@@ -58,9 +87,11 @@ const server = createServer(async (req, res) => {
     }
 
     const body = await readFile(filePath);
+    const servedAsDirectoryIndex = filePath.endsWith(`${sep}index.html`) && (extname(pathname) === '' || pathname.endsWith('/'));
+    const servedPath = servedAsDirectoryIndex ? '/index.html' : pathname;
     res.writeHead(200, {
       'Content-Type': MIME[extname(filePath).toLowerCase()] ?? 'application/octet-stream',
-      'Cache-Control': 'no-store'
+      ...headersFor(servedPath, headerRules)
     });
     res.end(body);
   } catch (error) {

@@ -19,17 +19,15 @@ if (!/types:\s*\[(.+?)\]/.test(workflow) || !workflow.match(/types:\s*\[(.+?)\]/
 
 const gate = workflow.match(/if:\s*(.+)$/m);
 if (!gate) {
-  fail('deploy.yml build job must define an eligibility condition.');
+  fail('deploy.yml publish job must define an eligibility condition.');
 }
 const condition = gate[1].trim();
 
 const successRefs = condition.match(/conclusion\s*==\s*'success'/g) ?? [];
 if (successRefs.length === 0) {
-  fail("the build job condition must require github.event.workflow_run.conclusion == 'success'.");
+  fail("the publish job condition must require github.event.workflow_run.conclusion == 'success'.");
 }
 
-// Evaluate the gate the way GitHub Actions would for each CI outcome. The
-// dispatch arm uses ||, so only a failing CI conclusion must block eligibility.
 function eligibleFor(conclusion, eventName) {
   if (eventName === 'workflow_dispatch') return true;
   return successRefs.length > 0 && conclusion === 'success' && !/conclusion\s*==\s*'failure'/.test(condition);
@@ -48,8 +46,17 @@ for (const { conclusion, eventName, expected } of cases) {
   console.log(`ci ${conclusion} on workflow_run -> publish eligible: ${eligibleFor(conclusion, eventName)}`);
 }
 
-if (!/needs:\s*build/.test(workflow)) {
-  fail('the deploy job must depend on the gated build job.');
+if (!/cloudflare\/wrangler-action/.test(workflow)) {
+  fail('deploy.yml must upload the verified artifact with wrangler.');
+}
+if (/actions\/deploy-pages/.test(workflow) || /actions\/upload-pages-artifact/.test(workflow)) {
+  fail('deploy.yml still publishes through GitHub Pages.');
+}
+if (!/download-artifact@v4/.test(workflow) || !/production-dist/.test(workflow)) {
+  fail('deploy.yml must download the production-dist artifact CI already verified.');
+}
+if (/npm run build/.test(workflow)) {
+  fail('deploy.yml must not rebuild. It publishes the CI artifact.');
 }
 
-console.log('deploy gate check passed: publication only follows a successful ci run.');
+console.log('deploy gate check passed: publication uploads the verified artifact only after a successful ci run.');

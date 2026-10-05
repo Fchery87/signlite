@@ -219,6 +219,18 @@ export class ActiveSessionLifecycle {
     this.update({ candidate: null });
   }
 
+  /** Cancels queued saves and invalidates in-flight generations ahead of a
+   *  local-data wipe: a queued autosave must not resurrect cleared records. */
+  prepareForLocalDataClear() {
+    if (this.disposed) return;
+    if (this.pendingSave !== null) {
+      this.deps.cancel(this.pendingSave);
+      this.pendingSave = null;
+    }
+    this.generation += 1;
+    this.lastRevision = null;
+  }
+
   startFresh(_predecessorId: string, reset: () => void) {
     // No predecessor marker and no eager deletion: the older record is left in
     // place, and history pruning removes it once it expires.

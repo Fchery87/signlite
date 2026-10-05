@@ -9,53 +9,40 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
+  actions: read
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  publish:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Download the verified CI artifact
+        uses: actions/download-artifact@v4
         with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build app
-        run: npm run build
-
-      - name: Verify production artifact
-        run: npm run verify:production
-
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload build artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
+          name: production-dist
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: dist
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Refuse a rebuild
+        run: |
+          test -f dist/index.html
+          test -f dist/.vite/manifest.json
+          test ! -d node_modules
+
+      - name: Publish the verified artifact
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --commit-dirty=true

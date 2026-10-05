@@ -3,6 +3,7 @@ import { useSessionStore } from './stores/session';
 import { Button, Toast } from './components/ui';
 import { STRINGS } from './lib/strings';
 import { DropZone } from './components/DropZone';
+import { LocalDataControls } from './components/LocalDataControls';
 import { useRuntimeReadiness } from './lib/useRuntimeReadiness';
 import { ensureRuntimeReady } from './pdf/runtime';
 
@@ -116,6 +117,7 @@ export default function App() {
           <EditorView onToast={pushToast} />
         </Suspense>
       )}
+      <LocalDataControls lifecycle={lifecycle} onToast={pushToast} />
       <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 space-y-3">
         {toasts.map((toast) => (
           <Toast

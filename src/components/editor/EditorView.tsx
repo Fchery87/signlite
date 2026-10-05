@@ -101,6 +101,9 @@ export function EditorView({ onToast }: EditorViewProps) {
   const [viewerWidth, setViewerWidth] = useState(0);
   const [dateFormat, setDateFormat] = useState(() => getDateFormat());
   const [shortcutOpen, setShortcutOpen] = useState(false);
+  // Narrow screens hide the sidebars behind toggles; desktop keeps them fixed.
+  const [pagesOpen, setPagesOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -318,8 +321,16 @@ export function EditorView({ onToast }: EditorViewProps) {
       <div aria-live="polite" aria-label={STRINGS.liveRegionLabel} className="sr-only-live">
         {announcement}
       </div>
-      <div className="grid h-[calc(100vh-105px)] grid-cols-[280px_minmax(0,1fr)_320px] gap-4">
-        <aside className="flex min-h-0 flex-col gap-4 overflow-hidden">
+      <div className="grid h-[calc(100vh-105px)] grid-cols-1 gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+        <aside className={`${pagesOpen ? 'flex' : 'hidden'} min-h-0 flex-col gap-4 overflow-hidden xl:flex`}>
+          <button
+            type="button"
+            className="focus-ring rounded-md border border-line bg-surface px-3 py-2 text-caption text-ink xl:hidden"
+            aria-expanded={pagesOpen}
+            onClick={() => setPagesOpen(false)}
+          >
+            {STRINGS.editor.hidePages}
+          </button>
           <BatchPanel />
           <div className="surface-card min-h-0 overflow-auto p-4 shadow-panel">
             <div className="flex items-center justify-between gap-3">
@@ -359,6 +370,22 @@ export function EditorView({ onToast }: EditorViewProps) {
               <p className="mt-1 text-body text-quiet">{STRINGS.editor.pageOf(activePage + 1, selectedDocument.pageCount)}</p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+              <button
+                type="button"
+                className="focus-ring rounded-md border border-line bg-surface px-3 py-1 text-caption text-ink xl:hidden"
+                aria-expanded={pagesOpen}
+                onClick={() => setPagesOpen((open) => !open)}
+              >
+                {pagesOpen ? STRINGS.editor.hidePages : STRINGS.editor.showPages}
+              </button>
+              <button
+                type="button"
+                className="focus-ring rounded-md border border-line bg-surface px-3 py-1 text-caption text-ink xl:hidden"
+                aria-expanded={libraryOpen}
+                onClick={() => setLibraryOpen((open) => !open)}
+              >
+                {libraryOpen ? STRINGS.editor.hideLibrary : STRINGS.editor.showLibrary}
+              </button>
               <Button
                 variant="ghost"
                 className="w-[30px] px-0"
@@ -451,7 +478,15 @@ export function EditorView({ onToast }: EditorViewProps) {
           </div>
         </main>
 
-        <aside className="flex min-h-0 flex-col gap-4 overflow-auto">
+        <aside className={`${libraryOpen ? 'flex' : 'hidden'} min-h-0 flex-col gap-4 overflow-auto xl:flex`}>
+          <button
+            type="button"
+            className="focus-ring rounded-md border border-line bg-surface px-3 py-2 text-caption text-ink xl:hidden"
+            aria-expanded={libraryOpen}
+            onClick={() => setLibraryOpen((open) => !open)}
+          >
+            {libraryOpen ? STRINGS.editor.hideLibrary : STRINGS.editor.showLibrary}
+          </button>
           <ApplyToAll onToast={onToast} />
           <div className="surface-card min-h-0 p-4 shadow-panel">
             <LibraryTray

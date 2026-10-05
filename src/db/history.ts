@@ -224,10 +224,20 @@ export async function pruneOldSessions(
   await tx.done;
 }
 
-/** Test-only reset for storage fallback contracts. */
-export function resetHistoryFallbackForTests() {
-  useMemory = false;
+/** Drops every in-memory session mirror. IndexedDB clearing stays with the
+ *  caller so a history wipe and a full wipe share one path. */
+export function clearMemorySessions() {
   memorySessions.clear();
   memoryRevisions.clear();
+  useMemory = false;
+}
+
+/** Test-only reset for storage fallback contracts. */
+export function memoryHistorySize() {
+  return memorySessions.size;
+}
+
+export function resetHistoryFallbackForTests() {
+  clearMemorySessions();
   storageProblem = null;
 }

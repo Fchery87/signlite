@@ -69,6 +69,7 @@ export const STRINGS = {
     remove: 'Remove',
     place: 'Place',
     duplicate: 'Duplicate',
+    clear: 'Clear',
     copy: 'Copy',
     undo: 'Undo',
     redo: 'Redo'
@@ -102,6 +103,10 @@ export const STRINGS = {
     pdfLoadFallback: 'Could not load this PDF.',
     pagePreviewUnavailable: 'Preview unavailable',
     removeFromSession: 'Remove from session',
+    showPages: 'Show pages',
+    hidePages: 'Hide pages',
+    showLibrary: 'Show library',
+    hideLibrary: 'Hide library',
     elementsTitle: 'Elements',
     elementsEmpty: 'Nothing placed yet.',
     elementPageLabel: (pageNumber: number) => `Page ${pageNumber}`,
@@ -190,6 +195,23 @@ export const STRINGS = {
     exportOffered: (value: string) => `Export offered ${value}. Keep the downloaded file safe.`,
     backupReminderDays: 'Back up your signatures. It has been over 30 days since the last export offer.',
     backupReminderCount: 'Back up your signatures. 10 or more new items were added since the last export offer.'
+  },
+  localData: {
+    clearHistoryButton: 'Clear document history',
+    clearAllButton: 'Clear all local data',
+    clearHistoryTitle: 'Clear document history?',
+    clearHistoryBody:
+      'This removes every saved Work Session: the PDFs you loaded and the placements you made. Your signature library and preferences are kept.',
+    clearAllTitle: 'Clear all local data?',
+    clearAllBody:
+      'This removes saved Work Sessions (PDFs and placements), your entire signature library, and your preferences, from this browser. There is no undo.',
+    retentionNote: 'SignLite keeps data only in this browser. Unopened Work Sessions older than 7 days are removed on their own. A clear cannot be undone.',
+    exportFirst: 'Export signatures first',
+    anotherTab: 'Another tab is editing this Work Session, so it cannot be cleared here.',
+    busyBatch: 'A batch download is running. Wait for it to finish before clearing data.',
+    locksUnavailable: 'This browser cannot verify that other tabs are idle, so clearing is disabled.',
+    clearedHistory: 'Document history cleared. Signatures and preferences kept.',
+    clearedAll: 'All local data cleared.'
   },
   readiness: {
     preparing: 'Preparing the offline signing runtime…',

@@ -270,13 +270,13 @@ Keep these operations behind the history repository: `load(id)` returns the sess
 
 **Files.** Modify `src/components/ui/Modal.tsx`, `src/components/editor/EditorView.tsx`, `src/App.tsx`, `src/index.css`, `src/lib/strings.ts`, and the storage and lifecycle facades for guarded data clearing. Create local-data controls under `src/components/`. Extend modal and app tests. Create `tests/e2e/accessibility.spec.ts` and `tests/e2e/local-data.spec.ts`.
 
-- [ ] Traverse only enabled visible dialog controls. Recompute targets when dialog content changes. Restore focus to the initiating control or a valid fallback when closing.
-- [ ] Exercise both Tab directions with disabled Save, changing controls, Escape, and nested dialog behavior. Keep editor shortcuts inactive while a dialog owns the keyboard.
+- [x] Traverse only enabled visible dialog controls. Recompute targets when dialog content changes. Restore focus to the initiating control or a valid fallback when closing.
+- [x] Exercise both Tab directions with disabled Save, changing controls, Escape, and nested dialog behavior. Keep editor shortcuts inactive while a dialog owns the keyboard.
 - [ ] Use visible focus tokens and verify contrast against the actual backgrounds. Complete a screen-reader smoke of placement announcements and save warnings.
-- [ ] Collapse the fixed sidebars behind keyboard-accessible controls on narrow screens. Verify 360, 768, and 1,280 CSS-pixel viewports and 200% browser zoom. Preserve desktop batch operation.
-- [ ] Add separate actions for clearing document history and clearing all local data. Show the retention period and which signatures, PDFs, preferences, and placements each action affects.
-- [ ] Before clearing, offer library export and show an explicit confirmation. Stop saves and workers, obtain the necessary ownership guards, and clear persistent and memory stores together. Refuse deletion while another tab owns affected data.
-- [ ] Verify a cancelled confirmation changes nothing. Verify completed clearing cannot be undone by a queued autosave or a second tab.
+- [x] Collapse the fixed sidebars behind keyboard-accessible controls on narrow screens. Verify 360, 768, and 1,280 CSS-pixel viewports and 200% browser zoom. Preserve desktop batch operation.
+- [x] Add separate actions for clearing document history and clearing all local data. Show the retention period and which signatures, PDFs, preferences, and placements each action affects.
+- [x] Before clearing, offer library export and show an explicit confirmation. Stop saves and workers, obtain the necessary ownership guards, and clear persistent and memory stores together. Refuse deletion while another tab owns affected data.
+- [x] Verify a cancelled confirmation changes nothing. Verify completed clearing cannot be undone by a queued autosave or a second tab.
 
 **Checks.** Run `npm test -- tests/unit/modal.test.tsx tests/unit/app-history.test.tsx tests/unit/editor-shortcut-scope.test.tsx` and `npm run test:e2e -- accessibility.spec.ts local-data.spec.ts`.
 
@@ -288,14 +288,14 @@ Keep these operations behind the history repository: `load(id)` returns the sess
 
 **Files.** Modify `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`, `vite.config.ts`, `index.html`, `src/index.css`, runtime asset paths, `scripts/verify-production.mjs`, and `docs/launch-notes.md`. Create `public/_headers`, host-verification tests, and a pinned Wrangler development dependency when required for direct upload.
 
-- [ ] Use root hosting on Cloudflare Pages. Normalize remaining runtime asset references through the configured base URL. Verify a temporary subpath build too so assets do not rely on accidental root paths.
-- [ ] Replace the GitHub Pages publisher with Cloudflare Pages direct upload of the verified artifact. Remove GitHub Pages-specific permissions and competing publish triggers.
-- [ ] Reuse the verified CI output without rebuilding in deployment. Bind the artifact to the tested commit and hash receipt. Upload only after all required jobs for that commit pass.
-- [ ] Keep deployment credentials in GitHub secrets or the deployment environment. Restrict publishing to trusted release events. Pull requests, especially forks, must not receive production credentials.
+- [x] Use root hosting on Cloudflare Pages. Normalize remaining runtime asset references through the configured base URL. Verify a temporary subpath build too so assets do not rely on accidental root paths.
+- [x] Replace the GitHub Pages publisher with Cloudflare Pages direct upload of the verified artifact. Remove GitHub Pages-specific permissions and competing publish triggers.
+- [x] Reuse the verified CI output without rebuilding in deployment. Bind the artifact to the tested commit and hash receipt. Upload only after all required jobs for that commit pass.
+- [x] Keep deployment credentials in GitHub secrets or the deployment environment. Restrict publishing to trusted release events. Pull requests, especially forks, must not receive production credentials.
 - [ ] Check whether a Cloudflare Pages project already exists and whether it uses Git integration. Disable competing automatic production builds before enabling the CI-managed upload path. Avoid creating a second production origin that splits browser-local storage.
-- [ ] Serve CSP through `public/_headers`. Preserve `connect-src 'none'`, `object-src 'none'`, and `frame-ancestors 'none'`. Add `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. Keep the meta policy compatible with the header.
-- [ ] Revalidate HTML across releases. Cache only genuinely fingerprinted assets as immutable. Ensure fonts and data assets also have a deliberate versioning policy.
-- [ ] Test effective HTTP response headers and browser-enforced framing, including the worker policy. A string in HTML is insufficient evidence.
+- [x] Serve CSP through `public/_headers`. Preserve `connect-src 'none'`, `object-src 'none'`, and `frame-ancestors 'none'`. Add `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. Keep the meta policy compatible with the header.
+- [x] Revalidate HTML across releases. Cache only genuinely fingerprinted assets as immutable. Ensure fonts and data assets also have a deliberate versioning policy.
+- [x] Test effective HTTP response headers and browser-enforced framing, including the worker policy. A string in HTML is insufficient evidence.
 - [ ] Disable host features that inject analytics, third-party scripts, or runtime beacons. Verify the deployed page source and request capture.
 - [ ] Document project ID, canonical origin, build receipt, deploy receipt, and rollback procedure. Rollback must account for the storage schema compatibility established in R05.
 
@@ -309,13 +309,13 @@ Keep these operations behind the history repository: `load(id)` returns the sess
 
 **Files.** Modify `package.json`, `package-lock.json`, build and test configuration only where an upgrade requires it, and `README.md`. Create `LICENSE`, `THIRD_PARTY_NOTICES.md`, and the applicable font notices under `public/fonts/`.
 
-- [ ] Rerun `npm audit --json` and `npm audit --omit=dev --json`. Preserve the dated reports. Identify reachable development-tool risks separately from shipped runtime risks.
+- [x] Rerun `npm audit --json` and `npm audit --omit=dev --json`. Preserve the dated reports. Identify reachable development-tool risks separately from shipped runtime risks.
 - [ ] Apply compatible updates first. Handle Vitest or Tailwind major upgrades in separate changes if required. Do not apply forced downgrade suggestions without reviewing their effect on the build.
 - [ ] Pin the chosen toolchain through the lockfile and verify a clean install. Run all checks after each independent upgrade group.
 - [ ] Preserve the runtime privacy architecture. Do not add telemetry as part of dependency replacement.
-- [ ] Identify the original licenses for the exact bundled fonts, CMaps, standard fonts, and new export fonts. Include required notices in the distributed artifact.
+- [x] Identify the original licenses for the exact bundled fonts, CMaps, standard fonts, and new export fonts. Include required notices in the distributed artifact.
 - [ ] Ask the project owner to choose the project license before creating its final legal text. File and font notice work can proceed independently of that choice. Do not invent a license grant.
-- [ ] Resolve high-risk reachable findings or record a bounded, evidence-backed disposition with a follow-up date. Distinguish advisory presence from an exploit in this static product.
+- [x] Resolve high-risk reachable findings or record a bounded, evidence-backed disposition with a follow-up date. Distinguish advisory presence from an exploit in this static product.
 
 **Checks.** Run `npm ci`, both audit commands, all repository checks, and the browser matrix against the rebuilt artifact.
 

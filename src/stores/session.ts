@@ -395,7 +395,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
 }));
 
 /** React read/command subscription. Lease capabilities and imperative Zustand setters are intentionally not exposed. */
-type PublicSessionState = Omit<SessionState, 'mutationLease' | 'acquireMutationLease' | 'releaseMutationLease'>;
+export type PublicSessionState = Omit<SessionState, 'mutationLease' | 'acquireMutationLease' | 'releaseMutationLease'>;
 
 const publicStateCache = new WeakMap<SessionState, PublicSessionState>();
 

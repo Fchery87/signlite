@@ -366,6 +366,12 @@ export async function markLibraryExportOffered(now = Date.now()) {
 }
 
 /** Test-only reset for the cached backup watermark. */
+/** Test and local-data-reset access to the in-memory mirror. */
+export function resetMemorySignatureStoreForTests() {
+  memoryStore.signatures.clear();
+  memoryStore.prefs = { dateFormat: 'MMM d, yyyy' };
+}
+
 export function resetSignaturePrefsCacheForTests() {
   lastExportAtCache = null;
 }
