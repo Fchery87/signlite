@@ -8,7 +8,7 @@
 
 **Stack.** TypeScript, React, Vite, IndexedDB through idb, PDF.js, pdf-lib, Vitest, Playwright, GitHub Actions, and Cloudflare Pages.
 
-**Status.** In progress. Host choice confirmed by the user on October 3, 2026. R01 through R07 are complete with receipts under `docs/readiness/`. Execution continues in plan order.
+**Status.** In progress. Host choice confirmed by the user on October 3, 2026. R01 through R08 are complete with receipts under `docs/readiness/`. Execution continues in plan order.
 
 ## How to execute the plan
 
@@ -227,13 +227,13 @@ Keep these operations behind the history repository: `load(id)` returns the sess
 
 **Data shape.** Represent resolved text as lines, page-unit baselines, glyph-supported font runs, padding, size, and bounds. Share resolved date text and its effective date across preview and the export attempt.
 
-- [ ] Add ASCII, accented Latin, Greek, Cyrillic, Chinese, multiline, long-word, and unsupported-glyph fixtures. Specify expected text and bounds independently of implementation.
-- [ ] Prototype one bundled Unicode family with fontkit for Latin, Greek, and Cyrillic. Treat CJK as a separate coverage and asset-budget decision; prototype a fallback if it enters the declared release scope. Verify shaping, export extraction, output size, worker use, and license coverage before selecting assets. The Chinese fixture must either export correctly or produce the explicit unsupported-script result.
-- [ ] Declare the supported script set. Do not advertise universal Unicode or emoji support. Display an unsupported-character message before export for characters outside available coverage.
-- [ ] Embed subsetted fonts for supported text. Preserve meaningful errors rather than blaming a valid source PDF. Cache immutable font bytes, not PDF-document-specific embedded font objects.
-- [ ] Apply the same font metrics, padding, wrapping, clipping or overflow policy, and line breaks in preview and export. Scale preview font size by zoom and UserUnit as required by R02.
-- [ ] Preserve input whitespace intentionally. Resolve dates consistently for the export attempt so a midnight crossing cannot change the output between documents without notice.
-- [ ] Align signature image fitting too. The preview's contained image and exported image must share the same aspect-preserving inner rectangle.
+- [x] Add ASCII, accented Latin, Greek, Cyrillic, Chinese, multiline, long-word, and unsupported-glyph fixtures. Specify expected text and bounds independently of implementation.
+- [x] Prototype one bundled Unicode family with fontkit for Latin, Greek, and Cyrillic. Treat CJK as a separate coverage and asset-budget decision; prototype a fallback if it enters the declared release scope. Verify shaping, export extraction, output size, worker use, and license coverage before selecting assets. The Chinese fixture must either export correctly or produce the explicit unsupported-script result.
+- [x] Declare the supported script set. Do not advertise universal Unicode or emoji support. Display an unsupported-character message before export for characters outside available coverage.
+- [x] Embed subsetted fonts for supported text. Preserve meaningful errors rather than blaming a valid source PDF. Cache immutable font bytes, not PDF-document-specific embedded font objects.
+- [x] Apply the same font metrics, padding, wrapping, clipping or overflow policy, and line breaks in preview and export. Scale preview font size by zoom and UserUnit as required by R02.
+- [x] Preserve input whitespace intentionally. Resolve dates consistently for the export attempt so a midnight crossing cannot change the output between documents without notice.
+- [x] Align signature image fitting too. The preview's contained image and exported image must share the same aspect-preserving inner rectangle.
 
 **Checks.** Run `npm test -- tests/unit/flatten.test.ts` plus new text-layout unit tests, then `npm run test:e2e -- text-output.spec.ts pdf-output.spec.ts batch-flow.spec.ts`.
 

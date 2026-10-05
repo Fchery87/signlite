@@ -1,25 +1,20 @@
 import { expect, test } from '@playwright/test';
 import { unzipSync } from 'fflate';
-import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 import { readFile } from 'node:fs/promises';
-import { Buffer } from 'node:buffer';
 import { createBatchPdf } from './helpers/fixtures';
 
 const BATCH_SENTINEL = 'SIGNLITE BATCH OK';
-const BATCH_SENTINEL_HEX = Buffer.from(BATCH_SENTINEL, 'utf8').toString('hex').toUpperCase();
 
-function readPageContent(pdf: PDFDocument, pageIndex: number) {
-  const contents = pdf.getPage(pageIndex).node.Contents();
-  if (!contents) {
-    return '';
-  }
-
-  const streams = contents instanceof PDFArray ? contents.asArray() : [contents];
-  return streams
-    .map((entry) => pdf.context.lookup(entry))
-    .filter((stream): stream is PDFRawStream => stream instanceof PDFRawStream)
-    .map((stream) => Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1'))
-    .join('\n');
+/** Extracts a page's text with pdf.js. The bundled export font encodes glyph
+ *  ids rather than ASCII, so assertions must read text, not stream bytes. */
+async function extractPageText(pdfBytes: Uint8Array, pageIndex: number) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await pdfjs.getDocument({ data: pdfBytes, isEvalSupported: false, useSystemFonts: true }).promise;
+  const page = await doc.getPage(pageIndex + 1);
+  const content = await page.getTextContent();
+  await doc.destroy();
+  return content.items.map((item) => (item as { str?: string }).str ?? '').join(' ');
 }
 
 test('restores a batch session and downloads a quiet signed zip', async ({ page }) => {
@@ -126,7 +121,10 @@ test('restores a batch session and downloads a quiet signed zip', async ({ page 
     const pdf = await PDFDocument.load(pdfBytes);
     expect(pdf.getPageCount()).toBe(2);
     expect(pdfBytes.byteLength).toBeGreaterThan(sourceSizes[fileName.replace('-signed.pdf', '.pdf')] ?? 0);
-    expect(readPageContent(pdf, 0)).toContain(BATCH_SENTINEL_HEX);
+    // Extraction, not content-stream bytes: the bundled subset font encodes
+    // glyph ids, so the sentinel's ASCII hex no longer appears in the stream.
+    const extracted = await extractPageText(pdfBytes, 0);
+    expect(extracted).toContain(BATCH_SENTINEL);
   }
 
   expect(requests).toEqual([]);

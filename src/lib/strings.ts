@@ -97,6 +97,8 @@ export const STRINGS = {
     downloadSuccess: (fileName: string) => `Done. Downloaded ${fileName}.`,
     downloadFailed: 'Could not download this PDF.',
     writeFailed: (fileName: string) => `Couldn't write ${fileName}. Try re-saving the PDF from its source.`,
+    unsupportedCharacters: (chars: string) =>
+      `These characters can't be written into the PDF with the bundled font: ${chars}. Replace them or remove the text, then download again.`,
     pdfLoadFallback: 'Could not load this PDF.',
     pagePreviewUnavailable: 'Preview unavailable',
     removeFromSession: 'Remove from session',

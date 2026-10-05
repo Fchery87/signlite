@@ -244,8 +244,10 @@ export function EditorView({ onToast }: EditorViewProps) {
     if (!selectedDocument || isDownloading || mutationLocked) return;
     setIsDownloading(true);
     try {
-      const { flattenDocument } = await import('../../pdf/flatten');
-      const flattened = await flattenDocument(selectedDocument, { snapshots: signatureSnapshots });
+      const { assertTextExportable, flattenDocument } = await import('../../pdf/flatten');
+      const resolvedAt = Date.now();
+      await assertTextExportable(selectedDocument, { snapshots: signatureSnapshots, resolvedAt });
+      const flattened = await flattenDocument(selectedDocument, { snapshots: signatureSnapshots, resolvedAt });
       const fileName = signedPdfFileName(selectedDocument.fileName);
       const pdfBytes = flattened.buffer.slice(flattened.byteOffset, flattened.byteOffset + flattened.byteLength) as ArrayBuffer;
       downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), fileName);

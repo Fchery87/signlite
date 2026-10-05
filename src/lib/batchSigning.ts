@@ -303,7 +303,8 @@ export class BatchSigning {
       })),
       assets,
       zip: finalEligible.length > 1,
-      dateFormat: this.ports.getDateFormat()
+      dateFormat: this.ports.getDateFormat(),
+      resolvedAt: Date.now()
     };
 
     const transfers: Transferable[] = [

@@ -41,23 +41,55 @@ async function placeSignatureAndReadPreview(page: Page, dropFraction: { x: numbe
   await expect(page.getByRole('status').filter({ hasText: 'Signature placed on page 1.' })).toBeVisible();
 
   const button = page.getByRole('main').getByRole('button', { name: 'signature' });
-  const rect = await button.evaluate((element, layerWidthAndHeight) => {
-    const wrapper = element.parentElement as HTMLElement | null;
-    if (!wrapper) {
+  const readRect = () =>
+    button.evaluate((element, layerBox) => {
+    // The preview letterboxes the marker inside the placement box
+    // (object-contain), so the visible marker is the aspect-preserving inner
+    // rect, not the box itself. The export must match what is visible here.
+    const img = element.querySelector('img');
+    if (!img) {
       return null;
     }
-    return {
-      x: Number.parseFloat(wrapper.style.left) / layerWidthAndHeight[0],
-      y: Number.parseFloat(wrapper.style.top) / layerWidthAndHeight[1],
-      w: Number.parseFloat(wrapper.style.width) / layerWidthAndHeight[0],
-      h: Number.parseFloat(wrapper.style.height) / layerWidthAndHeight[1]
-    };
-  }, [layerBox.width, layerBox.height]);
-  if (!rect) {
+    const box = img.getBoundingClientRect();
+    const scale = Math.min(box.width / img.naturalWidth, box.height / img.naturalHeight);
+    const w = img.naturalWidth * scale;
+    const h = img.naturalHeight * scale;
+    const x = box.x + (box.width - w) / 2;
+    const y = box.y + (box.height - h) / 2;
+      return {
+        x: (x - layerBox.x) / layerBox.width,
+        y: (y - layerBox.y) / layerBox.height,
+        w: w / layerBox.width,
+        h: h / layerBox.height
+      };
+    }, { x: layerBox.x, y: layerBox.y, width: layerBox.width, height: layerBox.height });
+
+  // The placed box settles to the asset's aspect once the image resolves; a
+  // measurement taken before that would disagree with the exported document.
+  let previous = await readRect();
+  await expect
+    .poll(async () => {
+      const current = await readRect();
+      const stable = JSON.stringify(current) === JSON.stringify(previous);
+      previous = current;
+      return stable;
+    }, { timeout: 15000 })
+    .toBe(true);
+  if (!previous) {
     throw new Error('Expected placed signature wrapper');
   }
   await page.keyboard.press('Escape');
-  return rect;
+  // Deselect re-renders the placement; measure the settled post-deselect state
+  // so the comparison reflects what the export will see.
+  await expect
+    .poll(async () => {
+      const current = await readRect();
+      const stable = JSON.stringify(current) === JSON.stringify(previous);
+      previous = current;
+      return stable;
+    }, { timeout: 15000 })
+    .toBe(true);
+  return previous;
 }
 
 async function exportAndSave(page: Page, artifactPath: string): Promise<void> {

@@ -3,7 +3,7 @@ import type { SessionDocument, SignatureSnapshotMap } from '../db/schema';
 import { dedupeFileName, signedPdfFileName } from '../lib/downloadNames';
 import { STRINGS } from '../lib/strings';
 import type { FlattenAssetMap } from '../pdf/assets';
-import { flattenDocument } from '../pdf/flatten';
+import { assertTextExportable, flattenDocument } from '../pdf/flatten';
 
 export type FlattenWorkerRequest = {
   kind: 'flatten';
@@ -13,6 +13,9 @@ export type FlattenWorkerRequest = {
   assets: FlattenAssetMap;
   zip: boolean;
   dateFormat?: string;
+  /** One instant for every date in the attempt, so documents in one batch
+   *  cannot disagree across a midnight. */
+  resolvedAt?: number;
 };
 
 export type FlattenWorkerProgressMessage = {
@@ -57,10 +60,13 @@ export async function runFlattenJob(request: FlattenWorkerRequest, worker?: Work
 
   for (const [index, document] of request.docs.entries()) {
     try {
+      // Specific rejection before the write path, whose catch masks messages.
+      await assertTextExportable(document, { dateFormat: request.dateFormat, resolvedAt: request.resolvedAt });
       const flattened = await flattenDocument(document, {
         snapshots: request.snapshots,
         assetMap: request.assets,
-        dateFormat: request.dateFormat
+        dateFormat: request.dateFormat,
+        resolvedAt: request.resolvedAt
       });
       const fileName = dedupeFileName(signedPdfFileName(document.fileName), usedNames);
       successfulDocs[fileName] = flattened;

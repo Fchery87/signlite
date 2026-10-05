@@ -1,5 +1,10 @@
 import { inflateSync } from 'node:zlib';
 import { degrees, PDFDocument } from 'pdf-lib';
+
+// The export path lazily loads a ~760 KB bundled font plus its shaper, about
+// three seconds of one-time setup in jsdom on top of each test's PDF work. The
+// default 5 s budget measures that setup, not a hang.
+vi.setConfig({ testTimeout: 120_000 });
 import { collectAssetIds, flattenDocument } from '../../src/pdf/flatten';
 import type { SessionDocument, SignatureAsset } from '../../src/db/schema';
 
@@ -86,7 +91,8 @@ describe('flattenDocument', () => {
     expect(loadAsset).toHaveBeenCalledTimes(1);
     expect(outputPdf.getPageCount()).toBe(1);
     expect(outputText).toContain('/XObject');
-    expect(outputText).toContain('/Helvetica');
+    // Text embeds the bundled DejaVu Sans subset, not a standard font.
+    expect(outputText).toContain('/DejaVuSans');
     expect(inflatedStreams).not.toContain('(   )');
     expect(output.byteLength).toBeGreaterThan(document.pdfBytes.byteLength);
     expect(document.pdfBytes).toEqual(originalBytes);
@@ -108,12 +114,12 @@ describe('flattenDocument', () => {
 
     const output = await flattenDocument(document, { dateFormat: 'yyyy-MM-dd' });
 
-    // Placement 0.3x0.2 on a 200x200 page must scale the image to 60x40
-    // points at x=20, y=140 — not fall back to the PNG's natural size.
-    // pdf-lib emits translation and scale as separate cm operators.
+    // Placement 0.3x0.2 on a 200x200 page is a 60x40 box. The preview fits the
+    // image inside it (object-contain), so the export letterboxes the same way:
+    // the 1x1 image draws 40x40, centered in the box at x=30.
     const stream = inflateContentStreams(output);
-    expect(stream).toMatch(/\b1 0 0 1 20 140 cm\b/);
-    expect(stream).toMatch(/\b60 0 0 40 0 0 cm\b/);
+    expect(stream).toMatch(/\b1 0 0 1 30 140 cm\b/);
+    expect(stream).toMatch(/\b40 0 0 40 0 0 cm\b/);
   });
 
   it('resolves snapshot placements without consulting the live library', async () => {
@@ -246,11 +252,13 @@ describe('flattenDocument page geometry', () => {
 
     const output = await flattenDocument(document, { loadAsset });
     const content = normalizeNumbers(inflateContentStreams(output));
-    // viewer rect (85,42.5)-(153,59.5); anchor = viewer bottom-left (85,59.5)
-    // -> user (69.5,105); size 68x17 user units; rotate 90 so the content stays upright
-    expect(content).toContain('1 0 0 1 69.5 105 cm');
+    // viewer rect (85,42.5)-(153,59.5); the image letterboxes to 17x17 inside
+    // the 68x17 box, moving the drawn left edge to viewer x=110.5. Anchor
+    // viewer (110.5,59.5) -> user (69.5,130.5) through the 90-degree transform,
+    // which swaps axes.
+    expect(content).toContain('1 0 0 1 69.5 130.5 cm');
     expect(content).toContain('0 1 -1 0 0 0 cm');
-    expect(content).toContain('68 0 0 17 0 0 cm');
+    expect(content).toContain('17 0 0 17 0 0 cm');
   });
 
   it('maps text through the same geometry with a rotated baseline', async () => {
@@ -260,8 +268,10 @@ describe('flattenDocument page geometry', () => {
 
     const output = await flattenDocument(document);
     const content = normalizeNumbers(inflateContentStreams(output));
-    // baseline starts fontSize below the box top in viewer space: (34, 114) -> user (124, 54)
-    expect(content).toContain('0 1 -1 0 124 54 Tm');
+    // First baseline = box top + padding + half-leading + ascent, matching the
+    // preview's first line box. Viewer anchor (34+8, 102+4+11.3543); through the
+    // 90-degree inverse: px=42+20=62, py=117.3543+10=127.3543 -> user (127.3543, 62).
+    expect(content).toContain('0 1 -1 0 127.3543 62 Tm');
     expect(content).toContain('12 Tf');
   });
 });
@@ -275,11 +285,14 @@ describe('flattenDocument across all right-angle rotations', () => {
   // CropBox [10,20,180,360]: effective viewer 340x170, centerX 95, centerY 190.
   // pdf-lib composes translate ∘ rotate ∘ scale: the scale stays 102x34 and the
   // rotation matrix carries the axis swap that keeps the marker upright.
+  // The 1x1 image letterboxes to 34x34 inside the 102x34 viewer box, shifting
+  // the drawn left edge +34 in viewer x; each transform maps that shift to its
+  // own user-space direction.
   const cases: { rotation: number; transform: [number, number, number, number, number, number]; anchor: [number, number]; rotate: string }[] = [
-    { rotation: 0, transform: [1, 0, 0, -1, -10, 360], anchor: [78, 292], rotate: '1 0 0 1 0 0 cm' },
-    { rotation: 90, transform: [0, 1, 1, 0, -20, -10], anchor: [78, 88], rotate: '0 1 -1 0 0 0 cm' },
-    { rotation: 180, transform: [-1, 0, 0, 1, 180, -20], anchor: [112, 88], rotate: '-1 0 0 -1 0 0 cm' },
-    { rotation: 270, transform: [0, -1, -1, 0, 360, 180], anchor: [112, 292], rotate: '0 -1 1 0 0 0 cm' }
+    { rotation: 0, transform: [1, 0, 0, -1, -10, 360], anchor: [112, 292], rotate: '1 0 0 1 0 0 cm' },
+    { rotation: 90, transform: [0, 1, 1, 0, -20, -10], anchor: [78, 122], rotate: '0 1 -1 0 0 0 cm' },
+    { rotation: 180, transform: [-1, 0, 0, 1, 180, -20], anchor: [78, 88], rotate: '-1 0 0 -1 0 0 cm' },
+    { rotation: 270, transform: [0, -1, -1, 0, 360, 180], anchor: [112, 258], rotate: '0 -1 1 0 0 0 cm' }
   ];
 
   for (const { rotation, transform, anchor, rotate } of cases) {
@@ -320,7 +333,7 @@ describe('flattenDocument across all right-angle rotations', () => {
       expect(content).toContain(`1 0 0 1 ${anchor[0]} ${anchor[1]} cm`);
       // Orientation matrix for the page rotation and the rotation-invariant size.
       expect(content).toContain(rotate);
-      expect(content).toContain('102 0 0 34 0 0 cm');
+      expect(content).toContain('34 0 0 34 0 0 cm');
     });
   }
 });

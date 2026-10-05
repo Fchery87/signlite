@@ -4,6 +4,7 @@ import type { Placement } from '../../db/schema';
 import { getAsset, getDateFormat, setDateFormat } from '../../db/signatures';
 import { bufferToObjectUrl } from '../library/canvas';
 import { clampRect, normalizedToScreen, screenToNormalized } from '../../pdf/coords';
+import { ensureTextFontFamily, layoutText, TEXT_PADDING, type TextLayout } from '../../pdf/textLayout';
 import { useSessionStore } from '../../stores/session';
 import { STRINGS } from '../../lib/strings';
 
@@ -49,6 +50,50 @@ function normalizeRect(rect: { x: number; y: number; w: number; h: number }) {
     h = Math.abs(h);
   }
   return { x, y, w, h };
+}
+
+/** Renders text with the same lines, font, padding, and line boxes the export
+ *  draws. Falls back to the plain span until the bundled font and metrics have
+ *  loaded, so the box never renders empty mid-load. */
+function PlacedTextBody({ text, fontSize, boxW, boxH }: { text: string; fontSize: number; boxW: number; boxH: number }) {
+  const [layout, setLayout] = useState<(TextLayout & { family: string }) | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const family = await ensureTextFontFamily();
+      const next = await layoutText(text, {
+        fontSize,
+        maxWidthPx: Math.max(boxW - TEXT_PADDING.x * 2, fontSize),
+        maxHeightPx: Math.max(boxH - TEXT_PADDING.y * 2, fontSize)
+      });
+      if (!cancelled) setLayout({ ...next, family });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [boxH, boxW, fontSize, text]);
+
+  const size = Math.max(8, fontSize);
+  if (!layout) {
+    return (
+      <span className="pointer-events-none block h-full w-full overflow-hidden px-2 py-1 text-ink" style={{ fontSize: `${size}px`, lineHeight: 1.2 }}>
+        {text}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="pointer-events-none block h-full w-full overflow-hidden px-2 py-1 text-ink"
+      style={{ fontFamily: `"${layout.family}", sans-serif`, fontSize: `${size}px`, lineHeight: `${layout.lineHeightPx}px`, whiteSpace: 'pre' }}
+    >
+      {layout.lines.map((line, index) => (
+        <span key={index} className="block" style={{ height: `${layout.lineHeightPx}px`, whiteSpace: 'pre' }}>
+          {line.text}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 export function PlacedElement({ documentId, pageSize, placement, scale, selected, onToast }: PlacedElementProps) {
@@ -219,8 +264,11 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
         role="button"
         tabIndex={0}
         aria-disabled={mutationLocked}
-        className={`focus-ring group relative flex h-full w-full items-center justify-center overflow-visible border ${
-          selected ? 'border-accent shadow-[0_0_0_2px_#EDF1FC]' : 'border-transparent hover:border-accent'
+        // The placement border is chrome and must not inset the content: a
+        // 1px border here made the preview's visible marker smaller than the
+        // box the export letterboxes into.
+        className={`focus-ring group relative flex h-full w-full items-center justify-center overflow-visible ${
+          selected ? 'shadow-[0_0_0_2px_#EDF1FC]' : ''
         } ${placement.type === 'signature' || placement.type === 'initials' ? 'bg-transparent' : 'bg-surface/85'}`}
         onPointerDown={(event) => startPointer(event, 'move')}
         onClick={(event) => {
@@ -237,8 +285,14 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
           }
         }}
       >
+        <div
+          aria-hidden
+          className={`pointer-events-none absolute inset-0 border ${
+            selected ? 'border-accent' : 'border-transparent group-hover:border-accent'
+          }`}
+        />
         {placement.type === 'signature' || placement.type === 'initials' ? (
-          src ? <img src={src} alt={placement.type} className="pointer-events-none h-full w-full object-contain" draggable={false} /> : null
+          src ? <img src={src} alt={placement.type} className="pointer-events-none absolute inset-0 h-full w-full object-contain" draggable={false} /> : null
         ) : placement.type === 'text' && selected && isEditingText ? (
           <input
             ref={textInputRef}
@@ -258,9 +312,12 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
             style={{ fontSize: `${placement.fontSize ?? 12}px` }}
           />
         ) : (
-          <span className="pointer-events-none block h-full w-full overflow-hidden px-2 py-1 text-ink" style={{ fontSize: `${placement.fontSize ?? 12}px`, lineHeight: 1.2 }}>
-            {displayValue}
-          </span>
+          <PlacedTextBody
+            text={displayValue}
+            fontSize={placement.fontSize ?? 12}
+            boxW={placement.w * pageSize.w}
+            boxH={placement.h * pageSize.h}
+          />
         )}
 
         {selected ? (

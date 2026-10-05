@@ -14,6 +14,20 @@ vi.mock('../../src/pdf/render', () => ({
   })
 }));
 
+// Typography is covered by text-layout and flatten tests; the editor tests
+// only need placements to render without loading the bundled font.
+vi.mock('../../src/pdf/textLayout', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/pdf/textLayout')>()),
+  ensureTextFontFamily: vi.fn(async () => 'SignLite Text'),
+  layoutText: vi.fn(async (text: string, options: { fontSize: number }) => ({
+    lines: [{ text, widthPx: text.length * 6 }],
+    lineHeightPx: options.fontSize * 1.2,
+    firstBaselinePx: options.fontSize,
+    clipped: false,
+    truncated: false
+  }))
+}));
+
 vi.mock('../../src/pdf/flatten', () => ({
   flattenDocument: vi.fn()
 }));
