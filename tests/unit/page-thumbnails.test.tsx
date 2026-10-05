@@ -3,7 +3,7 @@ import { PageThumbnails } from '../../src/components/editor/PageThumbnails';
 import { STRINGS } from '../../src/lib/strings';
 
 const renderThumbnail = vi.hoisted(() => vi.fn(async () => ({ width: 120, height: 160 })));
-vi.mock('../../src/pdf/render', () => ({ renderThumbnail }));
+vi.mock('../../src/pdf/render', () => ({ renderThumbnail, releaseThumbnails: vi.fn(async () => undefined) }));
 
 const fakePdf = { numPages: 1, fingerprints: ['fp'] } as never;
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from './ui';
-import { loadDocument, renderPage } from '../pdf/render';
+import { loadDocument, startPageRender } from '../pdf/render';
 import { getSamplePdfBytes } from '../lib/samplePdf';
 
 type PdfScratchState =
@@ -21,8 +21,11 @@ export function PdfScratch() {
       try {
         const bytes = await getSamplePdfBytes();
         const pdf = await loadDocument(bytes);
-        if (cancelled || !canvasRef.current) return;
-        await renderPage(pdf, 0, 1.2, canvasRef.current);
+        if (cancelled || !canvasRef.current) {
+          void pdf.destroy();
+          return;
+        }
+        await startPageRender(pdf, 0, 1.2, canvasRef.current).finished;
       } catch (error) {
         if (!cancelled) {
           setState({

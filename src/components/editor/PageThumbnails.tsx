@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LoadedPdf } from '../../pdf/render';
-import { renderThumbnail } from '../../pdf/render';
+import { releaseThumbnails, renderThumbnail } from '../../pdf/render';
 import { STRINGS } from '../../lib/strings';
 
 type PageThumbnailsProps = {
@@ -16,10 +16,11 @@ type ThumbnailItemProps = {
   documentId: string;
   pageIndex: number;
   isActive: boolean;
+  priority: number;
   onSelectPage: (pageIndex: number) => void;
 };
 
-function ThumbnailItem({ pdf, documentId, pageIndex, isActive, onSelectPage }: ThumbnailItemProps) {
+function ThumbnailItem({ pdf, documentId, pageIndex, isActive, priority, onSelectPage }: ThumbnailItemProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -36,7 +37,7 @@ function ThumbnailItem({ pdf, documentId, pageIndex, isActive, onSelectPage }: T
     async function draw() {
       try {
         setIsLoading(true);
-        const bitmap = await renderThumbnail(loadedPdf, pageIndex, `${documentId}:${pageIndex}`);
+        const bitmap = await renderThumbnail(loadedPdf, pageIndex, { documentId, priority });
         if (cancelled || !canvasRef.current) return;
         const canvas = canvasRef.current;
         canvas.width = bitmap.width;
@@ -59,7 +60,7 @@ function ThumbnailItem({ pdf, documentId, pageIndex, isActive, onSelectPage }: T
     return () => {
       cancelled = true;
     };
-  }, [documentId, pageIndex, pdf]);
+  }, [documentId, pageIndex, pdf, priority]);
 
   return (
     <button
@@ -90,6 +91,19 @@ function ThumbnailItem({ pdf, documentId, pageIndex, isActive, onSelectPage }: T
 }
 
 export function PageThumbnails({ pdf, documentId, pageCount, activePage, onSelectPage }: PageThumbnailsProps) {
+  // Thumbnails render at most two at a time, so the visible page and its
+  // neighbours must reach the scheduler first or a long document's tail starves.
+  const priorityFor = (pageIndex: number) => Math.abs(pageIndex - activePage);
+
+  useEffect(() => {
+    if (!documentId) return;
+    // Retained bitmaps belong to the document, not to this component instance,
+    // so leaving the document or unmounting must close them.
+    return () => {
+      void releaseThumbnails(documentId);
+    };
+  }, [documentId]);
+
   return (
     <div className="space-y-3">
       {Array.from({ length: pageCount }, (_, pageIndex) => (
@@ -99,6 +113,7 @@ export function PageThumbnails({ pdf, documentId, pageCount, activePage, onSelec
           documentId={documentId}
           pageIndex={pageIndex}
           isActive={activePage === pageIndex}
+          priority={priorityFor(pageIndex)}
           onSelectPage={onSelectPage}
         />
       ))}

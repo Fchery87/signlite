@@ -53,48 +53,59 @@ export async function createSessionDocument(file: File, options: CreateSessionDo
     throw new SignlitePdfError('corrupt');
   }
 
-  if (pdf.numPages < 1) {
-    throw new SignlitePdfError('corrupt');
-  }
+  // This document exists only to count pages and read geometry. Every exit
+  // below must release it, including the page-ceiling rejection, or repeated
+  // intake grows retained worker and document state for the life of the tab.
+  try {
+    if (pdf.numPages < 1) {
+      throw new SignlitePdfError('corrupt');
+    }
 
-  const currentPageCount = options.currentPageCount ?? 0;
-  const acceptedPageCount = options.acceptedPageCount ?? 0;
-  if (currentPageCount + acceptedPageCount + pdf.numPages > MAX_SESSION_PAGES) {
-    throw new SessionPageLimitError();
-  }
+    const currentPageCount = options.currentPageCount ?? 0;
+    const acceptedPageCount = options.acceptedPageCount ?? 0;
+    if (currentPageCount + acceptedPageCount + pdf.numPages > MAX_SESSION_PAGES) {
+      throw new SessionPageLimitError();
+    }
 
-  const pages = await Promise.all(
-    Array.from({ length: pdf.numPages }, async (_, index) => {
-      const page = await pdf.getPage(index + 1);
-      const viewport = page.getViewport({ scale: 1 });
-      // The scale-1 viewport is the preview's coordinate system; its transform
-      // (UserUnit included) is what the exporter inverts.
-      const [a, b, c, d, e, f] = viewport.transform;
-      return {
-        size: { w: viewport.width, h: viewport.height },
-        geometry: {
-          width: viewport.width,
-          height: viewport.height,
-          rotation: page.rotate,
-          transform: [a, b, c, d, e, f] as [number, number, number, number, number, number],
-          viewBox: { x: page.view[0], y: page.view[1], w: page.view[2] - page.view[0], h: page.view[3] - page.view[1] },
-          userUnit: page.userUnit ?? 1
+    const pages = await Promise.all(
+      Array.from({ length: pdf.numPages }, async (_, index) => {
+        const page = await pdf.getPage(index + 1);
+        try {
+          const viewport = page.getViewport({ scale: 1 });
+          // The scale-1 viewport is the preview's coordinate system; its transform
+          // (UserUnit included) is what the exporter inverts.
+          const [a, b, c, d, e, f] = viewport.transform;
+          return {
+            size: { w: viewport.width, h: viewport.height },
+            geometry: {
+              width: viewport.width,
+              height: viewport.height,
+              rotation: page.rotate,
+              transform: [a, b, c, d, e, f] as [number, number, number, number, number, number],
+              viewBox: { x: page.view[0], y: page.view[1], w: page.view[2] - page.view[0], h: page.view[3] - page.view[1] },
+              userUnit: page.userUnit ?? 1
+            }
+          };
+        } finally {
+          page.cleanup();
         }
-      };
-    })
-  );
-  const pageSizes = pages.map((page) => page.size);
-  const pageGeometry = pages.map((page) => page.geometry);
+      })
+    );
+    const pageSizes = pages.map((page) => page.size);
+    const pageGeometry = pages.map((page) => page.geometry);
 
-  return {
-    docId: crypto.randomUUID(),
-    fileName: file.name,
-    pdfBytes,
-    pageCount: pdf.numPages,
-    pageSizes,
-    pageGeometry,
-    placements: [],
-    status: 'pending'
-  };
+    return {
+      docId: crypto.randomUUID(),
+      fileName: file.name,
+      pdfBytes,
+      pageCount: pdf.numPages,
+      pageSizes,
+      pageGeometry,
+      placements: [],
+      status: 'pending'
+    };
+  } finally {
+    await pdf.destroy().catch(() => undefined);
+  }
 }
 

@@ -83,3 +83,9 @@ Current ownership is sufficient:
 - all measured latency and memory values remain within the recorded thresholds.
 
 Do **not** add a speculative resource manager or all-document cache. Reopen this decision only if a production fixture exceeds one of the thresholds above or a browser-specific leak is reproduced.
+
+## R07 change and outstanding measurement
+
+R07 (`docs/readiness/R07.md`) replaced the unbounded module-level thumbnail cache with a per-document cache under a 24-entry least-recently-used budget, added explicit `ImageBitmap` closes on eviction and on document release, capped concurrent thumbnail renders at two, added render-task cancellation with awaited settlement, and made `createSessionDocument` release its metadata-only document on every exit path.
+
+The repeatable scenario above has **not** been re-run against that change. The retained-heap plateau, ArrayBuffer and worker-resource counts, and the 1.5 MiB post-unmount allowance therefore still describe commit `d9f472c`, not current `main`. Treat the memory half of R07's acceptance as open until the scenario is repeated and this section is updated with the new numbers.

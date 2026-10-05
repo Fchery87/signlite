@@ -6,7 +6,8 @@ import { STRINGS } from '../../src/lib/strings';
 
 vi.mock('../../src/pdf/render', () => ({
   loadDocument: vi.fn(async () => ({ destroy: vi.fn() })),
-  renderPage: vi.fn(async () => undefined),
+  startPageRender: vi.fn(() => ({ finished: Promise.resolve(), cancel: vi.fn(async () => undefined) })),
+  releaseThumbnails: vi.fn(async () => undefined),
   // Thumbnails fall back to their error state in tests; jsdom has no canvas.
   renderThumbnail: vi.fn(async () => {
     throw new Error('thumbnails are not rendered in unit tests');

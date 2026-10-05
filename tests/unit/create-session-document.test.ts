@@ -13,6 +13,15 @@ vi.mock('../../src/pdf/render', async () => {
 import { createSessionDocument } from '../../src/lib/files';
 import { SignlitePdfError } from '../../src/pdf/render';
 
+/** Every real PDFDocumentProxy can be destroyed; the double must model that so
+ *  the release path is exercised rather than throwing. */
+function fakeDocument(overrides: Record<string, unknown> = {}) {
+  return {
+    destroy: vi.fn(async () => undefined),
+    ...overrides
+  };
+}
+
 function makePdfFile(name: string) {
   return {
     name,
@@ -31,15 +40,17 @@ describe('createSessionDocument', () => {
       rotate: 0,
       view: [0, 0, width, height],
       userUnit: 1,
+      cleanup: vi.fn(),
       getViewport: () => ({ width, height, transform: [1, 0, 0, -1, 0, height] })
     });
-    loadDocument.mockResolvedValue({
+    const pdf = fakeDocument({
       numPages: 2,
       getPage: vi
         .fn()
         .mockResolvedValueOnce(makePage(612, 792))
         .mockResolvedValueOnce(makePage(612, 1008))
     });
+    loadDocument.mockResolvedValue(pdf);
 
     const doc = await createSessionDocument(makePdfFile('lease.pdf'));
 
@@ -61,20 +72,17 @@ describe('createSessionDocument', () => {
     await expect(createSessionDocument(makePdfFile('locked.pdf'))).rejects.toMatchObject({ code: 'encrypted' });
   });
 
-  it('rejects zero-page pdfs as corrupt', async () => {
-    loadDocument.mockResolvedValue({
-      numPages: 0,
-      getPage: vi.fn()
-    });
+  it('rejects zero-page pdfs as corrupt and releases the document', async () => {
+    const pdf = fakeDocument({ numPages: 0, getPage: vi.fn() });
+    loadDocument.mockResolvedValue(pdf);
 
     await expect(createSessionDocument(makePdfFile('empty.pdf'))).rejects.toMatchObject({ code: 'corrupt' });
+    expect(pdf.destroy).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects files that would push the session past 500 pages', async () => {
-    loadDocument.mockResolvedValue({
-      numPages: 2,
-      getPage: vi.fn()
-    });
+  it('rejects files that would push the session past 500 pages and releases the document', async () => {
+    const pdf = fakeDocument({ numPages: 2, getPage: vi.fn() });
+    loadDocument.mockResolvedValue(pdf);
 
     await expect(
       createSessionDocument(makePdfFile('overflow.pdf'), {
@@ -82,5 +90,7 @@ describe('createSessionDocument', () => {
         acceptedPageCount: 0
       })
     ).rejects.toMatchObject({ message: 'session-page-limit' });
+    // The page-ceiling rejection must not retain a loaded document.
+    expect(pdf.destroy).toHaveBeenCalledTimes(1);
   });
 });

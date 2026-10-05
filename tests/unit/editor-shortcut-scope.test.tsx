@@ -6,7 +6,8 @@ import { Modal } from '../../src/components/ui';
 
 vi.mock('../../src/pdf/render', () => ({
   loadDocument: vi.fn(async () => ({ destroy: vi.fn() })),
-  renderPage: vi.fn(async () => undefined),
+  startPageRender: vi.fn(() => ({ finished: Promise.resolve(), cancel: vi.fn(async () => undefined) })),
+  releaseThumbnails: vi.fn(async () => undefined),
   renderThumbnail: vi.fn(async () => { throw new Error('no canvas in jsdom'); })
 }));
 vi.mock('../../src/pdf/flatten', () => ({ flattenDocument: vi.fn() }));

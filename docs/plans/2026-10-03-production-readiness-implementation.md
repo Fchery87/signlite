@@ -8,7 +8,7 @@
 
 **Stack.** TypeScript, React, Vite, IndexedDB through idb, PDF.js, pdf-lib, Vitest, Playwright, GitHub Actions, and Cloudflare Pages.
 
-**Status.** In progress. Host choice confirmed by the user on October 3, 2026. R01 through R06 are complete with receipts under `docs/readiness/`. Execution continues in plan order.
+**Status.** In progress. Host choice confirmed by the user on October 3, 2026. R01 through R07 are complete with receipts under `docs/readiness/`. Execution continues in plan order.
 
 ## How to execute the plan
 
@@ -208,12 +208,12 @@ Keep these operations behind the history repository: `load(id)` returns the sess
 
 **Data shape.** Give each PDF load and canvas render an explicit owner and cancellation handle. Scope thumbnail resources to the selected document, with a bounded cache and reference-safe bitmap release.
 
-- [ ] Destroy metadata-only PDFs in `finally`, including page-limit rejection and parse failures. Retain and destroy a loading task when cancellation happens before its proxy resolves.
-- [ ] Dispose an editor PDF that resolves after the effect was cancelled. Keep the shared runtime worker, if introduced by R09, outside individual document ownership.
-- [ ] Return or expose active RenderTask cancellation. Await cancellation settlement before a new render reuses the canvas. Handle expected cancellation separately from real rendering errors.
-- [ ] Remove stale-completion canvas clearing. Let only the current render owner change its loading and error state.
-- [ ] Remove the unbounded global thumbnail cache or replace it with document-scoped retention. Close unused ImageBitmaps only after their consumers release them. Remove rejected promises so Retry can work.
-- [ ] Schedule thumbnail work with a small concurrency limit, initially two. Prioritize visible and nearby pages. Release resources on document change and editor unmount.
+- [x] Destroy metadata-only PDFs in `finally`, including page-limit rejection and parse failures. Retain and destroy a loading task when cancellation happens before its proxy resolves.
+- [x] Dispose an editor PDF that resolves after the effect was cancelled. Keep the shared runtime worker, if introduced by R09, outside individual document ownership.
+- [x] Return or expose active RenderTask cancellation. Await cancellation settlement before a new render reuses the canvas. Handle expected cancellation separately from real rendering errors.
+- [x] Remove stale-completion canvas clearing. Let only the current render owner change its loading and error state.
+- [x] Remove the unbounded global thumbnail cache or replace it with document-scoped retention. Close unused ImageBitmaps only after their consumers release them. Remove rejected promises so Retry can work.
+- [x] Schedule thumbnail work with a small concurrency limit, initially two. Prioritize visible and nearby pages. Release resources on document change and editor unmount.
 
 **Checks.** Run the new targeted render-lifecycle tests, existing intake and thumbnail tests, and `npm run test:e2e -- render-lifecycle.spec.ts batch-performance.spec.ts`.
 

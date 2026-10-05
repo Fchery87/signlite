@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { Placement } from '../../db/schema';
 import type { LoadedPdf } from '../../pdf/render';
-import { renderPage } from '../../pdf/render';
+import { startPageRender, type PageRender } from '../../pdf/render';
 import { PlacementLayer } from './PlacementLayer';
 import { STRINGS } from '../../lib/strings';
 
@@ -38,6 +38,7 @@ export function PageCanvas({
 }: PageCanvasProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const activeRenderRef = useRef<PageRender | null>(null);
   const [isNearViewport, setIsNearViewport] = useState(false);
   const [isRendering, setIsRendering] = useState(true);
 
@@ -97,24 +98,22 @@ export function PageCanvas({
       return;
     }
 
-    let cancelled = false;
-    let timeoutId: number | null = null;
     let idleId: number | null = null;
-
-    const clearCanvas = () => {
-      const context = canvas.getContext('2d');
-      context?.clearRect(0, 0, canvas.width, canvas.height);
-    };
+    let timeoutId: number | null = null;
+    let superseded = false;
 
     const runDraw = () => {
+      if (superseded) return;
       setIsRendering(true);
-      void renderPage(pdf, pageIndex, scale, canvas).then(() => {
-        if (cancelled) {
-          clearCanvas();
-          return;
-        }
-        setIsRendering(false);
-      });
+      const render = startPageRender(pdf, pageIndex, scale, canvas);
+      activeRenderRef.current = render;
+      const settle = () => {
+        // Only the render that still owns this canvas may clear the loading
+        // state. A superseded render must not touch the canvas either, because
+        // the newer render is already writing into it.
+        if (!superseded && activeRenderRef.current === render) setIsRendering(false);
+      };
+      void render.finished.then(settle, settle);
     };
 
     if (typeof window.requestIdleCallback === 'function') {
@@ -124,13 +123,18 @@ export function PageCanvas({
     }
 
     return () => {
-      cancelled = true;
+      superseded = true;
       if (idleId !== null && typeof window.cancelIdleCallback === 'function') {
         window.cancelIdleCallback(idleId);
       }
       if (timeoutId !== null) {
         window.clearTimeout(timeoutId);
       }
+      const render = activeRenderRef.current;
+      activeRenderRef.current = null;
+      // Awaiting settlement keeps the next render from writing into a canvas
+      // the cancelled one still owns.
+      void render?.cancel();
     };
   }, [isNearViewport, loading, pageIndex, pdf, scale]);
 
