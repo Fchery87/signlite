@@ -453,38 +453,45 @@ export function createBatchSigning(
     processFlatten: async (request, transfers, handlers, isCancelled) => {
       onStatus?.('processing');
       performance.mark('signlite:batch-processing-start');
-      const worker = new Worker(
-        new URL('../workers/flatten.worker.ts', import.meta.url),
-        { type: 'module' }
-      );
-      try {
-        return await new Promise<ProcessFlattenOutcome>((resolve) => {
-          const finish = (outcome: ProcessFlattenOutcome) => {
-            performance.mark('signlite:batch-processing-end');
-            resolve(outcome);
-          };
-          worker.onmessage = (event: MessageEvent<FlattenWorkerResponse>) => {
-            const msg = event.data;
-            if (isCancelled()) { finish({ kind: 'cancelled' }); return; }
-            if (msg.kind === 'progress') {
-              handlers.onProgress(msg.docId, msg.done, msg.total);
-              onProgress?.(msg.done, msg.total);
-            } else if (msg.kind === 'error') {
-              if (msg.docId) {
-                handlers.onError(msg.docId, msg.message);
-              } else {
-                finish({ kind: 'all-failed' });
-              }
-            } else if (msg.kind === 'done') {
-              finish({ kind: 'success', output: msg.output, mime: msg.mime });
+      // The runtime owner keeps one resident worker (started, handshake
+      // included, during readiness); attempts reuse it instead of paying a
+      // spawn per batch, and a crash is repaired from resident bytes.
+      const { acquireFlattenWorker } = await import('../pdf/runtime');
+      const worker = await acquireFlattenWorker();
+      const jobId = crypto.randomUUID();
+
+      return await new Promise<ProcessFlattenOutcome>((resolve) => {
+        const previousHandler = worker.onmessage;
+        const previousErrorHandler = worker.onerror;
+        const finish = (outcome: ProcessFlattenOutcome) => {
+          performance.mark('signlite:batch-processing-end');
+          // Hand the shared worker back to whatever handler preceded this
+          // attempt, now that no further messages for this job can matter.
+          worker.onmessage = previousHandler;
+          worker.onerror = previousErrorHandler;
+          resolve(outcome);
+        };
+        worker.onmessage = (event: MessageEvent<FlattenWorkerResponse>) => {
+          const msg = event.data;
+          // The worker is shared; responses from any other attempt are noise.
+          if (msg.jobId && msg.jobId !== jobId) return;
+          if (isCancelled()) { finish({ kind: 'cancelled' }); return; }
+          if (msg.kind === 'progress') {
+            handlers.onProgress(msg.docId, msg.done, msg.total);
+            onProgress?.(msg.done, msg.total);
+          } else if (msg.kind === 'error') {
+            if (msg.docId) {
+              handlers.onError(msg.docId, msg.message);
+            } else {
+              finish({ kind: 'all-failed' });
             }
-          };
-          worker.onerror = () => { if (!isCancelled()) finish({ kind: 'all-failed' }); };
-          worker.postMessage(request, transfers);
-        });
-      } finally {
-        worker.terminate();
-      }
+          } else if (msg.kind === 'done') {
+            finish({ kind: 'success', output: msg.output, mime: msg.mime });
+          }
+        };
+        worker.onerror = () => { if (!isCancelled()) finish({ kind: 'all-failed' }); };
+        worker.postMessage({ ...request, jobId }, transfers);
+      });
     },
     deliverArtifact: async (artifact) => {
       onStatus?.('delivering');

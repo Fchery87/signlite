@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { expect, test } from '@playwright/test';
 import type { TextItem } from 'pdfjs-dist/types/src/display/api';
-import { createSamplePdf } from './helpers/fixtures';
+import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
 
 /** Extracts a page's text with pdf.js in the test process, the same library the
  *  app renders with, so "selectable and extracts correctly" is checked by a
@@ -20,6 +20,7 @@ async function intake(page: import('@playwright/test').Page) {
   await page.goto('/');
   // The first test in a run pays the cold start; the defaults are too tight.
   await expect(page.getByText('Drop a PDF anywhere.')).toBeVisible({ timeout: 30000 });
+  await waitForRuntimeReady(page);
   await page.locator('input[accept="application/pdf"]').setInputFiles({
     name: 'text-out.pdf',
     mimeType: 'application/pdf',

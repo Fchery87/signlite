@@ -1,8 +1,10 @@
-import { Suspense, lazy, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useSessionStore } from './stores/session';
 import { Button, Toast } from './components/ui';
 import { STRINGS } from './lib/strings';
 import { DropZone } from './components/DropZone';
+import { useRuntimeReadiness } from './lib/useRuntimeReadiness';
+import { ensureRuntimeReady } from './pdf/runtime';
 
 const EditorView = lazy(() => import('./components/editor/EditorView').then((module) => ({ default: module.EditorView })));
 import { useSessionLifecycle } from './lib/useSessionLifecycle';
@@ -20,6 +22,10 @@ export default function App() {
     { id: 'shell-ready', message: STRINGS.appShellReady }
   ]);
   const lifecycle = useSessionLifecycle({ session, contentRevision, resetSession });
+  const runtime = useRuntimeReadiness();
+  useEffect(() => {
+    void ensureRuntimeReady().catch(() => undefined);
+  }, []);
   const resumeSession = lifecycle.candidate;
   const historyWarning = lifecycle.warning;
 
@@ -80,14 +86,29 @@ export default function App() {
         {historyWarning ? <div className="border-t border-warning/30 bg-warning/10 px-6 py-3 text-body text-warning">{historyWarning}</div> : null}
       </header>
       {view === 'dropzone' ? (
-        <DropZone
-          currentDocumentCount={documentCount}
-          currentPageCount={currentPageCount}
-          currentByteCount={currentByteCount}
-          sessionId={session?.id}
-          onDocumentsAccepted={addDocuments}
-          onToast={pushToast}
-        />
+        <>
+          <div role="status" aria-live="polite" className="border-b border-line bg-surface px-6 py-2 text-caption text-quiet" data-testid="runtime-readiness">
+            {runtime.state.status === 'loading'
+              ? STRINGS.readiness.preparing
+              : runtime.state.status === 'ready'
+                ? STRINGS.readiness.ready
+                : `${STRINGS.readiness.failed} ${runtime.state.message}`}
+            {runtime.state.status === 'failed' ? (
+              <Button variant="secondary" className="ml-3" onClick={runtime.retry} data-testid="runtime-retry">
+                {STRINGS.readiness.retry}
+              </Button>
+            ) : null}
+          </div>
+          <DropZone
+            currentDocumentCount={documentCount}
+            currentPageCount={currentPageCount}
+            currentByteCount={currentByteCount}
+            sessionId={session?.id}
+            intakeDisabled={runtime.state.status !== 'ready'}
+            onDocumentsAccepted={addDocuments}
+            onToast={pushToast}
+          />
+        </>
       ) : (
         <Suspense
           fallback={<div className="px-6 py-10 text-body text-quiet" role="status">{STRINGS.loading.editor}</div>}

@@ -17,6 +17,15 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          // Generated data modules and the raw worker source must stay out of
+          // the entry chunk: without an explicit chunk each merges into its
+          // importer's chunk, which is the entry.
+          if (id.includes('pdf/workerSource')) {
+            return 'pdf-worker-source';
+          }
+          if (id.includes('generated/pdfAssets')) {
+            return 'pdf-assets';
+          }
           if (id.includes('node_modules/pdfjs-dist')) {
             return 'pdf-runtime';
           }

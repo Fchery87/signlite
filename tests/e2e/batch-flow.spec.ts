@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { unzipSync } from 'fflate';
 import { PDFDocument } from 'pdf-lib';
 import { readFile } from 'node:fs/promises';
-import { createBatchPdf } from './helpers/fixtures';
+import { createBatchPdf, waitForRuntimeReady } from './helpers/fixtures';
 
 const BATCH_SENTINEL = 'SIGNLITE BATCH OK';
 
@@ -50,6 +50,7 @@ test('restores a batch session and downloads a quiet signed zip', async ({ page 
 
   await page.goto('/');
   await expect(page.getByText('Drop a PDF anywhere.')).toBeVisible();
+  await waitForRuntimeReady(page);
 
   await page.locator('input[accept="application/pdf"]').setInputFiles(fixtures);
 

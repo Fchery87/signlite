@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createPerformancePdf, pdfFixture } from './helpers/fixtures';
+import { createPerformancePdf, pdfFixture, waitForRuntimeReady } from './helpers/fixtures';
 
 const DOCUMENT_COUNT = 20;
 const MAX_BATCH_MS = 30_000;
@@ -14,6 +14,7 @@ test('keeps the production batch path responsive for a 20-document stack', async
 
   await page.goto('/');
   await expect(page.getByText('Drop a PDF anywhere.')).toBeVisible();
+  await waitForRuntimeReady(page);
   await page.locator('input[accept="application/pdf"]').setInputFiles(fixtures);
 
   const batchPanel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Batch' }) }).first();

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { SAMPLE_UPLOAD_PNG, createSamplePdf } from './helpers/fixtures';
+import { SAMPLE_UPLOAD_PNG, createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
 
 test('completes a quiet single-doc sign flow with library inputs and keyboard download', async ({ page }) => {
   test.setTimeout(90000);
@@ -24,6 +24,7 @@ test('completes a quiet single-doc sign flow with library inputs and keyboard do
 
   await page.goto('/');
   await expect(page.getByText('Drop a PDF anywhere.')).toBeVisible();
+  await waitForRuntimeReady(page);
 
   await page.locator('input[accept="application/pdf"]').setInputFiles({
     name: 'sample.pdf',
@@ -139,6 +140,7 @@ test('accepts a native mouse drag from the library onto the page', async ({ page
 
   await page.goto('/');
   await expect(page.getByText('Drop a PDF anywhere.')).toBeVisible();
+  await waitForRuntimeReady(page);
   await page.locator('input[accept="application/pdf"]').setInputFiles({
     name: 'native-drag.pdf',
     mimeType: 'application/pdf',

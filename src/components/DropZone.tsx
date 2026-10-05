@@ -35,11 +35,15 @@ type DropZoneProps = {
   currentPageCount: number;
   currentByteCount?: number;
   sessionId?: string;
+  /** Until the signing runtime is ready, intake would start work the app
+   *  cannot finish offline, so drops and picks are refused with a visible
+   *  reason. */
+  intakeDisabled?: boolean;
   onDocumentsAccepted: (documents: SessionDocument[], expectedSessionId?: string) => CommitOutcome;
   onToast: (message: string) => void;
 };
 
-export function DropZone({ currentDocumentCount, currentPageCount, currentByteCount = 0, sessionId, onDocumentsAccepted, onToast }: DropZoneProps) {
+export function DropZone({ currentDocumentCount, currentPageCount, currentByteCount = 0, sessionId, intakeDisabled = false, onDocumentsAccepted, onToast }: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [intakeItems, setIntakeItems] = useState<IntakeItem[]>([]);
@@ -55,6 +59,10 @@ export function DropZone({ currentDocumentCount, currentPageCount, currentByteCo
   );
 
   const processFiles = (fileList: FileList | null) => {
+    if (intakeDisabled) {
+      onToast(STRINGS.readiness.preparing);
+      return;
+    }
     const files = Array.from(fileList ?? []);
     if (files.length === 0) return;
 

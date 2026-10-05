@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createBatchPdf } from './helpers/fixtures';
+import { createBatchPdf, waitForRuntimeReady } from './helpers/fixtures';
 
 // R03 intake ceilings: the 51st document is refused before parsing, mixed
 // batches report per file, and non-PDF native drops never navigate away.
@@ -15,6 +15,8 @@ test('refuses the 51st document of an oversized batch without parsing it', async
 
   await page.goto('/');
   await expect(page.getByText('Drop a PDF anywhere.')).toBeVisible();
+  await waitForRuntimeReady(page);
+  await waitForRuntimeReady(page);
   await page.locator('input[accept="application/pdf"]').setInputFiles(files);
 
   // 50 documents make it in; the 51st is named in the refusal.
@@ -29,6 +31,8 @@ test('accepts the valid subset of a mixed batch and reports each rejected file',
 
   await page.goto('/');
   await expect(page.getByText('Drop a PDF anywhere.')).toBeVisible();
+  await waitForRuntimeReady(page);
+  await waitForRuntimeReady(page);
 
   const pdfBuffer = await createBatchPdf('mixed-batch', 1);
   await page.locator('input[accept="application/pdf"]').setInputFiles([
@@ -49,6 +53,8 @@ test('a native drop of a non-PDF never navigates away', async ({ page }) => {
 
   await page.goto('/');
   await expect(page.getByText('Drop a PDF anywhere.')).toBeVisible();
+  await waitForRuntimeReady(page);
+  await waitForRuntimeReady(page);
   const urlBefore = page.url();
 
   await page.evaluate(() => {
@@ -67,4 +73,6 @@ test('a native drop of a non-PDF never navigates away', async ({ page }) => {
   await expect(page.getByRole('status').filter({ hasText: 'notes.txt — PDF only for now.' })).toBeVisible();
   expect(page.url()).toBe(urlBefore);
   await expect(page.getByText('Drop a PDF anywhere.')).toBeVisible();
+  await waitForRuntimeReady(page);
+  await waitForRuntimeReady(page);
 });

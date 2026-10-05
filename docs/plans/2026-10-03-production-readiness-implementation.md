@@ -8,7 +8,7 @@
 
 **Stack.** TypeScript, React, Vite, IndexedDB through idb, PDF.js, pdf-lib, Vitest, Playwright, GitHub Actions, and Cloudflare Pages.
 
-**Status.** In progress. Host choice confirmed by the user on October 3, 2026. R01 through R08 are complete with receipts under `docs/readiness/`. Execution continues in plan order.
+**Status.** In progress. Host choice confirmed by the user on October 3, 2026. R01 through R09 are complete with receipts under `docs/readiness/`. Execution continues in plan order.
 
 ## How to execute the plan
 
@@ -247,18 +247,18 @@ Keep these operations behind the history repository: `load(id)` returns the sess
 
 **Data shape.** Use loading, ready, and failed runtime states. Ready owns loaded modules, script fonts, PDF data assets, and started worker capacity. Provide Retry after a failed preflight.
 
-- [ ] Prototype first-use signing under the unchanged `connect-src 'none'` policy. Capture every HTTP request from navigation, then mark the readiness boundary explicitly.
-- [ ] Load the editor, flattening modules, script fonts, export fonts, and data assets before enabling intake. Make the readiness state visible and accessible.
-- [ ] Bundle CMaps and standard font bytes into generated JavaScript modules loaded through the existing script policy, then retain them in an in-memory lookup. `connect-src 'none'` also blocks preflight fetches; do not assume earlier fetch timing makes them permitted. Use PDF.js custom `CMapReaderFactory` and `StandardFontDataFactory` with `useWorkerFetch=false`. Verify the installed PDF.js API signatures during implementation. Do not allow same-origin fetch just to make auxiliary assets work.
-- [ ] Start PDF and flatten workers before readiness. Reuse them or use preloaded in-memory sources in a way that produces no later HTTP request. Keep shared worker ownership distinct from document disposal. Recreate capacity only from already-loaded bytes after a worker crash.
-- [ ] Require ready handshakes from both workers. Test document destruction followed by another document, and batch cancellation followed by a new batch, without stale messages or HTTP requests.
-- [ ] Move per-attempt flatten-worker creation behind the runtime owner. Identify jobs and cancellation explicitly so late messages cannot complete a newer batch. Preserve reusable capacity or recreate a self-contained worker from resident bytes after cancellation; do not destroy the shared PDF worker when closing one document.
-- [ ] Withdraw readiness and pause intake after a worker crash until resident-byte recovery completes. Surface a retryable failure if capacity cannot be restored.
-- [ ] Test a PDF that actually requires a CMap and a nonembedded standard font. A simple generated Helvetica PDF is insufficient evidence.
-- [ ] Start request capture before the first drop. Remove blanket bundled-asset and worker exclusions after readiness. Observe dedicated worker requests through browser-context instrumentation as well as page events.
-- [ ] Set a fresh browser context offline immediately after Ready. Exercise draw, type, upload, library import, intake, reload-safe editing within the same loaded tab, single export, batch export, and retry paths.
-- [ ] Keep offline reload support separate. A service worker is optional work O03. Do not claim an offline new-tab launch is supported by this task.
-- [ ] Measure shell-interactive and offline-ready timings separately. Keep the original cold-ready target of 2.5 seconds and warm target of 1 second as acceptance goals on recorded target hardware. Do not silently redefine the initial 300 KiB budget to hide additional startup bytes.
+- [x] Prototype first-use signing under the unchanged `connect-src 'none'` policy. Capture every HTTP request from navigation, then mark the readiness boundary explicitly.
+- [x] Load the editor, flattening modules, script fonts, export fonts, and data assets before enabling intake. Make the readiness state visible and accessible.
+- [x] Bundle CMaps and standard font bytes into generated JavaScript modules loaded through the existing script policy, then retain them in an in-memory lookup. `connect-src 'none'` also blocks preflight fetches; do not assume earlier fetch timing makes them permitted. Use PDF.js custom `CMapReaderFactory` and `StandardFontDataFactory` with `useWorkerFetch=false`. Verify the installed PDF.js API signatures during implementation. Do not allow same-origin fetch just to make auxiliary assets work.
+- [x] Start PDF and flatten workers before readiness. Reuse them or use preloaded in-memory sources in a way that produces no later HTTP request. Keep shared worker ownership distinct from document disposal. Recreate capacity only from already-loaded bytes after a worker crash.
+- [x] Require ready handshakes from both workers. Test document destruction followed by another document, and batch cancellation followed by a new batch, without stale messages or HTTP requests.
+- [x] Move per-attempt flatten-worker creation behind the runtime owner. Identify jobs and cancellation explicitly so late messages cannot complete a newer batch. Preserve reusable capacity or recreate a self-contained worker from resident bytes after cancellation; do not destroy the shared PDF worker when closing one document.
+- [x] Withdraw readiness and pause intake after a worker crash until resident-byte recovery completes. Surface a retryable failure if capacity cannot be restored.
+- [x] Test a PDF that actually requires a CMap and a nonembedded standard font. A simple generated Helvetica PDF is insufficient evidence.
+- [x] Start request capture before the first drop. Remove blanket bundled-asset and worker exclusions after readiness. Observe dedicated worker requests through browser-context instrumentation as well as page events.
+- [x] Set a fresh browser context offline immediately after Ready. Exercise draw, type, upload, library import, intake, reload-safe editing within the same loaded tab, single export, batch export, and retry paths.
+- [x] Keep offline reload support separate. A service worker is optional work O03. Do not claim an offline new-tab launch is supported by this task.
+- [x] Measure shell-interactive and offline-ready timings separately. Keep the original cold-ready target of 2.5 seconds and warm target of 1 second as acceptance goals on recorded target hardware. Do not silently redefine the initial 300 KiB budget to hide additional startup bytes.
 
 **Checks.** Run `npm run build`, `npm run verify:production`, and `npm run test:e2e -- zero-network.spec.ts offline-flow.spec.ts sign-flow.spec.ts batch-flow.spec.ts`.
 

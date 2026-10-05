@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createSamplePdf } from './helpers/fixtures';
+import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
 
 // R05 ownership: a second tab in the same browser context shares IndexedDB and
 // the Web Locks namespace. It may inspect the saved Work Session, but the
@@ -11,6 +11,7 @@ test('a second tab opens the saved session read-only while the first tab keeps s
   const owner = await context.newPage();
   await owner.goto('/');
   await expect(owner.getByText('Drop a PDF anywhere.')).toBeVisible();
+  await waitForRuntimeReady(owner);
   await owner.locator('input[accept="application/pdf"]').setInputFiles({
     name: 'owned.pdf',
     mimeType: 'application/pdf',
@@ -39,6 +40,7 @@ test('a second tab opens the saved session read-only while the first tab keeps s
   // The second tab shares storage: it discovers the saved session.
   const observer = await context.newPage();
   await observer.goto('/');
+  await waitForRuntimeReady(observer);
   await expect(observer.getByRole('button', { name: 'Resume' })).toBeVisible();
   await observer.getByRole('button', { name: 'Resume' }).click();
   await expect(observer.getByRole('heading', { name: 'owned.pdf' })).toBeVisible();

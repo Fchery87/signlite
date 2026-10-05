@@ -40,8 +40,15 @@ export async function loadDocument(bytes: ArrayBuffer): Promise<LoadedPdf> {
     const { getDocument } = await getPdfJsRuntime();
     task = getDocument({
       data: bytes,
+      // Auxiliary data comes from the resident bundle; no render-time fetches.
+      // The factories live behind a dynamic import so the 2.6 MB data table
+      // stays out of the entry chunk: render.ts is reachable from the session
+      // store, and a static import here would drag the table into every load.
       cMapUrl: '/cmaps/',
       cMapPacked: true,
+      useWorkerFetch: false,
+      CMapReaderFactory: (await import('./assetFactories')).BundledCMapReaderFactory as never,
+      StandardFontDataFactory: (await import('./assetFactories')).BundledStandardFontDataFactory as never,
       standardFontDataUrl: '/standard_fonts/'
     });
     return await task.promise;

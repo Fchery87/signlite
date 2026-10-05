@@ -2,6 +2,12 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 const controls = vi.hoisted(() => ({ edit: vi.fn(), single: vi.fn(), batch: vi.fn() }));
 const lifecycle = vi.hoisted(() => ({ candidate: null as import('../../src/db/schema').WorkSession | null, ready: true, status: 'saved' as 'initializing'|'saved'|'dirty'|'saving'|'memory-only'|'error'|'conflict', mode: 'persistent' as 'persistent'|'memory', warning: null as string|null, resumeSucceeded: vi.fn(), startFresh: vi.fn() }));
 vi.mock('../../src/lib/useSessionLifecycle', () => ({ useSessionLifecycle: () => lifecycle }));
+// Runtime preparation is covered by runtime and asset tests; the lifecycle
+// presentation tests only need the gate to read as ready.
+vi.mock('../../src/lib/useRuntimeReadiness', () => ({
+  useRuntimeReadiness: () => ({ state: { status: 'ready' as const }, retry: () => undefined })
+}));
+vi.mock('../../src/pdf/runtime', () => ({ ensureRuntimeReady: vi.fn(async () => undefined) }));
 vi.mock('../../src/components/DropZone', () => ({ DropZone: ({ currentDocumentCount }: { currentDocumentCount: number }) => <div>DropZone {currentDocumentCount}</div> }));
 vi.mock('../../src/components/editor/EditorView', () => ({ EditorView: () => <div><button onClick={controls.edit}>Edit Placement</button><button onClick={controls.single}>Download current</button><button onClick={controls.batch}>Download all</button></div> }));
 import App from '../../src/App';

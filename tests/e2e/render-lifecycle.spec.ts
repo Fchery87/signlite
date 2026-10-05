@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createBatchPdf, createSamplePdf } from './helpers/fixtures';
+import { createBatchPdf, createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
 
 /** True when the editor's page canvas has at least one non-white pixel, i.e. the
  *  document actually painted rather than leaving a blank surface behind. */
@@ -42,6 +42,7 @@ function collectErrors(page: Page) {
 async function intake(page: Page, files: Array<{ name: string; buffer: Buffer }>) {
   await page.goto('/');
   await expect(page.getByText('Drop a PDF anywhere.')).toBeVisible();
+  await waitForRuntimeReady(page);
   await page
     .locator('input[accept="application/pdf"]')
     .setInputFiles(files.map((file) => ({ name: file.name, mimeType: 'application/pdf', buffer: file.buffer })));

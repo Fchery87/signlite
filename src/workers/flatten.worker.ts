@@ -16,6 +16,10 @@ export type FlattenWorkerRequest = {
   /** One instant for every date in the attempt, so documents in one batch
    *  cannot disagree across a midnight. */
   resolvedAt?: number;
+  /** Identifies the attempt. The worker is resident and reused across
+   *  attempts, so every response echoes this and a caller ignores responses
+   *  from a job that is no longer its own. */
+  jobId?: string;
 };
 
 export type FlattenWorkerProgressMessage = {
@@ -23,18 +27,21 @@ export type FlattenWorkerProgressMessage = {
   docId: string;
   done: number;
   total: number;
+  jobId?: string;
 };
 
 export type FlattenWorkerDoneMessage = {
   kind: 'done';
   output: ArrayBuffer;
   mime: 'application/pdf' | 'application/zip';
+  jobId?: string;
 };
 
 export type FlattenWorkerErrorMessage = {
   kind: 'error';
   docId?: string;
   message: string;
+  jobId?: string;
 };
 
 export type FlattenWorkerResponse = FlattenWorkerProgressMessage | FlattenWorkerDoneMessage | FlattenWorkerErrorMessage;
@@ -75,13 +82,15 @@ export async function runFlattenJob(request: FlattenWorkerRequest, worker?: Work
         kind: 'progress',
         docId: document.docId,
         done: index + 1,
-        total: request.docs.length
+        total: request.docs.length,
+        jobId: request.jobId
       } satisfies FlattenWorkerProgressMessage);
     } catch (error) {
       worker?.postMessage({
         kind: 'error',
         docId: document.docId,
-        message: error instanceof Error ? error.message : STRINGS.editor.downloadFailed
+        message: error instanceof Error ? error.message : STRINGS.editor.downloadFailed,
+        jobId: request.jobId
       } satisfies FlattenWorkerErrorMessage);
     }
   }
@@ -107,24 +116,36 @@ export async function runFlattenJob(request: FlattenWorkerRequest, worker?: Work
   return {
     kind: 'done',
     output: toArrayBuffer(firstDocument),
-    mime: 'application/pdf'
+    mime: 'application/pdf',
+    jobId: request.jobId
   } satisfies FlattenWorkerDoneMessage;
 }
 
 if (typeof workerScope.importScripts === 'function' && workerScope.postMessage) {
-  workerScope.onmessage = async (event: MessageEvent<FlattenWorkerRequest>) => {
+  // The worker is resident and shared across batch attempts, so jobs queue
+  // behind each other instead of interleaving their progress messages.
+  let jobChain: Promise<unknown> = Promise.resolve();
+  workerScope.onmessage = (event: MessageEvent<FlattenWorkerRequest | { kind: 'ping' }>) => {
+    if (event.data.kind === 'ping') {
+      workerScope.postMessage({ kind: 'pong' });
+      return;
+    }
     if (event.data.kind !== 'flatten') {
       return;
     }
-
-    try {
-      const result = await runFlattenJob(event.data, workerScope as WorkerLike);
-      workerScope.postMessage(result, [result.output]);
-    } catch (error) {
-      workerScope.postMessage({
-        kind: 'error',
-        message: error instanceof Error ? error.message : STRINGS.batch.batchFailed
-      } satisfies FlattenWorkerErrorMessage);
-    }
+    const request = event.data;
+    const run = jobChain.then(async () => {
+      try {
+        const result = await runFlattenJob(request, workerScope as WorkerLike);
+        workerScope.postMessage(result, [result.output]);
+      } catch (error) {
+        workerScope.postMessage({
+          kind: 'error',
+          message: error instanceof Error ? error.message : STRINGS.batch.batchFailed,
+          jobId: request.jobId
+        } satisfies FlattenWorkerErrorMessage);
+      }
+    });
+    jobChain = run.catch(() => undefined);
   };
 }

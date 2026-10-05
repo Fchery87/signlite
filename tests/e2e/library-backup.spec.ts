@@ -1,6 +1,6 @@
 import { writeTempFixture } from './helpers/tmp';
 import { expect, test, type Page } from '@playwright/test';
-import { createSamplePdf } from './helpers/fixtures';
+import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
 
 const FONT_NOT_READY = 'Fonts are still loading. Try again in a moment.';
 
@@ -80,6 +80,7 @@ test.describe('library backup reliability', () => {
   test('export survives site-storage clearing and restores identical bytes', async ({ page }) => {
     test.setTimeout(120000);
     await page.goto('/');
+    await waitForRuntimeReady(page);
     await intakeAndOpenEditor(page);
     await page.getByRole('button', { name: 'Add library item' }).click();
     await page.getByRole('button', { name: 'Type' }).click();
@@ -99,6 +100,7 @@ test.describe('library backup reliability', () => {
 
     await clearSiteStorage(page);
     await page.goto('/');
+    await waitForRuntimeReady(page);
     // Clearing storage removed the Work Session, so the editor has to be
     // reopened before the library panel (and its backup status) exists.
     await intakeAndOpenEditor(page);
@@ -117,6 +119,7 @@ test.describe('library backup reliability', () => {
   test('import limits and validation reject bad envelopes without touching the library', async ({ page }) => {
     test.setTimeout(120000);
     await page.goto('/');
+    await waitForRuntimeReady(page);
     await intakeAndOpenEditor(page);
 
     // A realistic multi-megabyte PNG imports successfully.
@@ -165,6 +168,7 @@ test.describe('library backup reliability', () => {
     let fontsBlocked = true;
     await page.route('**/fonts/*.ttf', (route) => (fontsBlocked ? route.abort() : route.continue()));
     await page.goto('/');
+    await waitForRuntimeReady(page);
     await intakeAndOpenEditor(page);
     await page.evaluate(async () => {
       // Force a cold font cache by touching the FontFaceSet API surface.

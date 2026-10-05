@@ -191,6 +191,12 @@ export const STRINGS = {
     backupReminderDays: 'Back up your signatures. It has been over 30 days since the last export offer.',
     backupReminderCount: 'Back up your signatures. 10 or more new items were added since the last export offer.'
   },
+  readiness: {
+    preparing: 'Preparing the offline signing runtime…',
+    ready: 'Ready to sign offline.',
+    failed: 'The signing runtime failed to prepare.',
+    retry: 'Retry preparation'
+  },
   errors: {
     encrypted: 'This PDF is password-protected. Unlock it and drop it again.',
     corrupt: "Couldn't read this PDF. The file may be damaged.",

@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import * as pdfjs from 'pdfjs-dist';
-import { ROTATED_CROPPED_GEOMETRY, createRotatedCroppedPdf } from './helpers/fixtures';
+import { ROTATED_CROPPED_GEOMETRY, createRotatedCroppedPdf, waitForRuntimeReady } from './helpers/fixtures';
 
 /**
  * R02 acceptance evidence: the exported PDF must place markers at the same
@@ -164,6 +164,7 @@ async function runPlacementAndExport(
 ): Promise<PreviewRect> {
   await page.goto('/');
   await expect(page.getByText('Drop a PDF anywhere.')).toBeVisible();
+  await waitForRuntimeReady(page);
   await page.locator('input[accept="application/pdf"]').setInputFiles({
     name: 'rotated.pdf',
     mimeType: 'application/pdf',

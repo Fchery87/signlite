@@ -150,10 +150,6 @@ export function EditorView({ onToast }: EditorViewProps) {
   }, []);
 
   useEffect(() => {
-    void import('../../pdf/flatten');
-  }, []);
-
-  useEffect(() => {
     const element = viewerRef.current;
     if (!element) return;
 

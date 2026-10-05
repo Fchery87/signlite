@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createSamplePdf } from './helpers/fixtures';
+import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
 
 // R04 durability: the saved session survives a reload with identical
 // placements, and the UI reports durability accurately.
@@ -8,6 +8,7 @@ test('a reload after Saved restores identical placements', async ({ page }) => {
 
   await page.goto('/');
   await expect(page.getByText('Drop a PDF anywhere.')).toBeVisible();
+  await waitForRuntimeReady(page);
   await page.locator('input[accept="application/pdf"]').setInputFiles({
     name: 'durable.pdf',
     mimeType: 'application/pdf',
