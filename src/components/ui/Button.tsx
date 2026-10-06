@@ -16,7 +16,7 @@ export function Button({ children, className = '', variant = 'primary', type = '
   return (
     <button
       type={type}
-      className={`focus-ring inline-flex h-[30px] items-center justify-center rounded-md px-[14px] text-body font-medium transition-colors duration-100 ease-out disabled:cursor-not-allowed ${styles[variant]} ${className}`}
+      className={`focus-ring inline-flex min-h-[32px] items-center justify-center rounded-md px-3 py-1.5 text-center text-body font-medium leading-5 transition-transform duration-100 ease-out active:scale-[0.97] disabled:cursor-not-allowed disabled:active:scale-100 ${styles[variant]} ${className}`}
       {...props}
     >
       {children}

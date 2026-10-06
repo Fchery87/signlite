@@ -446,7 +446,7 @@ export function EditorView({ onToast }: EditorViewProps) {
               </button>
               <Button
                 variant="ghost"
-                className="w-[30px] px-0"
+                className="size-8 shrink-0 px-0"
                 aria-label={STRINGS.shortcuts.open}
                 onClick={() => setShortcutOpen(true)}
               >
@@ -455,7 +455,7 @@ export function EditorView({ onToast }: EditorViewProps) {
               <div className="flex items-center gap-1">
                 <Button
                   variant="ghost"
-                  className="w-[30px] px-0"
+                  className="size-8 shrink-0 px-0"
                   aria-label={STRINGS.buttons.undo}
                   title={STRINGS.buttons.undo}
                   onClick={undo}
@@ -465,7 +465,7 @@ export function EditorView({ onToast }: EditorViewProps) {
                 </Button>
                 <Button
                   variant="ghost"
-                  className="w-[30px] px-0"
+                  className="size-8 shrink-0 px-0"
                   aria-label={STRINGS.buttons.redo}
                   title={STRINGS.buttons.redo}
                   onClick={redo}
@@ -483,7 +483,7 @@ export function EditorView({ onToast }: EditorViewProps) {
                     type="button"
                     aria-pressed={zoom === option.value}
                     onClick={() => setZoom(option.value)}
-                    className={`focus-ring inline-flex h-[26px] items-center justify-center rounded-sm px-[10px] text-body font-medium transition-colors duration-100 ease-out ${
+                    className={`focus-ring inline-flex h-7 items-center justify-center rounded-sm px-2.5 text-body font-medium leading-none transition-colors duration-100 ease-out ${
                       zoom === option.value ? 'bg-accent text-white' : 'text-quiet hover:bg-sunken hover:text-ink'
                     }`}
                   >

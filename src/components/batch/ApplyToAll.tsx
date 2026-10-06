@@ -166,21 +166,19 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
   return (
     <>
       <div className="surface-card p-4 shadow-panel">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-h2 text-ink">{STRINGS.batch.applyTitle}</h2>
-            <p className="mt-1 text-caption text-quiet">
-              {STRINGS.batch.applySubtitle(sourceDocument?.fileName ?? 'the template')}
-            </p>
-          </div>
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" disabled={disabled || isBatchDownloading} onClick={signTheRest}>
-              {STRINGS.buttons.signTheRest(otherCount)}
-            </Button>
-            <Button type="button" variant="secondary" disabled={disabled} onClick={openApplyPreview}>
-              {STRINGS.buttons.applyToAll}
-            </Button>
-          </div>
+        <div>
+          <h2 className="text-h2 text-ink">{STRINGS.batch.applyTitle}</h2>
+          <p className="mt-1 text-caption leading-5 text-quiet">
+            {STRINGS.batch.applySubtitle(sourceDocument?.fileName ?? 'the template')}
+          </p>
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-2">
+          <Button type="button" disabled={disabled || isBatchDownloading} onClick={signTheRest}>
+            {STRINGS.buttons.signTheRest(otherCount)}
+          </Button>
+          <Button type="button" variant="secondary" disabled={disabled} onClick={openApplyPreview}>
+            {STRINGS.buttons.applyToAll}
+          </Button>
         </div>
         <p className="mt-4 text-body text-ink">
           {readinessPreview

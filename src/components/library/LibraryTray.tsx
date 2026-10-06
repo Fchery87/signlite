@@ -167,10 +167,10 @@ export function LibraryTray({ onToast, onAddDate, onAddText, onStampDate, onStam
         <Button variant="secondary" onClick={onAddText} disabled={placementDisabled}>
           {STRINGS.library.text}
         </Button>
-        <Button variant="secondary" onClick={onStampDate} disabled={placementDisabled || !onStampDate}>
+        <Button variant="secondary" className="col-span-2" onClick={onStampDate} disabled={placementDisabled || !onStampDate}>
           {STRINGS.buttons.placeDateOnEveryPage}
         </Button>
-        <Button variant="secondary" onClick={onStampText} disabled={placementDisabled || !onStampText}>
+        <Button variant="secondary" className="col-span-2" onClick={onStampText} disabled={placementDisabled || !onStampText}>
           {STRINGS.buttons.placeTextOnEveryPage}
         </Button>
       </div>
