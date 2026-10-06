@@ -14,12 +14,15 @@ type LibraryTrayProps = {
   onToast: (message: string) => void;
   onAddDate?: () => void;
   onAddText?: () => void;
+  onStampDate?: () => void;
+  onStampText?: () => void;
   onPlaceAsset?: (asset: SignatureAsset) => void;
+  onStampEveryPage?: (asset: SignatureAsset) => void;
   activePage?: number;
   placementDisabled?: boolean;
 };
 
-export function LibraryTray({ onToast, onAddDate, onAddText, onPlaceAsset, activePage = 0, placementDisabled = false }: LibraryTrayProps) {
+export function LibraryTray({ onToast, onAddDate, onAddText, onStampDate, onStampText, onPlaceAsset, onStampEveryPage, activePage = 0, placementDisabled = false }: LibraryTrayProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [assets, setAssets] = useState<SignatureAsset[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -103,6 +106,11 @@ export function LibraryTray({ onToast, onAddDate, onAddText, onPlaceAsset, activ
     onPlaceAsset?.(asset);
   };
 
+  const handleStamp = async (asset: SignatureAsset) => {
+    await handleUse(asset.id);
+    onStampEveryPage?.(asset);
+  };
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-start justify-between gap-3">
@@ -159,6 +167,12 @@ export function LibraryTray({ onToast, onAddDate, onAddText, onPlaceAsset, activ
         <Button variant="secondary" onClick={onAddText} disabled={placementDisabled}>
           {STRINGS.library.text}
         </Button>
+        <Button variant="secondary" onClick={onStampDate} disabled={placementDisabled || !onStampDate}>
+          {STRINGS.buttons.placeDateOnEveryPage}
+        </Button>
+        <Button variant="secondary" onClick={onStampText} disabled={placementDisabled || !onStampText}>
+          {STRINGS.buttons.placeTextOnEveryPage}
+        </Button>
       </div>
 
       <input
@@ -196,6 +210,8 @@ export function LibraryTray({ onToast, onAddDate, onAddText, onPlaceAsset, activ
               onDelete={setDeleteTarget}
               onUse={handleUse}
               onPlace={handlePlace}
+              onStamp={handleStamp}
+              stampDisabled={placementDisabled || !onStampEveryPage}
             />
             <AssetGroup
               title={STRINGS.library.initials}
@@ -217,6 +233,8 @@ export function LibraryTray({ onToast, onAddDate, onAddText, onPlaceAsset, activ
               onDelete={setDeleteTarget}
               onUse={handleUse}
               onPlace={handlePlace}
+              onStamp={handleStamp}
+              stampDisabled={placementDisabled || !onStampEveryPage}
             />
           </>
         )}
@@ -269,6 +287,8 @@ type AssetGroupProps = {
   onDelete: (asset: SignatureAsset) => void;
   onUse: (assetId: string) => void;
   onPlace: (asset: SignatureAsset) => void;
+  onStamp: (asset: SignatureAsset) => void;
+  stampDisabled: boolean;
 };
 
 function AssetGroup({
@@ -284,7 +304,9 @@ function AssetGroup({
   onRenameSave,
   onDelete,
   onUse,
-  onPlace
+  onPlace,
+  onStamp,
+  stampDisabled
 }: AssetGroupProps) {
   return (
     <section>
@@ -311,6 +333,8 @@ function AssetGroup({
               onDelete={onDelete}
               onUse={onUse}
               onPlace={onPlace}
+              onStamp={onStamp}
+              stampDisabled={stampDisabled}
             />
           ))
         )}
@@ -332,6 +356,8 @@ type AssetCardProps = {
   onDelete: (asset: SignatureAsset) => void;
   onUse: (assetId: string) => void;
   onPlace: (asset: SignatureAsset) => void;
+  onStamp: (asset: SignatureAsset) => void;
+  stampDisabled: boolean;
 };
 
 function AssetCard({
@@ -346,7 +372,9 @@ function AssetCard({
   onRenameSave,
   onDelete,
   onUse,
-  onPlace
+  onPlace,
+  onStamp,
+  stampDisabled
 }: AssetCardProps) {
   const [src, setSrc] = useState('');
 
@@ -413,6 +441,13 @@ function AssetCard({
                 {STRINGS.buttons.place}
               </Button>
             </div>
+            <Button
+              className="mt-2 w-full px-2 text-caption"
+              onClick={() => void onStamp(asset)}
+              disabled={placementDisabled || stampDisabled}
+            >
+              {STRINGS.buttons.placeOnEveryPage}
+            </Button>
           </>
         )}
       </div>

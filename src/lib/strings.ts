@@ -66,7 +66,11 @@ export const STRINGS = {
     addPdfs: 'Add PDFs',
     downloadAll: 'Download all',
     applyToAll: 'Apply to all',
+    signTheRest: (count: number) => count === 1 ? 'Sign the other one like this.' : `Sign the other ${count} like this.`,
     replaceAndApply: 'Replace and apply',
+    placeOnEveryPage: 'Place on every page',
+    placeDateOnEveryPage: 'Place date on every page',
+    placeTextOnEveryPage: 'Place text on every page',
     remove: 'Remove',
     place: 'Place',
     duplicate: 'Duplicate',
@@ -114,7 +118,10 @@ export const STRINGS = {
     deleteElement: (label: string, pageNumber: number) => `Delete ${label} on page ${pageNumber}`,
     copiedHint: 'Copied. Press Ctrl+V to paste on the page you are viewing.',
     placementFailed: 'Could not place this signature.',
-    invalidDropPayload: 'That item cannot be placed here.'
+    invalidDropPayload: 'That item cannot be placed here.',
+    stampedOnEveryPage: (label: string, count: number) => `${label} placed on ${count} other page${count === 1 ? '' : 's'}.`,
+    stampNoOtherPages: 'Already on every page.',
+    stampFailed: 'Could not place this on every page.'
   },
   loading: {
     editor: 'Loading editor…',
@@ -158,7 +165,7 @@ export const STRINGS = {
   },
   batch: {
     title: 'Batch',
-    subtitle: 'Drag to reorder. The first document is the template.',
+    subtitle: 'Drag to reorder.',
     applyTitle: 'Apply to all',
     applySubtitle: (fileName: string) => `Copy placements from ${fileName} to the rest of the batch.`,
     templatePlacements: 'Template placements',
@@ -168,6 +175,8 @@ export const STRINGS = {
     readyForDownload: (count: number) => `${count} document${count === 1 ? '' : 's'} ready for zip download.`,
     signingProgress: (done: number, total: number) => `Signing ${done} of ${total}…`,
     nothingToApply: 'Nothing to apply yet.',
+    readinessLine: (ready: number, review: number) => `${ready} ready. ${review} needs review.`,
+    readinessNamesFile: (fileName: string) => `${fileName} needs review.`,
     appliedSummary: (count: number) => `Applied to ${count} document${count === 1 ? '' : 's'}.`,
     reviewSummary: (count: number) => `${count} document${count === 1 ? ' needs' : 's need'} review.`,
     appliedAndReviewSummary: (applied: number, review: number) => `Applied to ${applied}. ${review} need review.`,

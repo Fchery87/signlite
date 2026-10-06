@@ -82,6 +82,7 @@ export function EditorView({ onToast }: EditorViewProps) {
   const selectedPlacementId = useSessionStore((state) => state.selectedPlacementId);
   const addTextPlacement = useSessionStore((state) => state.addTextPlacement);
   const addSignaturePlacement = useSessionStore((state) => state.addSignaturePlacement);
+  const stampPlacementOnEveryPage = useSessionStore((state) => state.stampPlacementOnEveryPage);
   const storedSignatureSnapshots = useSessionStore((state) => state.session.signatureSnapshots);
   const signatureSnapshots = useMemo(() => storedSignatureSnapshots ?? {}, [storedSignatureSnapshots]);
   const pastePlacement = useSessionStore((state) => state.pastePlacement);
@@ -184,12 +185,21 @@ export function EditorView({ onToast }: EditorViewProps) {
     setAnnouncement(STRINGS.announcements.placedOnPage(placementLabel(type), pageIndex + 1));
   }, []);
 
+  const reportStamp = useCallback((label: string, result: { ok: boolean; added: number }) => {
+    if (!result.ok) {
+      onToast(STRINGS.editor.stampFailed);
+      return;
+    }
+    onToast(result.added > 0 ? STRINGS.editor.stampedOnEveryPage(label, result.added) : STRINGS.editor.stampNoOtherPages);
+  }, [onToast]);
+
   const placeSpecialElement = useCallback(
-    (type: 'date' | 'text') => {
+    (type: 'date' | 'text', stamp = false) => {
       const pageSize = selectedDocument?.pageSizes[activePage];
       if (!selectedDocument || !pageSize) return;
+      const id = crypto.randomUUID();
       addTextPlacement(selectedDocument.docId, {
-        id: crypto.randomUUID(),
+        id,
         type,
         pageIndex: activePage,
         x: 0.1,
@@ -201,12 +211,15 @@ export function EditorView({ onToast }: EditorViewProps) {
       });
       announcePlacement(type, activePage);
       onToast(type === 'date' ? STRINGS.editor.dateAdded : STRINGS.editor.textAdded);
+      if (stamp) {
+        reportStamp(placementLabel(type), stampPlacementOnEveryPage(selectedDocument.docId, id));
+      }
     },
-    [activePage, addTextPlacement, announcePlacement, dateFormat, onToast, selectedDocument]
+    [activePage, addTextPlacement, announcePlacement, dateFormat, onToast, reportStamp, selectedDocument, stampPlacementOnEveryPage]
   );
 
-  const handlePlaceAsset = useCallback(
-    async (asset: SignatureAsset) => {
+  const placeAsset = useCallback(
+    async (asset: SignatureAsset, stamp: boolean) => {
       const pageSize = selectedDocument?.pageSizes[activePage];
       if (!selectedDocument || !pageSize) return;
       const width = 0.2;
@@ -229,9 +242,12 @@ export function EditorView({ onToast }: EditorViewProps) {
       }
       announcePlacement(asset.kind, activePage);
       onToast(STRINGS.announcements.placedOnPage(placementLabel(asset.kind), activePage + 1));
+      if (stamp) reportStamp(placementLabel(asset.kind), stampPlacementOnEveryPage(selectedDocument.docId, inserted.id));
     },
-    [activePage, addSignaturePlacement, announcePlacement, onToast, selectedDocument]
+    [activePage, addSignaturePlacement, announcePlacement, onToast, reportStamp, selectedDocument, stampPlacementOnEveryPage]
   );
+  const handlePlaceAsset = useCallback((asset: SignatureAsset) => { void placeAsset(asset, false); }, [placeAsset]);
+  const handleStampAsset = useCallback((asset: SignatureAsset) => { void placeAsset(asset, true); }, [placeAsset]);
 
 
   const handleAddPdfs = useCallback(async (fileList: FileList | null) => {
@@ -548,7 +564,10 @@ export function EditorView({ onToast }: EditorViewProps) {
               onToast={onToast}
               onAddDate={() => placeSpecialElement('date')}
               onAddText={() => placeSpecialElement('text')}
+              onStampDate={() => placeSpecialElement('date', true)}
+              onStampText={() => placeSpecialElement('text', true)}
               onPlaceAsset={handlePlaceAsset}
+              onStampEveryPage={handleStampAsset}
               activePage={activePage}
               placementDisabled={mutationLocked}
             />

@@ -106,4 +106,47 @@ describe('apply-to-all confirmation', () => {
     expect(onToast).toHaveBeenCalledWith(STRINGS.batch.reviewSummary(1));
   });
 
+
+  it('signs the rest from the selected document, not the first one', () => {
+    reset([
+      { ...doc('first'), placements: [{ ...placement, id: 'first-old', value: 'Old' }] },
+      { ...doc('source', 'placed'), placements: [placement] },
+      { ...doc('later') }
+    ]);
+    sessionStoreTestHarness.setState({ selectedDocumentId: 'source' });
+    render(<ApplyToAll onToast={vi.fn()} />);
+
+    expect(screen.getByText('2 ready. 0 needs review.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.signTheRest(2) }));
+    expect(screen.getByRole('dialog')).toHaveTextContent(STRINGS.batch.placementsWillReplace);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements[0]?.value).toBe('Old');
+    fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.replaceAndApply }));
+
+    const documents = sessionStoreTestHarness.getState().session.documents;
+    expect(documents[1]?.placements.map((item) => item.id)).toEqual(['template-placement']);
+    expect(documents[0]?.placements).toHaveLength(1);
+    expect(documents[0]?.placements[0]?.id).not.toBe('template-placement');
+    expect(documents[0]?.placements[0]?.value).toBe('Template');
+    expect(documents[2]?.placements[0]?.value).toBe('Template');
+    expect(documents[2]?.placements[0]?.id).not.toBe(documents[0]?.placements[0]?.id);
+  });
+
+  it('asks before Sign the rest overwrites, and does not download until confirm', () => {
+    reset([
+      { ...doc('source', 'placed'), placements: [placement] },
+      { ...doc('busy', 'placed'), placements: [{ ...placement, id: 'busy-old', value: 'Busy' }] }
+    ]);
+    const onToast = vi.fn();
+    render(<ApplyToAll onToast={onToast} />);
+
+    fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.signTheRest(1) }));
+    expect(screen.getByRole('dialog')).toHaveTextContent(STRINGS.batch.placementsWillReplace);
+    expect(sessionStoreTestHarness.getState().session.documents[1]?.placements[0]?.id).toBe('busy-old');
+    expect(onToast).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: STRINGS.buttons.replaceAndApply }));
+    expect(sessionStoreTestHarness.getState().session.documents[1]?.placements[0]?.id).not.toBe('busy-old');
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements[0]?.id).toBe('template-placement');
+  });
+
 });

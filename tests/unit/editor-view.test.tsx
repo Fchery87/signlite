@@ -212,6 +212,13 @@ describe('editor view', () => {
   });
 
 
+
+  it('offers place on every page when the library tray renders', async () => {
+    render(<EditorView onToast={() => {}} />);
+    expect(screen.getByRole('button', { name: STRINGS.buttons.placeDateOnEveryPage })).toBeEnabled();
+    expect(screen.getByRole('button', { name: STRINGS.buttons.placeTextOnEveryPage })).toBeEnabled();
+  });
+
   it('offers an Add PDFs input in the editor header', async () => {
     render(<EditorView onToast={() => {}} />);
     expect(screen.getByRole('button', { name: STRINGS.buttons.addPdfs })).toBeEnabled();
