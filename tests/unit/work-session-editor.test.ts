@@ -8,6 +8,7 @@ import {
   pastePlacement,
   previewApplyToAll,
   confirmApplyToAll,
+  stampPlacementOnEveryPage,
   removeDocument,
   removePlacement,
   redo,
@@ -518,7 +519,7 @@ describe('WorkSessionEditor.addSignaturePlacement', () => {
       { ...makeDoc('signed'), placements: [signedPlacement], status: 'signed' }
     ]);
 
-    const preview = previewApplyToAll(session, 7);
+    const preview = previewApplyToAll(session, 7, session.documents[0]!.docId);
     expect(preview).toMatchObject({
       revision: 7,
       targets: [{ docId: 'signed', compatible: true, overwritesPlacements: true, endsSignedState: true }]
@@ -536,9 +537,9 @@ describe('WorkSessionEditor.addSignaturePlacement', () => {
     const state = {
       session, history: emptyHistory(), selectedDocumentId: 'target', selectedPlacementId: null, copiedPlacement: null
     };
-    const preview = previewApplyToAll(session, 2)!;
+    const preview = previewApplyToAll(session, 2, session.documents[0]!.docId)!;
 
-    const result = confirmApplyToAll(state, 3, preview);
+    const result = confirmApplyToAll(state, 3, state.session.documents[0]!.docId, preview);
     expect(result).toMatchObject({ ok: false, error: { reason: 'stale-preview' } });
     expect(session.documents[1]?.placements).toEqual([]);
     expect(state.history).toEqual(emptyHistory());
@@ -562,9 +563,9 @@ describe('WorkSessionEditor.addSignaturePlacement', () => {
       selectedPlacementId: compatibleOld.id,
       copiedPlacement: null
     };
-    const preview = previewApplyToAll(session, 4)!;
+    const preview = previewApplyToAll(session, 4, session.documents[0]!.docId)!;
 
-    const result = confirmApplyToAll(state, 4, preview);
+    const result = confirmApplyToAll(state, 4, state.session.documents[0]!.docId, preview);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.appliedDocIds).toEqual(['compatible']);
@@ -647,10 +648,10 @@ describe('WorkSessionEditor.addSignaturePlacement', () => {
     const state = {
       session, history, selectedDocumentId: 'target-a', selectedPlacementId: clipboard.id, copiedPlacement: clipboard
     };
-    const preview = previewApplyToAll(session, 12);
+    const preview = previewApplyToAll(session, 12, session.documents[0]!.docId);
     if (!preview) throw new Error('expected preview');
 
-    const result = confirmApplyToAll(state, 12, preview);
+    const result = confirmApplyToAll(state, 12, state.session.documents[0]!.docId, preview);
     expect(result).toMatchObject({ ok: false, error: { reason: 'missing-snapshot' } });
     expect(state.session).toBe(session);
     expect(state.session.documents.map((document) => document.placements)).toEqual([
@@ -664,6 +665,103 @@ describe('WorkSessionEditor.addSignaturePlacement', () => {
     expect(state.copiedPlacement).toBe(clipboard);
   });
 
+
+  it('applies from a document that is not first and leaves that source unchanged', () => {
+    const sourcePlacement = {
+      ...PLACEMENT_INPUT, id: 'source-placement', type: 'signature' as const, snapshotId: 'snap-1', pageIndex: 1
+    };
+    const earlierOld = { ...PLACEMENT_INPUT, id: 'earlier-old', type: 'text' as const, value: 'Earlier', fontSize: 12 };
+    const laterOld = { ...PLACEMENT_INPUT, id: 'later-old', type: 'text' as const, value: 'Later', fontSize: 12 };
+    const incompatibleOld = { ...PLACEMENT_INPUT, id: 'incompatible-old', type: 'text' as const, value: 'Keep', fontSize: 12 };
+    const session = makeSession([
+      { ...makeDoc('earlier', 2), placements: [earlierOld], status: 'signed' },
+      { ...makeDoc('source', 2), placements: [sourcePlacement], status: 'placed' },
+      { ...makeDoc('later', 2), placements: [laterOld], status: 'pending' },
+      { ...makeDoc('short', 1), placements: [incompatibleOld], status: 'placed' }
+    ]);
+    session.signatureSnapshots = {
+      'snap-1': { id: 'snap-1', kind: 'signature', pngBytes: new ArrayBuffer(1), width: 10, height: 10 }
+    };
+    const sourceDocument = session.documents[1]!;
+    const shortBefore = session.documents[3]!.placements;
+    const state = {
+      session, history: emptyHistory(), selectedDocumentId: 'source',
+      selectedPlacementId: sourcePlacement.id, copiedPlacement: null
+    };
+    const preview = previewApplyToAll(session, 9, 'source');
+    expect(preview?.templateDocumentId).toBe('source');
+    expect(preview?.targets.map((target) => target.docId)).toEqual(['earlier', 'later', 'short']);
+    if (!preview) throw new Error('expected preview');
+
+    const result = confirmApplyToAll(state, 9, 'source', preview);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.session.documents[1]).toBe(sourceDocument);
+    expect(result.appliedDocIds).toEqual(['earlier', 'later']);
+    expect(result.needsReviewDocIds).toEqual(['short']);
+    for (const docId of ['earlier', 'later']) {
+      const target = result.session.documents.find((document) => document.docId === docId)!;
+      expect(target.status).toBe('placed');
+      expect(target.batchError).toBeUndefined();
+      expect(target.needsReviewReason).toBeUndefined();
+      expect(target.placements).toHaveLength(1);
+      expect(target.placements[0]?.id).not.toBe(sourcePlacement.id);
+      expect(target.placements[0]?.snapshotId).toBe('snap-1');
+      expect(target.placements[0]?.pageIndex).toBe(1);
+    }
+    const short = result.session.documents.find((document) => document.docId === 'short')!;
+    expect(short.placements).toBe(shortBefore);
+    expect(short.status).toBe('placed');
+    expect(short.needsReviewReason).toBe(STRINGS.batch.needsReviewMissingPage);
+    expect(result.history.past).toHaveLength(1);
+  });
+
+
+  it('stamps a signature onto the other pages in one undoable history entry', () => {
+    const signature = {
+      ...PLACEMENT_INPUT, id: 'sig', type: 'signature' as const, snapshotId: 'snap-1'
+    };
+    const session = makeSession([{ ...makeDoc('doc-1', 3), placements: [signature], status: 'placed' }]);
+    session.signatureSnapshots = {
+      'snap-1': { id: 'snap-1', kind: 'signature', pngBytes: new ArrayBuffer(1), width: 10, height: 10 }
+    };
+    const stamped = stampPlacementOnEveryPage(session, emptyHistory(), 'doc-1', 'sig');
+    expect(stamped.ok).toBe(true);
+    if (!stamped.ok) return;
+    expect(stamped.added).toBe(2);
+    expect(stamped.history.past).toHaveLength(1);
+    expect(stamped.selectedPlacementId).toBe('sig');
+    const placements = stamped.session.documents[0]!.placements;
+    expect(placements.map((placement) => placement.pageIndex)).toEqual([0, 1, 2]);
+    expect(placements[1]?.id).not.toBe('sig');
+    expect(placements[2]?.id).not.toBe('sig');
+    expect(placements[1]?.snapshotId).toBe('snap-1');
+    expect(placements[2]?.snapshotId).toBe('snap-1');
+    expect(placements[1]).toMatchObject({ x: 0.1, y: 0.1, w: 0.2, h: 0.1 });
+
+    const undone = undo(stamped.session, stamped.history, stamped.selectedPlacementId, 'doc-1');
+    expect(undone.session.documents[0]?.placements).toEqual([signature]);
+    expect(undone.history.past).toHaveLength(0);
+
+    const again = stampPlacementOnEveryPage(stamped.session, stamped.history, 'doc-1', 'sig');
+    expect(again).toMatchObject({ ok: true, added: 0 });
+    if (!again.ok) return;
+    expect(again.history).toBe(stamped.history);
+    expect(again.session).toBe(stamped.session);
+  });
+
+  it('refuses to stamp a signature whose snapshot is missing', () => {
+    const signature = {
+      ...PLACEMENT_INPUT, id: 'sig', type: 'signature' as const, snapshotId: 'absent'
+    };
+    const session = makeSession([{ ...makeDoc('doc-1', 3), placements: [signature], status: 'placed' }]);
+    const history = emptyHistory();
+    const result = stampPlacementOnEveryPage(session, history, 'doc-1', 'sig');
+    expect(result).toMatchObject({ ok: false, error: { reason: 'missing-snapshot' } });
+    expect(session.documents[0]?.placements).toEqual([signature]);
+    expect(history).toEqual(emptyHistory());
+  });
+
   it('undoes and redoes Signed and orthogonal Needs Review apply consequences', () => {
     const template = {
       ...PLACEMENT_INPUT, id: 'template-placement', type: 'text' as const, value: 'Template', fontSize: 12, pageIndex: 1
@@ -675,12 +773,12 @@ describe('WorkSessionEditor.addSignaturePlacement', () => {
       { ...makeDoc('compatible', 2), placements: [compatibleOld], status: 'signed' },
       { ...makeDoc('incompatible', 1), placements: [incompatibleOld], status: 'signed' }
     ]);
-    const preview = previewApplyToAll(session, 5);
+    const preview = previewApplyToAll(session, 5, session.documents[0]!.docId);
     if (!preview) throw new Error('expected preview');
     const applied = confirmApplyToAll({
       session, history: emptyHistory(), selectedDocumentId: 'compatible',
       selectedPlacementId: compatibleOld.id, copiedPlacement: null
-    }, 5, preview);
+    }, 5, session.documents[0]!.docId, preview);
     if (!applied.ok) throw new Error('expected apply');
 
     const reversed = undo(

@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { SessionDocument } from '../db/schema';
 import { STRINGS } from '../lib/strings';
-import { createSessionDocument, getFileValidationError, type FileValidationError } from '../lib/files';
+import { COMMIT_REFUSALS, createSessionDocument, getFileValidationError, REJECTION_REASONS } from '../lib/files';
 import type { IntakeCommitOutcome } from '../stores/session';
 import { Button } from './ui';
 
@@ -9,26 +9,6 @@ type IntakeItem =
   | { id: string; fileName: string; status: 'loading' }
   | { id: string; fileName: string; status: 'accepted'; pageCount: number }
   | { id: string; fileName: string; status: 'rejected'; reason: string };
-
-/** Outcome the store returns when committing an intake result. */
-type CommitOutcome = IntakeCommitOutcome;
-
-/** One toast-and-item copy per validation variant; a new variant without copy is a compile error. */
-const REJECTION_REASONS: Record<FileValidationError, (fileName: string) => string> = {
-  'pdf-only': (fileName) => `${fileName} — ${STRINGS.errors['pdf-only']}`,
-  'too-large': (fileName) => STRINGS.edgeCases.fileTooLarge(fileName),
-  'session-limit': (fileName) => `${fileName} — ${STRINGS.errors['session-limit']}`,
-  'session-page-limit': (fileName) => `${fileName} — ${STRINGS.errors['session-page-limit']}`,
-  'session-byte-limit': (fileName) => `${fileName} — ${STRINGS.errors['session-byte-limit']}`,
-  encrypted: (fileName) => `${fileName} — ${STRINGS.errors.encrypted}`,
-  corrupt: (fileName) => STRINGS.edgeCases.corruptFile(fileName)
-};
-
-const COMMIT_REFUSALS: Record<Exclude<CommitOutcome, 'ok'>, string> = {
-  lease: STRINGS.errors['intake-lease-refused'],
-  'session-changed': STRINGS.errors['intake-session-changed'],
-  budget: STRINGS.errors['intake-budget-refused']
-};
 
 type DropZoneProps = {
   currentDocumentCount: number;
@@ -39,7 +19,7 @@ type DropZoneProps = {
    *  cannot finish offline, so drops and picks are refused with a visible
    *  reason. */
   intakeDisabled?: boolean;
-  onDocumentsAccepted: (documents: SessionDocument[], expectedSessionId?: string) => CommitOutcome;
+  onDocumentsAccepted: (documents: SessionDocument[], expectedSessionId?: string) => IntakeCommitOutcome;
   onToast: (message: string) => void;
 };
 

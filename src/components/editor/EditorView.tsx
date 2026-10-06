@@ -12,8 +12,8 @@ import { useActivePage } from './useActivePage';
 import { placementLabel } from '../../lib/placements';
 import { LibraryTray } from '../library/LibraryTray';
 import { getDateFormat, hydrateSignaturePrefs } from '../../db/signatures';
-import { downloadBlob, signedPdfFileName } from '../../lib/files';
-import type { SignatureAsset } from '../../db/schema';
+import { COMMIT_REFUSALS, createSessionDocument, downloadBlob, getFileValidationError, REJECTION_REASONS, signedPdfFileName } from '../../lib/files';
+import type { SessionDocument, SignatureAsset } from '../../db/schema';
 
 type ZoomOption = 'fit' | 1 | 1.5;
 
@@ -82,6 +82,7 @@ export function EditorView({ onToast }: EditorViewProps) {
   const selectedPlacementId = useSessionStore((state) => state.selectedPlacementId);
   const addTextPlacement = useSessionStore((state) => state.addTextPlacement);
   const addSignaturePlacement = useSessionStore((state) => state.addSignaturePlacement);
+  const stampPlacementOnEveryPage = useSessionStore((state) => state.stampPlacementOnEveryPage);
   const storedSignatureSnapshots = useSessionStore((state) => state.session.signatureSnapshots);
   const signatureSnapshots = useMemo(() => storedSignatureSnapshots ?? {}, [storedSignatureSnapshots]);
   const pastePlacement = useSessionStore((state) => state.pastePlacement);
@@ -92,7 +93,9 @@ export function EditorView({ onToast }: EditorViewProps) {
   const setSelection = useSessionStore((state) => state.setSelection);
   const transitionDocumentOutput = useSessionStore((state) => state.transitionDocumentOutput);
   const removeDocument = useSessionStore((state) => state.removeDocument);
+  const addDocuments = useSessionStore((state) => state.addDocuments);
   const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
+  const sessionId = useSessionStore((state) => state.session.id);
   const selectedDocument = documents.find((document) => document.docId === selectedDocumentId) ?? documents[0] ?? null;
 
   const [pdfState, setPdfState] = useState<PdfState>({ status: 'loading' });
@@ -107,6 +110,7 @@ export function EditorView({ onToast }: EditorViewProps) {
   const [announcement, setAnnouncement] = useState('');
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
+  const addPdfsRef = useRef<HTMLInputElement>(null);
 
   // Key the load effect on docId + pdfBytes (both stable across placement edits)
   // rather than the document object, which the store recreates on every mutation.
@@ -181,12 +185,21 @@ export function EditorView({ onToast }: EditorViewProps) {
     setAnnouncement(STRINGS.announcements.placedOnPage(placementLabel(type), pageIndex + 1));
   }, []);
 
+  const reportStamp = useCallback((label: string, result: { ok: boolean; added: number }) => {
+    if (!result.ok) {
+      onToast(STRINGS.editor.stampFailed);
+      return;
+    }
+    onToast(result.added > 0 ? STRINGS.editor.stampedOnEveryPage(label, result.added) : STRINGS.editor.stampNoOtherPages);
+  }, [onToast]);
+
   const placeSpecialElement = useCallback(
-    (type: 'date' | 'text') => {
+    (type: 'date' | 'text', stamp = false) => {
       const pageSize = selectedDocument?.pageSizes[activePage];
       if (!selectedDocument || !pageSize) return;
+      const id = crypto.randomUUID();
       addTextPlacement(selectedDocument.docId, {
-        id: crypto.randomUUID(),
+        id,
         type,
         pageIndex: activePage,
         x: 0.1,
@@ -198,12 +211,15 @@ export function EditorView({ onToast }: EditorViewProps) {
       });
       announcePlacement(type, activePage);
       onToast(type === 'date' ? STRINGS.editor.dateAdded : STRINGS.editor.textAdded);
+      if (stamp) {
+        reportStamp(placementLabel(type), stampPlacementOnEveryPage(selectedDocument.docId, id));
+      }
     },
-    [activePage, addTextPlacement, announcePlacement, dateFormat, onToast, selectedDocument]
+    [activePage, addTextPlacement, announcePlacement, dateFormat, onToast, reportStamp, selectedDocument, stampPlacementOnEveryPage]
   );
 
-  const handlePlaceAsset = useCallback(
-    async (asset: SignatureAsset) => {
+  const placeAsset = useCallback(
+    async (asset: SignatureAsset, stamp: boolean) => {
       const pageSize = selectedDocument?.pageSizes[activePage];
       if (!selectedDocument || !pageSize) return;
       const width = 0.2;
@@ -226,9 +242,51 @@ export function EditorView({ onToast }: EditorViewProps) {
       }
       announcePlacement(asset.kind, activePage);
       onToast(STRINGS.announcements.placedOnPage(placementLabel(asset.kind), activePage + 1));
+      if (stamp) reportStamp(placementLabel(asset.kind), stampPlacementOnEveryPage(selectedDocument.docId, inserted.id));
     },
-    [activePage, addSignaturePlacement, announcePlacement, onToast, selectedDocument]
+    [activePage, addSignaturePlacement, announcePlacement, onToast, reportStamp, selectedDocument, stampPlacementOnEveryPage]
   );
+  const handlePlaceAsset = useCallback((asset: SignatureAsset) => { void placeAsset(asset, false); }, [placeAsset]);
+  const handleStampAsset = useCallback((asset: SignatureAsset) => { void placeAsset(asset, true); }, [placeAsset]);
+
+
+  const handleAddPdfs = useCallback(async (fileList: FileList | null) => {
+    const files = Array.from(fileList ?? []);
+    if (addPdfsRef.current) addPdfsRef.current.value = '';
+    if (files.length === 0 || mutationLocked) return;
+    const accepted: SessionDocument[] = [];
+    let acceptedPageCount = 0;
+    let acceptedByteCount = 0;
+    for (const file of files) {
+      const validationError = getFileValidationError(file, {
+        documentCount: documents.length + accepted.length,
+        pageCount: documents.reduce((total, document) => total + document.pageCount, 0) + acceptedPageCount,
+        byteCount: documents.reduce((total, document) => total + document.pdfBytes.byteLength, 0) + acceptedByteCount
+      });
+      if (validationError !== null) {
+        onToast(REJECTION_REASONS[validationError](file.name));
+        continue;
+      }
+      try {
+        const document = await createSessionDocument(file, {
+          currentPageCount: documents.reduce((total, item) => total + item.pageCount, 0),
+          acceptedPageCount
+        });
+        accepted.push(document);
+        acceptedPageCount += document.pageCount;
+        acceptedByteCount += document.pdfBytes.byteLength;
+      } catch (error) {
+        const code = error instanceof Error && error.message in STRINGS.errors
+          ? (error.message as keyof typeof STRINGS.errors)
+          : 'corrupt';
+        const reason = code === 'corrupt' ? STRINGS.edgeCases.corruptFile(file.name) : STRINGS.errors[code];
+        onToast(code === 'corrupt' ? reason : `${file.name} — ${reason}`);
+      }
+    }
+    if (accepted.length === 0) return;
+    const outcome = addDocuments(accepted, sessionId);
+    if (outcome !== 'ok') onToast(COMMIT_REFUSALS[outcome]);
+  }, [addDocuments, documents, mutationLocked, onToast, sessionId]);
 
   const handlePaste = useCallback(() => {
     if (!selectedDocId) return;
@@ -433,6 +491,19 @@ export function EditorView({ onToast }: EditorViewProps) {
                   </button>
                 ))}
               </div>
+              <input
+                ref={addPdfsRef}
+                hidden
+                type="file"
+                accept="application/pdf"
+                multiple
+                onChange={(event) => {
+                  void handleAddPdfs(event.target.files);
+                }}
+              />
+              <Button variant="secondary" disabled={mutationLocked} onClick={() => addPdfsRef.current?.click()}>
+                {STRINGS.buttons.addPdfs}
+              </Button>
               <Button
                 onClick={() => void handleDownload()}
                 disabled={isDownloading || !hasPlacements || mutationLocked}
@@ -493,7 +564,10 @@ export function EditorView({ onToast }: EditorViewProps) {
               onToast={onToast}
               onAddDate={() => placeSpecialElement('date')}
               onAddText={() => placeSpecialElement('text')}
+              onStampDate={() => placeSpecialElement('date', true)}
+              onStampText={() => placeSpecialElement('text', true)}
               onPlaceAsset={handlePlaceAsset}
+              onStampEveryPage={handleStampAsset}
               activePage={activePage}
               placementDisabled={mutationLocked}
             />

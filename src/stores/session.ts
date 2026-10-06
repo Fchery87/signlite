@@ -7,6 +7,7 @@ import {
   replaceSession as editorReplaceSession,
   previewApplyToAll as editorPreviewApplyToAll,
   confirmApplyToAll as editorConfirmApplyToAll,
+  stampPlacementOnEveryPage as editorStampPlacementOnEveryPage,
   addSignaturePlacement as editorAddSignaturePlacement,
   addTextPlacement as editorAddTextPlacement,
   updatePlacement as editorUpdatePlacement,
@@ -86,8 +87,9 @@ type SessionState = {
   confirmBatchSigned: (docIds: string[], capability: MutationLease) => boolean;
   acquireMutationLease: (owner: string) => MutationLease | null;
   releaseMutationLease: (capability: MutationLease) => boolean;
-  previewApplyTemplatePlacements: () => ApplyToAllPreview | null;
-  applyTemplatePlacements: (preview: ApplyToAllPreview) => ApplyTemplatePlacementsResult;
+  previewApplyTemplatePlacements: (sourceDocId: string) => ApplyToAllPreview | null;
+  applyTemplatePlacements: (sourceDocId: string, preview: ApplyToAllPreview) => ApplyTemplatePlacementsResult;
+  stampPlacementOnEveryPage: (docId: string, placementId: string) => { ok: boolean; added: number };
   setSelection: (docId: string | null, placementId: string | null) => void;
   restoreSession: (session: WorkSession) => Promise<boolean>;
   resetSession: () => void;
@@ -331,12 +333,12 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
     return true;
   },
 
-  previewApplyTemplatePlacements: () => editorPreviewApplyToAll(get().session, get().contentRevision),
+  previewApplyTemplatePlacements: (sourceDocId) => editorPreviewApplyToAll(get().session, get().contentRevision, sourceDocId),
 
-  applyTemplatePlacements: (preview) => {
+  applyTemplatePlacements: (sourceDocId, preview) => {
     if (get().mutationLease) return { ok: false, appliedDocIds: [], needsReviewDocIds: [], error: 'rejected' };
     const state = get();
-    const result = editorConfirmApplyToAll(toEditorState(state), state.contentRevision, preview);
+    const result = editorConfirmApplyToAll(toEditorState(state), state.contentRevision, sourceDocId, preview);
     if (!result.ok) {
       return {
         ok: false,
@@ -358,6 +360,23 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
       appliedDocIds: result.appliedDocIds ?? [],
       needsReviewDocIds: result.needsReviewDocIds ?? []
     };
+  },
+
+
+  stampPlacementOnEveryPage: (docId, placementId) => {
+    if (get().mutationLease) return { ok: false, added: 0 };
+    const state = get();
+    const result = editorStampPlacementOnEveryPage(state.session, state.history, docId, placementId);
+    if (!result.ok) return { ok: false, added: 0 };
+    if (result.added === 0) return { ok: true, added: 0 };
+    set({
+      session: result.session,
+      history: result.history,
+      selectedDocumentId: docId,
+      selectedPlacementId: result.selectedPlacementId,
+      contentRevision: state.contentRevision + 1
+    });
+    return { ok: true, added: result.added };
   },
 
   setSelection: (docId, placementId) => set({ selectedDocumentId: docId, selectedPlacementId: placementId }),

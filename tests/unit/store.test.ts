@@ -225,9 +225,9 @@ describe('session store', () => {
       h: 0.1
     });
 
-    const preview = sessionStoreTestHarness.getState().previewApplyTemplatePlacements();
+    const preview = sessionStoreTestHarness.getState().previewApplyTemplatePlacements('template');
     if (!preview) throw new Error('Expected preview');
-    const result = sessionStoreTestHarness.getState().applyTemplatePlacements(preview);
+    const result = sessionStoreTestHarness.getState().applyTemplatePlacements('template', preview);
     const documents = sessionStoreTestHarness.getState().session.documents;
 
     expect(result.appliedDocIds).toEqual(['doc-2']);
@@ -312,9 +312,9 @@ describe('session store', () => {
     );
     const originalSnapshotId = sessionStoreTestHarness.getState().session.documents[0]?.placements[0]?.snapshotId;
 
-    const preview = sessionStoreTestHarness.getState().previewApplyTemplatePlacements();
+    const preview = sessionStoreTestHarness.getState().previewApplyTemplatePlacements('template');
     if (!preview) throw new Error('Expected preview');
-    const result = sessionStoreTestHarness.getState().applyTemplatePlacements(preview);
+    const result = sessionStoreTestHarness.getState().applyTemplatePlacements('template', preview);
     expect(result.appliedDocIds).toEqual(['doc-2']);
 
     const targetPlacements = sessionStoreTestHarness.getState().session.documents[1]?.placements ?? [];
@@ -329,7 +329,7 @@ describe('session store', () => {
     sessionStoreTestHarness.getState().addDocuments([makeDocument('template'), makeDocument('target')]);
     sessionStoreTestHarness.getState().addTextPlacement('template', { ...basePlacement });
     const revision = sessionStoreTestHarness.getState().contentRevision;
-    const preview = sessionStoreTestHarness.getState().previewApplyTemplatePlacements();
+    const preview = sessionStoreTestHarness.getState().previewApplyTemplatePlacements('template');
     if (!preview) throw new Error('Expected preview');
 
     sessionStoreTestHarness.getState().setSelection('target', null);
@@ -339,7 +339,7 @@ describe('session store', () => {
     sessionStoreTestHarness.getState().addTextPlacement('target', { ...basePlacement, id: 'new-target' });
     expect(sessionStoreTestHarness.getState().contentRevision).toBe(revision + 1);
     const before = sessionStoreTestHarness.getState().session;
-    expect(sessionStoreTestHarness.getState().applyTemplatePlacements(preview)).toMatchObject({ ok: false, error: 'stale-preview' });
+    expect(sessionStoreTestHarness.getState().applyTemplatePlacements('template', preview)).toMatchObject({ ok: false, error: 'stale-preview' });
     expect(sessionStoreTestHarness.getState().session).toBe(before);
   });
 
@@ -423,7 +423,7 @@ describe('session store', () => {
     sessionStoreTestHarness.getState().addTextPlacement('doc-1', first);
     sessionStoreTestHarness.getState().addTextPlacement('doc-2', second);
     sessionStoreTestHarness.getState().copyPlacement('doc-1', first.id);
-    const preview = sessionStoreTestHarness.getState().previewApplyTemplatePlacements();
+    const preview = sessionStoreTestHarness.getState().previewApplyTemplatePlacements('doc-1');
     if (!preview) throw new Error('Expected apply preview');
 
     const pendingSignature = sessionStoreTestHarness.getState().addSignaturePlacement(
@@ -454,7 +454,7 @@ describe('session store', () => {
     expect(baseline.pastePlacement('doc-1', 0)).toBeNull();
     baseline.undo();
     baseline.redo();
-    expect(baseline.applyTemplatePlacements(preview)).toMatchObject({ ok: false, error: 'rejected' });
+    expect(baseline.applyTemplatePlacements('doc-1', preview)).toMatchObject({ ok: false, error: 'rejected' });
     expect(baseline.transitionDocumentOutput('doc-1', 'signing')).toBe(false);
     await expect(baseline.restoreSession(candidate)).resolves.toBe(false);
     baseline.resetSession();

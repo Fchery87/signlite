@@ -211,6 +211,22 @@ describe('editor view', () => {
     expect(sessionStoreTestHarness.getState().session.documents[0]?.placements[0]?.value).toBe('Text');
   });
 
+
+
+  it('offers place on every page when the library tray renders', async () => {
+    render(<EditorView onToast={() => {}} />);
+    expect(screen.getByRole('button', { name: STRINGS.buttons.placeDateOnEveryPage })).toBeEnabled();
+    expect(screen.getByRole('button', { name: STRINGS.buttons.placeTextOnEveryPage })).toBeEnabled();
+  });
+
+  it('offers an Add PDFs input in the editor header', async () => {
+    render(<EditorView onToast={() => {}} />);
+    expect(screen.getByRole('button', { name: STRINGS.buttons.addPdfs })).toBeEnabled();
+    const input = document.querySelector('input[type="file"][accept="application/pdf"]');
+    expect(input).not.toBeNull();
+    expect(input).toHaveAttribute('multiple');
+  });
+
   it('disables mutation controls while keeping page and zoom navigation available', async () => {
     render(<EditorView onToast={() => {}} />);
     await waitFor(() => expect(intersectionObservers.length).toBeGreaterThanOrEqual(2));

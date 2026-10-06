@@ -12,26 +12,34 @@ type ApplyToAllProps = {
 
 export function ApplyToAll({ onToast }: ApplyToAllProps) {
   const documents = useSessionStore((state) => state.session.documents);
+  const selectedDocumentId = useSessionStore((state) => state.selectedDocumentId);
   const previewApplyTemplatePlacements = useSessionStore((state) => state.previewApplyTemplatePlacements);
   const applyTemplatePlacements = useSessionStore((state) => state.applyTemplatePlacements);
   const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [applyPreview, setApplyPreview] = useState<ApplyToAllPreview | null>(null);
+  const [downloadAfterApply, setDownloadAfterApply] = useState(false);
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
   const [batchProgress, setBatchProgress] = useState<BatchAttemptProgress | null>(null);
   const [batchDelivering, setBatchDelivering] = useState(false);
   const batchRef = useRef<BatchSigning | null>(null);
 
-  const templateDocument = documents[0] ?? null;
-  const targetDocuments = useMemo(() => documents.slice(1), [documents]);
+  const sourceDocumentId = documents.some((document) => document.docId === selectedDocumentId)
+    ? selectedDocumentId!
+    : documents[0]?.docId;
+  const sourceDocument = documents.find((document) => document.docId === sourceDocumentId) ?? null;
+  const otherCount = Math.max(documents.length - 1, 0);
+  const readinessPreview = sourceDocumentId ? previewApplyTemplatePlacements(sourceDocumentId) : null;
   const downloadableDocuments = useMemo(
     () => documents.filter((document) => document.placements.length > 0 && !document.needsReviewReason && document.status !== 'needs-review'),
     [documents]
   );
-  const overwriteCount = applyPreview?.targets.filter((target) => target.overwritesPlacements || target.endsSignedState).length
-    ?? targetDocuments.filter((document) => document.placements.length > 0 || document.status === 'signed').length;
-  const disabled = mutationLocked || !templateDocument || templateDocument.placements.length === 0 || targetDocuments.length === 0;
+  const overwriteCount = applyPreview?.targets.filter((target) => target.overwritesPlacements || target.endsSignedState).length ?? 0;
+  const disabled = mutationLocked || readinessPreview === null;
   const batchDisabled = mutationLocked || isBatchDownloading || documents.length < 2 || downloadableDocuments.length === 0;
+  const readyCount = readinessPreview?.targets.filter((target) => target.compatible).length ?? 0;
+  const reviewCount = readinessPreview?.targets.filter((target) => !target.compatible).length ?? 0;
+  const firstReview = readinessPreview?.targets.find((target) => !target.compatible);
 
   useEffect(() => {
     const handleShortcut = () => {
@@ -42,26 +50,41 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
   });
 
   const openApplyPreview = () => {
-    if (mutationLocked) return;
-    const preview = previewApplyTemplatePlacements();
+    if (mutationLocked || !sourceDocumentId) return;
+    const preview = previewApplyTemplatePlacements(sourceDocumentId);
     if (!preview) {
       onToast(STRINGS.batch.nothingToApply);
       return;
     }
+    setDownloadAfterApply(false);
     setApplyPreview(preview);
     setConfirmOpen(true);
   };
 
-  const runApply = () => {
-    if (mutationLocked) return;
-    if (!applyPreview) return;
-    const result = applyTemplatePlacements(applyPreview);
-    setConfirmOpen(false);
-    setApplyPreview(null);
+  const signTheRest = () => {
+    if (mutationLocked || isBatchDownloading || !sourceDocumentId) return;
+    const preview = previewApplyTemplatePlacements(sourceDocumentId);
+    if (!preview) {
+      onToast(STRINGS.batch.nothingToApply);
+      return;
+    }
+    const needsConfirm = preview.targets.some((target) => target.overwritesPlacements || target.endsSignedState);
+    if (needsConfirm) {
+      setDownloadAfterApply(true);
+      setApplyPreview(preview);
+      setConfirmOpen(true);
+      return;
+    }
+    const result = applyTemplatePlacements(sourceDocumentId, preview);
     if (!result.ok) {
       onToast(result.error === 'stale-preview' ? STRINGS.batch.stalePreview : STRINGS.editor.placementFailed);
       return;
     }
+    reportApply(result);
+    void startBatchDownload();
+  };
+
+  const reportApply = (result: { appliedDocIds: string[]; needsReviewDocIds: string[] }) => {
     if (result.appliedDocIds.length === 0 && result.needsReviewDocIds.length === 0) {
       onToast(STRINGS.batch.nothingToApply);
       return;
@@ -75,6 +98,21 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
       return;
     }
     onToast(STRINGS.batch.reviewSummary(result.needsReviewDocIds.length));
+  };
+
+  const runApply = () => {
+    if (mutationLocked || !applyPreview || !sourceDocumentId) return;
+    const shouldDownload = downloadAfterApply;
+    const result = applyTemplatePlacements(sourceDocumentId, applyPreview);
+    setConfirmOpen(false);
+    setApplyPreview(null);
+    setDownloadAfterApply(false);
+    if (!result.ok) {
+      onToast(result.error === 'stale-preview' ? STRINGS.batch.stalePreview : STRINGS.editor.placementFailed);
+      return;
+    }
+    reportApply(result);
+    if (shouldDownload) void startBatchDownload();
   };
 
   const startBatchDownload = async () => {
@@ -132,27 +170,23 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
           <div>
             <h2 className="text-h2 text-ink">{STRINGS.batch.applyTitle}</h2>
             <p className="mt-1 text-caption text-quiet">
-              {STRINGS.batch.applySubtitle(templateDocument?.fileName ?? 'the template')}
+              {STRINGS.batch.applySubtitle(sourceDocument?.fileName ?? 'the template')}
             </p>
           </div>
-          <Button type="button" disabled={disabled} onClick={openApplyPreview}>
-            {STRINGS.buttons.applyToAll}
-          </Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" disabled={disabled || isBatchDownloading} onClick={signTheRest}>
+              {STRINGS.buttons.signTheRest(otherCount)}
+            </Button>
+            <Button type="button" variant="secondary" disabled={disabled} onClick={openApplyPreview}>
+              {STRINGS.buttons.applyToAll}
+            </Button>
+          </div>
         </div>
-        <dl className="mt-4 grid grid-cols-2 gap-3 text-body sm:grid-cols-3">
-          <div className="bg-mist px-3 py-2">
-            <dt className="text-caption uppercase text-quiet">{STRINGS.batch.templatePlacements}</dt>
-            <dd className="mt-1 font-medium text-ink">{templateDocument?.placements.length ?? 0}</dd>
-          </div>
-          <div className="bg-mist px-3 py-2">
-            <dt className="text-caption uppercase text-quiet">{STRINGS.batch.targets}</dt>
-            <dd className="mt-1 font-medium text-ink">{targetDocuments.length}</dd>
-          </div>
-          <div className="bg-mist px-3 py-2">
-            <dt className="text-caption uppercase text-quiet">{STRINGS.batch.overwrite}</dt>
-            <dd className="mt-1 font-medium text-ink">{overwriteCount}</dd>
-          </div>
-        </dl>
+        <p className="mt-4 text-body text-ink">
+          {readinessPreview
+            ? `${STRINGS.batch.readinessLine(readyCount, reviewCount)}${firstReview ? ` ${STRINGS.batch.readinessNamesFile(firstReview.fileName)}` : ''}`
+            : STRINGS.batch.nothingToApply}
+        </p>
         <div className="mt-4 bg-mist px-3 py-3">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -176,7 +210,7 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
           </div>
         </div>
       </div>
-      <Modal open={confirmOpen} title={STRINGS.batch.replaceTitle} onClose={() => { setConfirmOpen(false); setApplyPreview(null); }}>
+      <Modal open={confirmOpen} title={STRINGS.batch.replaceTitle} onClose={() => { setConfirmOpen(false); setApplyPreview(null); setDownloadAfterApply(false); }}>
         <div className="space-y-4">
           <p className="text-body text-quiet">{STRINGS.batch.replaceBody(overwriteCount)}</p>
           <ul className="space-y-2 text-caption text-quiet">
@@ -189,7 +223,7 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
             ))}
           </ul>
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => { setConfirmOpen(false); setApplyPreview(null); }}>
+            <Button variant="secondary" onClick={() => { setConfirmOpen(false); setApplyPreview(null); setDownloadAfterApply(false); }}>
               {STRINGS.buttons.cancel}
             </Button>
             <Button onClick={runApply} disabled={mutationLocked}>{STRINGS.buttons.replaceAndApply}</Button>
