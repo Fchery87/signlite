@@ -21,7 +21,7 @@ test('keeps the production batch path responsive for a 20-document stack', async
   await expect(batchPanel.getByRole('heading', { name: 'Batch', exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('heading', { name: 'performance-01.pdf' })).toBeVisible({ timeout: 60_000 });
 
-  await page.getByRole('button', { name: 'Text' }).click();
+  await page.getByRole('button', { name: 'Text', exact: true }).click();
   await expect(page.getByText('Text box added to page.')).toBeVisible();
   await page.getByRole('button', { name: 'Apply to all' }).click();
   await expect(page.getByRole('dialog', { name: 'Replace existing placements?' })).toBeVisible();

@@ -73,10 +73,10 @@ test('restores a batch session and downloads a quiet signed zip', async ({ page 
   await expect(batchItems.nth(0)).toContainText('batch-03.pdf');
   await newTemplate.click();
   await expect(page.getByRole('heading', { name: 'batch-03.pdf' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Text' })).toBeVisible();
-  await page.getByRole('button', { name: 'Text' }).click();
+  await expect(page.getByRole('button', { name: 'Text', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Text', exact: true }).click();
   await expect(page.getByText('Text box added to page.')).toBeVisible();
-  const placedText = page.getByRole('main').getByRole('button', { name: 'Text' }).last();
+  const placedText = page.getByTestId('placement-layer').getByRole('button', { name: 'Text', exact: true }).last();
   await placedText.click();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.locator('main input[value="Text"]').last().fill(BATCH_SENTINEL);

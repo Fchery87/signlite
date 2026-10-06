@@ -32,7 +32,7 @@ async function intake(page: import('@playwright/test').Page) {
 async function addTextPlacement(page: import('@playwright/test').Page, value: string) {
   await page.getByRole('button', { name: 'Text', exact: true }).click();
   await expect(page.getByText('Text box added to page.')).toBeVisible();
-  const placed = page.getByRole('main').getByRole('button', { name: 'Text' }).last();
+  const placed = page.getByTestId('placement-layer').getByRole('button', { name: 'Text', exact: true }).last();
   await placed.click();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const input = page.locator('main input[value="Text"]').last();
@@ -84,7 +84,7 @@ test.describe('text output', () => {
     await page.getByRole('button', { name: 'Download' }).click();
     await expect(page.getByText(/These characters can't be written into the PDF/)).toBeVisible();
     // The placement itself must still be there for the user to fix.
-    await expect(page.getByRole('main').getByRole('button', { name: /合同 Edit/ })).toBeVisible();
+    await expect(page.getByTestId('placement-layer').getByRole('button', { name: 'Text', exact: true })).toBeVisible();
     expect(await downloadPromise).toBe('none');
   });
 

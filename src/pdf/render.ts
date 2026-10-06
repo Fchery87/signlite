@@ -51,7 +51,12 @@ export async function loadDocument(bytes: ArrayBuffer): Promise<LoadedPdf> {
       StandardFontDataFactory: (await import('./assetFactories')).BundledStandardFontDataFactory as never,
       standardFontDataUrl: '/standard_fonts/'
     });
-    return await task.promise;
+    const loaded = task.promise;
+    // Attach before the await. A rejection that lands in the gap between
+    // getDocument returning and this function awaiting it is otherwise
+    // unhandled, and the process treats that as a crash.
+    loaded.catch(() => undefined);
+    return await loaded;
   } catch (error) {
     // A load that never produced a proxy still owns a worker slot and document
     // handle. Destroying the task releases them; a failed parse must not retain
