@@ -20,9 +20,7 @@ export type SignliteErrorCode =
 
 export const STRINGS = {
   appName: 'SignLite',
-  appShellReady: 'Foundation shell ready.',
   workSessionLocked: (owner: string) => `Work Session locked by ${owner}. Editing is temporarily disabled.`,
-  footerEmpty: 'Client-side by default.',
   footerLoaded: (count: number) => `${count} document${count === 1 ? '' : 's'} loaded.`,
   liveRegionLabel: 'Editor status',
   shortcuts: {
@@ -168,9 +166,6 @@ export const STRINGS = {
     subtitle: 'Drag to reorder.',
     applyTitle: 'Apply to all',
     applySubtitle: (fileName: string) => `Copy placements from ${fileName} to the rest of the batch.`,
-    templatePlacements: 'Template placements',
-    targets: 'Targets',
-    overwrite: 'Overwrite',
     downloadTitle: 'Download all',
     readyForDownload: (count: number) => `${count} document${count === 1 ? '' : 's'} ready for zip download.`,
     signingProgress: (done: number, total: number) => `Signing ${done} of ${total}…`,

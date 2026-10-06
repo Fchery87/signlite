@@ -19,9 +19,7 @@ export default function App() {
   const restoreSession = useSessionStore((state) => state.restoreSession);
   const resetSession = useSessionStore((state) => state.resetSession);
   const mutationLock = useSessionStore((state) => state.mutationLock);
-  const [toasts, setToasts] = useState<Array<{ id: string; message: string }>>([
-    { id: 'shell-ready', message: STRINGS.appShellReady }
-  ]);
+  const [toasts, setToasts] = useState<Array<{ id: string; message: string }>>([]);
   const lifecycle = useSessionLifecycle({ session, contentRevision, resetSession });
   const runtime = useRuntimeReadiness();
   useEffect(() => {
@@ -33,10 +31,7 @@ export default function App() {
   const documentCount = documents.length;
   const currentPageCount = useMemo(() => documents.reduce((total, document) => total + document.pageCount, 0), [documents]);
   const currentByteCount = useMemo(() => documents.reduce((total, document) => total + document.pdfBytes.byteLength, 0), [documents]);
-  const footerText = useMemo(
-    () => (documentCount === 0 ? STRINGS.footerEmpty : STRINGS.footerLoaded(documentCount)),
-    [documentCount]
-  );
+  const footerText = documentCount === 0 ? null : STRINGS.footerLoaded(documentCount);
 
   const pushToast = (message: string) => {
     setToasts((items) => [...items, { id: crypto.randomUUID(), message }]);
@@ -49,7 +44,7 @@ export default function App() {
           <div>
             <p className="text-caption uppercase text-quiet">{STRINGS.appName}</p>
             <div className="mt-1 flex items-center gap-3">
-              <p className="text-body text-quiet">{footerText}</p>
+              {footerText ? <p className="text-body text-quiet">{footerText}</p> : null}
               {lifecycle.status && lifecycle.status !== 'initializing' ? (
                 <p className="text-caption text-quiet" data-testid="durability-status">{STRINGS.durability[lifecycle.status]}</p>
               ) : null}
