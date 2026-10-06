@@ -132,8 +132,6 @@ export type OkResult = {
   selectedPlacementId?: string | null;
 };
 
-export type ErrResult = { ok: false; error: WorkSessionEditorError };
-
 export type EditorResult = OkResult | ErrResult;
 export type AddSignaturePlacementResult = (OkResult & { placement: Placement }) | ErrResult;
 
@@ -577,13 +575,18 @@ function templateMismatchReason(
 }
 
 /** Derives a non-mutating preview bound to the caller's monotonic content revision. */
-export function previewApplyToAll(session: WorkSession, revision: number): ApplyToAllPreview | null {
-  const [templateDocument, ...targets] = session.documents;
+export function previewApplyToAll(
+  session: WorkSession,
+  revision: number,
+  sourceDocId: string
+): ApplyToAllPreview | null {
+  const templateDocument = session.documents.find((document) => document.docId === sourceDocId);
+  const targets = session.documents.filter((document) => document.docId !== sourceDocId);
   if (!templateDocument || templateDocument.placements.length === 0 || targets.length === 0) return null;
 
   return {
     revision,
-    templateDocumentId: templateDocument.docId,
+    templateDocumentId: sourceDocId,
     targets: targets.map((document) => {
       const needsReviewReason = templateMismatchReason(templateDocument, document, templateDocument.placements);
       return {
@@ -602,17 +605,19 @@ export function previewApplyToAll(session: WorkSession, revision: number): Apply
 export function confirmApplyToAll(
   state: WorkSessionEditorState,
   currentRevision: number,
+  sourceDocId: string,
   preview: ApplyToAllPreview
 ): ApplyToAllResult {
-  if (preview.revision !== currentRevision) {
+  if (preview.revision !== currentRevision || preview.templateDocumentId !== sourceDocId) {
     return { ok: false, error: { reason: 'stale-preview', message: 'The Work Session changed after this preview' } };
   }
-  const [templateDocument] = state.session.documents;
-  if (!templateDocument || templateDocument.docId !== preview.templateDocumentId || templateDocument.placements.length === 0) {
+  const templateDocument = state.session.documents.find((document) => document.docId === sourceDocId);
+  const targets = state.session.documents.filter((document) => document.docId !== sourceDocId);
+  if (!templateDocument || templateDocument.placements.length === 0) {
     return { ok: false, error: { reason: 'stale-preview', message: 'The template changed after this preview' } };
   }
-  if (preview.targets.length !== state.session.documents.length - 1
-      || preview.targets.some((target, index) => state.session.documents[index + 1]?.docId !== target.docId)) {
+  if (preview.targets.length !== targets.length
+      || preview.targets.some((target, index) => targets[index]?.docId !== target.docId)) {
     return { ok: false, error: { reason: 'stale-preview', message: 'The target cohort changed after this preview' } };
   }
   const missingSnapshot = templateDocument.placements.find((placement) => validateRequiredSnapshot(state.session, placement));
@@ -622,9 +627,11 @@ export function confirmApplyToAll(
 
   const appliedDocIds: string[] = [];
   const needsReviewDocIds: string[] = [];
-  const documents = state.session.documents.map((document, index) => {
-    if (index === 0) return document;
-    const target = preview.targets[index - 1]!;
+  let targetIndex = 0;
+  const documents = state.session.documents.map((document) => {
+    if (document.docId === sourceDocId) return document;
+    const target = preview.targets[targetIndex]!;
+    targetIndex += 1;
     const currentReason = templateMismatchReason(templateDocument, document, templateDocument.placements);
     if (currentReason || target.needsReviewReason) {
       needsReviewDocIds.push(document.docId);
@@ -635,7 +642,7 @@ export function confirmApplyToAll(
     return {
       ...document,
       placements,
-      status: (placements.length > 0 ? 'placed' : 'pending') as SessionDocument['status'],
+      status: 'placed' as const,
       batchError: undefined,
       needsReviewReason: undefined
     };

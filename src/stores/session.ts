@@ -86,8 +86,8 @@ type SessionState = {
   confirmBatchSigned: (docIds: string[], capability: MutationLease) => boolean;
   acquireMutationLease: (owner: string) => MutationLease | null;
   releaseMutationLease: (capability: MutationLease) => boolean;
-  previewApplyTemplatePlacements: () => ApplyToAllPreview | null;
-  applyTemplatePlacements: (preview: ApplyToAllPreview) => ApplyTemplatePlacementsResult;
+  previewApplyTemplatePlacements: (sourceDocId: string) => ApplyToAllPreview | null;
+  applyTemplatePlacements: (sourceDocId: string, preview: ApplyToAllPreview) => ApplyTemplatePlacementsResult;
   setSelection: (docId: string | null, placementId: string | null) => void;
   restoreSession: (session: WorkSession) => Promise<boolean>;
   resetSession: () => void;
@@ -331,12 +331,12 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
     return true;
   },
 
-  previewApplyTemplatePlacements: () => editorPreviewApplyToAll(get().session, get().contentRevision),
+  previewApplyTemplatePlacements: (sourceDocId) => editorPreviewApplyToAll(get().session, get().contentRevision, sourceDocId),
 
-  applyTemplatePlacements: (preview) => {
+  applyTemplatePlacements: (sourceDocId, preview) => {
     if (get().mutationLease) return { ok: false, appliedDocIds: [], needsReviewDocIds: [], error: 'rejected' };
     const state = get();
-    const result = editorConfirmApplyToAll(toEditorState(state), state.contentRevision, preview);
+    const result = editorConfirmApplyToAll(toEditorState(state), state.contentRevision, sourceDocId, preview);
     if (!result.ok) {
       return {
         ok: false,
@@ -359,6 +359,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
       needsReviewDocIds: result.needsReviewDocIds ?? []
     };
   },
+
 
   setSelection: (docId, placementId) => set({ selectedDocumentId: docId, selectedPlacementId: placementId }),
 
