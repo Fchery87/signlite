@@ -6,6 +6,7 @@ import { bufferToObjectUrl } from '../library/canvas';
 import { clampRect, normalizedToScreen, screenToNormalized } from '../../pdf/coords';
 import { ensureTextFontFamily, layoutText, TEXT_PADDING, type TextLayout } from '../../pdf/textLayout';
 import { useSessionStore } from '../../stores/session';
+import { placementLabel } from '../../lib/placements';
 import { STRINGS } from '../../lib/strings';
 
 type PageSize = { w: number; h: number };
@@ -263,6 +264,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
       <div
         role="button"
         tabIndex={0}
+        aria-label={placementLabel(placement.type)}
         aria-disabled={mutationLocked}
         // The placement border is chrome and must not inset the content: a
         // 1px border here made the preview's visible marker smaller than the

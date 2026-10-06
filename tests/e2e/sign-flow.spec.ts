@@ -158,15 +158,15 @@ test('accepts a native mouse drag from the library onto the page', async ({ page
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Drag Signer', { exact: true })).toBeVisible();
 
-  const card = page.locator('article').filter({ has: page.getByText('Drag Signer', { exact: true }) }).first();
+  const handle = page.getByRole('button', { name: 'Drag Signer', exact: true });
   const layerBox = await layer.boundingBox();
   if (!layerBox) {
     throw new Error('Expected placement layer bounds');
   }
-  await card.dragTo(layer, {
+  await handle.dragTo(layer, {
     targetPosition: { x: Math.round(layerBox.width * 0.4), y: Math.round(layerBox.height * 0.4) }
   });
 
   await expect(page.getByRole('status').filter({ hasText: 'Signature placed on page 1.' })).toBeVisible();
-  await expect(page.getByRole('main').getByRole('button', { name: 'signature' })).toHaveCount(1);
+  await expect(page.getByTestId('placement-layer').getByRole('button', { name: 'Signature', exact: true })).toHaveCount(1);
 });

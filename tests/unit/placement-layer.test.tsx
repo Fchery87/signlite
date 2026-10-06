@@ -439,7 +439,7 @@ describe('placement layer', () => {
     if (!placement) throw new Error('Expected placement');
 
     render(<PlacedElement documentId="doc-1" pageSize={{ w: 200, h: 100 }} placement={placement} scale={1} selected={false} />);
-    const target = screen.getByRole('button', { name: 'Signer' });
+    const target = screen.getByRole('button', { name: 'Text' });
     dispatchPointer(target, 'pointerdown', 1, 20, 10);
     dispatchPointer(window, 'pointermove', 1, 30, 20);
     dispatchPointer(window, 'pointermove', 1, 40, 30);

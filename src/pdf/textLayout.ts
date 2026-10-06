@@ -31,7 +31,7 @@ export function ensureTextFontFamily(): Promise<string> {
     const bytes = await getEmbeddedFontBytes();
     const face = new FontFace(EMBEDDED_FONT_FAMILY, bytes.buffer as ArrayBuffer);
     await face.load();
-    document.fonts.add(face);
+    document.fonts?.add?.(face);
     return EMBEDDED_FONT_FAMILY;
   })();
   return familyRegistered;

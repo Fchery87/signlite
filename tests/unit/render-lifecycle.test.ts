@@ -49,10 +49,14 @@ function stubCanvas() {
 describe('loadDocument releases a loading task that never produced a proxy', () => {
   it('destroys the task when the parse fails, then reports corrupt', async () => {
     const destroy = vi.fn(async () => undefined);
-    const task = { promise: Promise.reject(new Error('Invalid PDF structure')), destroy };
+    const pending = deferred<never>();
+    const task = { promise: pending.promise, destroy };
     const { getPdfJsRuntime } = await import('../../src/pdf/runtime');
     vi.spyOn(await import('../../src/pdf/runtime'), 'getPdfJsRuntime').mockResolvedValue({
-      getDocument: vi.fn(() => task) as never
+      getDocument: vi.fn(() => {
+        queueMicrotask(() => pending.reject(new Error('Invalid PDF structure')));
+        return task;
+      }) as never
     });
     expect(getPdfJsRuntime).toBeDefined();
 
@@ -63,9 +67,13 @@ describe('loadDocument releases a loading task that never produced a proxy', () 
 
   it('reports encrypted separately and still destroys the task', async () => {
     const destroy = vi.fn(async () => undefined);
-    const task = { promise: Promise.reject(new Error('Password required')), destroy };
+    const pending = deferred<never>();
+    const task = { promise: pending.promise, destroy };
     vi.spyOn(await import('../../src/pdf/runtime'), 'getPdfJsRuntime').mockResolvedValue({
-      getDocument: vi.fn(() => task) as never
+      getDocument: vi.fn(() => {
+        queueMicrotask(() => pending.reject(new Error('Password required')));
+        return task;
+      }) as never
     });
 
     await expect(loadDocument(new ArrayBuffer(4))).rejects.toMatchObject({ code: 'encrypted' });
