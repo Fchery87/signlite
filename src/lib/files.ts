@@ -1,6 +1,8 @@
 import { loadDocument, SignlitePdfError } from '../pdf/render';
 import type { SessionDocument } from '../db/schema';
 import { MAX_FILE_SIZE, MAX_SESSION_BYTES, MAX_SESSION_FILES, MAX_SESSION_PAGES, type SessionResourceBudget } from './sessionLimits';
+import { STRINGS } from './strings';
+import type { IntakeCommitOutcome } from '../stores/session';
 
 export { batchZipFileName, dedupeFileName, signedPdfFileName, stemFromFileName } from './downloadNames';
 export { MAX_FILE_SIZE, MAX_SESSION_BYTES, MAX_SESSION_FILES, MAX_SESSION_PAGES } from './sessionLimits';
@@ -16,6 +18,23 @@ export function downloadBlob(blob: Blob, fileName: string) {
 }
 
 export type FileValidationError = 'pdf-only' | 'too-large' | 'session-limit' | 'session-page-limit' | 'session-byte-limit' | 'encrypted' | 'corrupt';
+
+export const REJECTION_REASONS: Record<FileValidationError, (fileName: string) => string> = {
+  'pdf-only': (fileName) => `${fileName} — ${STRINGS.errors['pdf-only']}`,
+  'too-large': (fileName) => STRINGS.edgeCases.fileTooLarge(fileName),
+  'session-limit': (fileName) => `${fileName} — ${STRINGS.errors['session-limit']}`,
+  'session-page-limit': (fileName) => `${fileName} — ${STRINGS.errors['session-page-limit']}`,
+  'session-byte-limit': (fileName) => `${fileName} — ${STRINGS.errors['session-byte-limit']}`,
+  encrypted: (fileName) => `${fileName} — ${STRINGS.errors.encrypted}`,
+  corrupt: (fileName) => STRINGS.edgeCases.corruptFile(fileName)
+};
+
+export const COMMIT_REFUSALS: Record<Exclude<IntakeCommitOutcome, 'ok'>, string> = {
+  lease: STRINGS.errors['intake-lease-refused'],
+  'session-changed': STRINGS.errors['intake-session-changed'],
+  budget: STRINGS.errors['intake-budget-refused']
+};
+
 
 type CreateSessionDocumentOptions = {
   currentPageCount?: number;

@@ -63,6 +63,7 @@ export const STRINGS = {
     export: 'Export',
     import: 'Import',
     download: 'Download',
+    addPdfs: 'Add PDFs',
     downloadAll: 'Download all',
     applyToAll: 'Apply to all',
     replaceAndApply: 'Replace and apply',

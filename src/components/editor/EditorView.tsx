@@ -12,8 +12,8 @@ import { useActivePage } from './useActivePage';
 import { placementLabel } from '../../lib/placements';
 import { LibraryTray } from '../library/LibraryTray';
 import { getDateFormat, hydrateSignaturePrefs } from '../../db/signatures';
-import { downloadBlob, signedPdfFileName } from '../../lib/files';
-import type { SignatureAsset } from '../../db/schema';
+import { COMMIT_REFUSALS, createSessionDocument, downloadBlob, getFileValidationError, REJECTION_REASONS, signedPdfFileName } from '../../lib/files';
+import type { SessionDocument, SignatureAsset } from '../../db/schema';
 
 type ZoomOption = 'fit' | 1 | 1.5;
 
@@ -92,7 +92,9 @@ export function EditorView({ onToast }: EditorViewProps) {
   const setSelection = useSessionStore((state) => state.setSelection);
   const transitionDocumentOutput = useSessionStore((state) => state.transitionDocumentOutput);
   const removeDocument = useSessionStore((state) => state.removeDocument);
+  const addDocuments = useSessionStore((state) => state.addDocuments);
   const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
+  const sessionId = useSessionStore((state) => state.session.id);
   const selectedDocument = documents.find((document) => document.docId === selectedDocumentId) ?? documents[0] ?? null;
 
   const [pdfState, setPdfState] = useState<PdfState>({ status: 'loading' });
@@ -107,6 +109,7 @@ export function EditorView({ onToast }: EditorViewProps) {
   const [announcement, setAnnouncement] = useState('');
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
+  const addPdfsRef = useRef<HTMLInputElement>(null);
 
   // Key the load effect on docId + pdfBytes (both stable across placement edits)
   // rather than the document object, which the store recreates on every mutation.
@@ -229,6 +232,45 @@ export function EditorView({ onToast }: EditorViewProps) {
     },
     [activePage, addSignaturePlacement, announcePlacement, onToast, selectedDocument]
   );
+
+
+  const handleAddPdfs = useCallback(async (fileList: FileList | null) => {
+    const files = Array.from(fileList ?? []);
+    if (addPdfsRef.current) addPdfsRef.current.value = '';
+    if (files.length === 0 || mutationLocked) return;
+    const accepted: SessionDocument[] = [];
+    let acceptedPageCount = 0;
+    let acceptedByteCount = 0;
+    for (const file of files) {
+      const validationError = getFileValidationError(file, {
+        documentCount: documents.length + accepted.length,
+        pageCount: documents.reduce((total, document) => total + document.pageCount, 0) + acceptedPageCount,
+        byteCount: documents.reduce((total, document) => total + document.pdfBytes.byteLength, 0) + acceptedByteCount
+      });
+      if (validationError !== null) {
+        onToast(REJECTION_REASONS[validationError](file.name));
+        continue;
+      }
+      try {
+        const document = await createSessionDocument(file, {
+          currentPageCount: documents.reduce((total, item) => total + item.pageCount, 0),
+          acceptedPageCount
+        });
+        accepted.push(document);
+        acceptedPageCount += document.pageCount;
+        acceptedByteCount += document.pdfBytes.byteLength;
+      } catch (error) {
+        const code = error instanceof Error && error.message in STRINGS.errors
+          ? (error.message as keyof typeof STRINGS.errors)
+          : 'corrupt';
+        const reason = code === 'corrupt' ? STRINGS.edgeCases.corruptFile(file.name) : STRINGS.errors[code];
+        onToast(code === 'corrupt' ? reason : `${file.name} — ${reason}`);
+      }
+    }
+    if (accepted.length === 0) return;
+    const outcome = addDocuments(accepted, sessionId);
+    if (outcome !== 'ok') onToast(COMMIT_REFUSALS[outcome]);
+  }, [addDocuments, documents, mutationLocked, onToast, sessionId]);
 
   const handlePaste = useCallback(() => {
     if (!selectedDocId) return;
@@ -433,6 +475,19 @@ export function EditorView({ onToast }: EditorViewProps) {
                   </button>
                 ))}
               </div>
+              <input
+                ref={addPdfsRef}
+                hidden
+                type="file"
+                accept="application/pdf"
+                multiple
+                onChange={(event) => {
+                  void handleAddPdfs(event.target.files);
+                }}
+              />
+              <Button variant="secondary" disabled={mutationLocked} onClick={() => addPdfsRef.current?.click()}>
+                {STRINGS.buttons.addPdfs}
+              </Button>
               <Button
                 onClick={() => void handleDownload()}
                 disabled={isDownloading || !hasPlacements || mutationLocked}
