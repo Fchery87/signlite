@@ -132,6 +132,16 @@ export type OkResult = {
   selectedPlacementId?: string | null;
 };
 
+export type StampResult = {
+  ok: true;
+  added: number;
+  session: WorkSession;
+  history: History;
+  selectedPlacementId: string;
+};
+
+export type ErrResult = { ok: false; error: WorkSessionEditorError };
+
 export type EditorResult = OkResult | ErrResult;
 export type AddSignaturePlacementResult = (OkResult & { placement: Placement }) | ErrResult;
 
@@ -661,6 +671,53 @@ export function confirmApplyToAll(
     state.copiedPlacement
   );
   return { ...complete, appliedDocIds, needsReviewDocIds };
+}
+
+function sameBox(left: Placement, right: Placement): boolean {
+  return left.type === right.type
+    && left.x === right.x && left.y === right.y && left.w === right.w && left.h === right.h
+    && (left.type === 'signature' || left.type === 'initials'
+      ? left.snapshotId === right.snapshotId
+      : left.value === right.value);
+}
+
+export function stampPlacementOnEveryPage(
+  session: WorkSession,
+  history: History,
+  docId: string,
+  placementId: string
+): StampResult | ErrResult {
+  const found = findPlacement(session, docId, placementId);
+  if (!found) {
+    return { ok: false, error: { reason: 'placement-not-found', message: `Placement ${placementId} not found` } };
+  }
+  const snapshotError = validateRequiredSnapshot(session, found.placement);
+  if (snapshotError) return { ok: false, error: snapshotError };
+
+  const clones: Placement[] = [];
+  for (let pageIndex = 0; pageIndex < found.doc.pageCount; pageIndex += 1) {
+    if (pageIndex === found.placement.pageIndex) continue;
+    const candidate = { ...found.placement, pageIndex };
+    const alreadyThere = found.doc.placements.some((placement) => placement.pageIndex === pageIndex && sameBox(placement, candidate));
+    if (alreadyThere) continue;
+    clones.push({ ...clonePlacement(found.placement), pageIndex });
+  }
+  if (clones.length === 0) {
+    return { ok: true, added: 0, session, history, selectedPlacementId: placementId };
+  }
+
+  const documents = session.documents.map((doc) =>
+    doc.docId === docId
+      ? { ...doc, placements: [...doc.placements, ...clones], status: 'placed' as const, batchError: undefined }
+      : doc
+  );
+  return {
+    ok: true,
+    added: clones.length,
+    session: { ...session, updatedAt: Date.now(), documents, templatePlacements: syncTemplatePlacements(documents) },
+    history: pushHistoryEntry(history, session),
+    selectedPlacementId: placementId
+  };
 }
 
 // ─── Undo / Redo ────────────────────────────────────────────────────

@@ -716,6 +716,52 @@ describe('WorkSessionEditor.addSignaturePlacement', () => {
     expect(result.history.past).toHaveLength(1);
   });
 
+
+  it('stamps a signature onto the other pages in one undoable history entry', () => {
+    const signature = {
+      ...PLACEMENT_INPUT, id: 'sig', type: 'signature' as const, snapshotId: 'snap-1'
+    };
+    const session = makeSession([{ ...makeDoc('doc-1', 3), placements: [signature], status: 'placed' }]);
+    session.signatureSnapshots = {
+      'snap-1': { id: 'snap-1', kind: 'signature', pngBytes: new ArrayBuffer(1), width: 10, height: 10 }
+    };
+    const stamped = stampPlacementOnEveryPage(session, emptyHistory(), 'doc-1', 'sig');
+    expect(stamped.ok).toBe(true);
+    if (!stamped.ok) return;
+    expect(stamped.added).toBe(2);
+    expect(stamped.history.past).toHaveLength(1);
+    expect(stamped.selectedPlacementId).toBe('sig');
+    const placements = stamped.session.documents[0]!.placements;
+    expect(placements.map((placement) => placement.pageIndex)).toEqual([0, 1, 2]);
+    expect(placements[1]?.id).not.toBe('sig');
+    expect(placements[2]?.id).not.toBe('sig');
+    expect(placements[1]?.snapshotId).toBe('snap-1');
+    expect(placements[2]?.snapshotId).toBe('snap-1');
+    expect(placements[1]).toMatchObject({ x: 0.1, y: 0.1, w: 0.2, h: 0.1 });
+
+    const undone = undo(stamped.session, stamped.history, stamped.selectedPlacementId, 'doc-1');
+    expect(undone.session.documents[0]?.placements).toEqual([signature]);
+    expect(undone.history.past).toHaveLength(0);
+
+    const again = stampPlacementOnEveryPage(stamped.session, stamped.history, 'doc-1', 'sig');
+    expect(again).toMatchObject({ ok: true, added: 0 });
+    if (!again.ok) return;
+    expect(again.history).toBe(stamped.history);
+    expect(again.session).toBe(stamped.session);
+  });
+
+  it('refuses to stamp a signature whose snapshot is missing', () => {
+    const signature = {
+      ...PLACEMENT_INPUT, id: 'sig', type: 'signature' as const, snapshotId: 'absent'
+    };
+    const session = makeSession([{ ...makeDoc('doc-1', 3), placements: [signature], status: 'placed' }]);
+    const history = emptyHistory();
+    const result = stampPlacementOnEveryPage(session, history, 'doc-1', 'sig');
+    expect(result).toMatchObject({ ok: false, error: { reason: 'missing-snapshot' } });
+    expect(session.documents[0]?.placements).toEqual([signature]);
+    expect(history).toEqual(emptyHistory());
+  });
+
   it('undoes and redoes Signed and orthogonal Needs Review apply consequences', () => {
     const template = {
       ...PLACEMENT_INPUT, id: 'template-placement', type: 'text' as const, value: 'Template', fontSize: 12, pageIndex: 1
