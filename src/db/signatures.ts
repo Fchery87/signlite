@@ -458,6 +458,7 @@ export async function importLibrary(file: File): Promise<{ added: number; skippe
       if (prior) {
         if (!assetsEqual(prior, asset)) {
           tx.abort();
+          try { await tx.done; } catch { /* expected rollback */ }
           throw new Error(STRINGS.errors['import-conflict']);
         }
         continue;

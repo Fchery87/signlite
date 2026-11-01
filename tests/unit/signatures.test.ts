@@ -122,7 +122,7 @@ describe('signature store', () => {
   });
 });
 
-function pngBytes(width: number, height: number, fillerBytes = 0): Uint8Array {
+function pngBytes(width: number, height: number, fillerBytes = 0, pixelValue = 0): Uint8Array {
   const crc32 = (bytes: Uint8Array) => {
     let crc = 0xffffffff;
     for (const byte of bytes) {
@@ -143,6 +143,7 @@ function pngBytes(width: number, height: number, fillerBytes = 0): Uint8Array {
   const view = new DataView(ihdr.buffer);
   view.setUint32(0, width); view.setUint32(4, height); ihdr[8] = 8; ihdr[9] = 6;
   const rows = new Uint8Array(height * (1 + width * 4));
+  rows.fill(pixelValue);
   const idat = chunk('IDAT', deflateSync(rows));
   const extra = fillerBytes > 0 ? chunk('tEXt', new Uint8Array(fillerBytes)) : new Uint8Array();
   const parts = [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), idat, extra, chunk('IEND', new Uint8Array())];
@@ -247,6 +248,16 @@ describe('import envelope validation', () => {
     expect(await listAssets()).toEqual([]);
   });
 
+  it('rejects a PNG-shaped payload without IDAT data', async () => {
+    const headerOnly = pngBytes(100, 50).subarray(0, 33);
+    const iend = new Uint8Array([0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130]);
+    const malformed = new Uint8Array(headerOnly.length + iend.length);
+    malformed.set(headerOnly);
+    malformed.set(iend, headerOnly.length);
+    await expect(importEnvelope([envelopeAsset({ pngBytes: base64Of(malformed) })])).rejects.toThrow("isn't a SignLite");
+    expect(await listAssets()).toEqual([]);
+  });
+
   it('rejects conflicting duplicate IDs inside one file and writes nothing', async () => {
     const first = envelopeAsset();
     const conflicting = envelopeAsset({ label: 'Different', width: 120, pngBytes: base64Of(pngBytes(120, 50)) });
@@ -275,4 +286,17 @@ describe('import envelope validation', () => {
     const after = await listAssets();
     expect(after.map((asset) => asset.id)).toEqual(before.map((asset) => asset.id));
   });
+
+  it('rejects stored same-size byte differences and leaves the existing record unchanged', async () => {
+    const original = envelopeAsset({ id: 'same-size' });
+    await importEnvelope([original]);
+    const changed = pngBytes(100, 50, 0, 1);
+    await expect(importEnvelope([envelopeAsset({ id: 'same-size', pngBytes: base64Of(changed) })])).rejects.toThrow('same ID');
+    expect(new Uint8Array((await getAsset('same-size'))!.pngBytes)).toEqual(base64ToBytes(original.pngBytes));
+  });
 });
+
+function base64ToBytes(value: string) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
