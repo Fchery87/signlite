@@ -38,3 +38,4 @@ Thumbs.db
 
 # Readiness evidence artifacts (regenerable; receipts live in docs/readiness/)
 artifacts/
+artifact-manifest.json

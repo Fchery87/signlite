@@ -6,6 +6,11 @@ const SHA256 = /^[a-f0-9]{64}$/;
 
 async function listRelativeFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true, recursive: true });
+  for (const entry of entries) {
+    if (!entry.isFile() && !entry.isDirectory()) {
+      throw new Error(`unsupported artifact entry: ${entry.name}`);
+    }
+  }
   return entries
     .filter((entry) => entry.isFile())
     .map((entry) => relative(directory, resolve(entry.parentPath ?? entry.path, entry.name)).split(sep).join('/'))
@@ -19,6 +24,7 @@ function validateReceipt(receipt) {
   if (!receipt.fileHashes || typeof receipt.fileHashes !== 'object' || Array.isArray(receipt.fileHashes)) {
     throw new Error('invalid receipt fileHashes');
   }
+  if (!Object.hasOwn(receipt.fileHashes, 'index.html')) throw new Error('receipt must include index.html');
   for (const [path, hash] of Object.entries(receipt.fileHashes)) {
     if (!path || path.startsWith('/') || path.split('/').some((part) => part === '' || part === '.' || part === '..')) {
       throw new Error(`invalid receipt path: ${path}`);

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -26,6 +26,19 @@ afterEach(async () => {
 });
 
 describe('production artifact receipt', () => {
+  it('rejects symlinks instead of excluding them from the verified file set', async () => {
+    const { dist, receipt } = await fixture();
+    await symlink('index.html', join(dist, 'unchecked-link'));
+    await expect(verifyProductionArtifact(dist, receipt, 'abc123')).rejects.toThrow('unsupported artifact entry');
+  });
+
+  it('rejects an empty receipt even for an empty directory', async () => {
+    const { dist } = await fixture();
+    await rm(join(dist, 'index.html'));
+    await rm(join(dist, 'assets'), { recursive: true });
+    await expect(verifyProductionArtifact(dist, { version: 1, commit: 'abc123', fileHashes: {} }, 'abc123')).rejects.toThrow('index.html');
+  });
+
   it('accepts the exact file set, hashes, and commit', async () => {
     const { dist, receipt } = await fixture();
     await expect(verifyProductionArtifact(dist, receipt, 'abc123')).resolves.toEqual({ fileCount: 2, commit: 'abc123' });
