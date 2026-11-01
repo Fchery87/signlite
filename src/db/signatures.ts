@@ -452,6 +452,9 @@ export async function importLibrary(file: File): Promise<{ added: number; skippe
 
   const added = await withLibraryWrite(async () => {
     const tx = db.transaction(['signatures', 'prefs'], 'readwrite');
+    // A request can reject before execution reaches the final tx.done await.
+    // Observe completion now, while preserving its rejection for that await.
+    void tx.done.catch(() => undefined);
     let added = 0;
     for (const asset of assets) {
       const prior = await tx.objectStore('signatures').get(asset.id);
