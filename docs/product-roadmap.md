@@ -6,6 +6,12 @@
 **Status:** 35/41 tasks complete
 **Current Phase:** Phase 3 — Polish, Hardening & Daily-Driver Readiness
 
+## Browser hardening qualification, 2026-11-01
+
+The approved plan is `docs/plans/2026-11-01-browser-app-hardening-implementation.md`. SignLite remains a hosted browser app, with a controlled desktop-Chromium beta as the initial qualification scope. Exact artifact deployment, bundled PDF-resource adapters, restricted action removal, PNG import validation, and coordinated retention/clearing are tracked separately from the original feature checklist. See `docs/release-acceptance.md` for actual current results, not historical checkmarks.
+
+The founder document gauntlet, target-hardware measurements, live hosting, screen-reader pass, and genuine 30-day use remain owner gates. This work does not authorize deployment or real browser-data deletion. Close/reload older SignLite tabs before the maintenance protocol rollout. New library backups contain signature images and metadata only, not complete PDF Work Sessions.
+
 ## Build Philosophy
 
 1. **Each phase ships something usable.** No phase leaves the app broken. After any phase, you can run `npm run dev` and demo what exists.
@@ -217,7 +223,7 @@
 
 - [ ] **TASK-039** — Deploy to free static hosting.
   Files: `.github/workflows/deploy.yml` (or Pages config), `docs/launch-notes.md`
-  Notes: Cloudflare Pages recommended (PRD Open Question 5); build command `npm run build`, output `dist/`; no environment variables exist. Record the URL and the deploy steps in `docs/launch-notes.md`. Verify: the production URL signs a real document with the Network tab open and silent.
+  Notes: Cloudflare Pages publishes the exact verified CI `dist` artifact, without rebuilding in the publish job. The owner configures credentials and required production approval as described in `docs/launch-notes.md`. Record the URL and live-header/artifact checks there. Verify: the production URL signs a real document with the Network tab open and silent. No local implementation test authorizes deployment.
 
 - [ ] **TASK-040** — Set up the 30-day exclusive-use test log.
   Files: `docs/daily-driver-log.md`

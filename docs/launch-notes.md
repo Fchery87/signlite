@@ -1,98 +1,43 @@
 # Launch notes
 
-## TASK-039 status
+## Release status
 
-This repository now includes a static-hosting workflow skeleton in `.github/workflows/deploy.yml`.
+SignLite is a static browser web app. The 2026-11-01 hardening work targets a controlled desktop-Chromium browser beta. It does not create a desktop application or authorize production promotion. See `docs/release-acceptance.md` for the current verification record and outstanding owner gates.
 
-The repository deployment workflow is complete and targets GitHub Pages. The task remains operationally pending until the workflow runs on `main`, a public URL is recorded, and a real-document verification pass is completed.
+## Supported publishing path
 
-## Recommended host
+Cloudflare Pages receives the exact artifact verified by GitHub Actions CI. Do not configure a second Git-triggered Cloudflare build that bypasses these checks.
 
-Cloudflare Pages remains the recommended free host from the roadmap. This repo-local slice adds a GitHub Pages workflow because it is fully expressible in-repo and gives the project a working deployment skeleton without requiring account access from this environment.
+1. The owner creates a Cloudflare Pages project and configures `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_PAGES_PROJECT` in the production environment.
+2. Configure required production environment approval in GitHub before publishing. No credentials are required for browser document processing.
+3. CI uses Node 24/npm 11, runs type/lint/unit/browser/build/audit gates, and verifies the production output.
+4. The CI artifact contains `dist` and an external `artifact-manifest.json` receipt. The receipt identifies the commit, exact file set, and SHA-256 hashes.
+5. The deployment workflow triggers only from a successful main-branch CI run, checks out its commit, downloads its artifact, and verifies the receipt using Node built-ins. It does not install application dependencies or rebuild.
+6. Wrangler publishes only the checked `dist` directory. The receipt is not published as website content.
+7. To retry, re-run the successful CI workflow. Manual dispatch without an artifact identity is intentionally disabled.
 
-Hostinger shared hosting is also a viable deployment target for this project because SignLite builds to a pure static `dist/` directory with no backend, no server runtime, and no environment variables.
+No live publication is performed by local implementation tests.
 
-## Build settings
+## First rollout
 
-- Build command: `npm run build`
-- Output directory: `dist`
-- Environment variables: none
+Close all SignLite tabs and reopen the site after the update before using persistent destructive maintenance. Older open bundles do not implement the origin maintenance protocol. Browser-local records are not migrated by rolling static files backward.
 
-## GitHub Pages skeleton steps
+Keep a library backup and downloaded PDFs before release testing. A library backup is not a full-session backup. Do not delete real browser site data to validate a test case.
 
-1. Push the repository to GitHub.
-2. In **Settings → Pages**, set **Build and deployment** to **GitHub Actions**.
-3. Ensure the default branch is the branch referenced by `.github/workflows/deploy.yml`.
-4. Let the `Deploy static site` workflow run on push or trigger it manually from the Actions tab.
-5. Record the published URL below after the first successful deploy.
+## Live-origin acceptance
 
-### Production URL
+The owner must record the origin, deployed commit/artifact, date, browser, and results:
 
-- Pending: add the live URL after the first deployment.
+- HTTPS and HSTS.
+- CSP including `connect-src 'none'`, effective response-header `frame-ancestors`, MIME protection, and referrer policy.
+- Static worker and font loading under the production hosting path.
+- Signing has no application network requests after readiness.
+- Representative PDF preview/export, rotated/cropped geometry, and existing digital-signature warnings.
+- Restore, multi-tab protections, safe clearing, and retention warnings.
+- Rollback to a known compatible artifact without writing incompatible browser records.
 
-## Hostinger shared hosting manual setup
+Production URL: not recorded. Live verification: not performed by this implementation session.
 
-1. Run `npm run build` locally.
-2. Open the generated `dist/` directory.
-3. Upload the **contents of `dist/`** to your Hostinger web root, typically `public_html/`.
-4. Ensure HTTPS is enabled for the site.
-5. Verify that static assets load correctly, especially:
-   - `assets/*.js`
-   - `assets/*.mjs`
-   - `assets/*.css`
-   - `fonts/*`
-   - `cmaps/*`
-   - `standard_fonts/*`
-6. Open the deployed URL and run the manual verification checklist below before marking TASK-039 complete.
+## Product limits
 
-### Production URL
-
-- Pending: add the live Hostinger URL after deployment.
-
-## Cloudflare Pages manual setup
-
-1. Push the repository to GitHub.
-2. In the Cloudflare dashboard, open **Workers & Pages**.
-3. Select **Create application** → **Pages** → **Connect to Git**.
-4. Authorize GitHub and select this repository.
-5. Configure the project with these exact values:
-   - Production branch: `main`
-   - Framework preset: `React (Vite)` (or `None` if entering values manually)
-   - Build command: `npm run build`
-   - Build output directory: `dist`
-   - Deploy command: leave blank
-   - Non-production branch builds: enable if you want preview deploys
-   - Non-production branch deploy command: leave blank (or `npm run build` only if the UI requires a value)
-   - Root path / Path: leave blank because this app is in the repository root
-   - Environment variables: none required by default
-6. Optional fallback only if the build fails due to a Node version mismatch:
-   - Variable name: `NODE_VERSION`
-   - Variable value: `20`
-7. Deploy the site and record the public URL below.
-8. Run the manual verification checklist before marking TASK-039 complete.
-
-### Production URL
-
-- Pending: add the live URL after the first Cloudflare deploy.
-
-## Manual verification checklist
-
-- Open the production URL.
-- Open DevTools Network tab.
-- Drop a real PDF.
-- Place a saved signature.
-- Download the signed PDF.
-- Confirm no network requests fire during the signing flow.
-- Record the verified URL, browser, date, and result here.
-
-## Verification log
-
-- Pending: production verification has not been run from this environment.
-
-### Acceptance record
-
-Complete this after deployment:
-
-| Date | URL | Browser | Real PDF signed | Network tab silent | Result |
-| --- | --- | --- | --- | --- | --- |
-| pending | pending | pending | pending | pending | pending |
+SignLite adds visible signature marks, not certificate-backed digital signatures or verified signer identity. Export removes identified JavaScript and Launch actions in supported structures but is not comprehensive PDF sanitization. Modifying a PDF can invalidate existing cryptographic signatures. Retention is best-effort while the app runs, and browser storage has no application-level encryption.

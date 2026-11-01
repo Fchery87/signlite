@@ -1,18 +1,20 @@
 # SignLite
 
-SignLite is a privacy-first PDF signing app that runs entirely in the browser.
+SignLite is a browser-based PDF editor that adds visible signatures, initials, text, and dates.
 
 It is designed for fast single-document signing and batch signing without uploading files to a server. Documents, signatures, and work history stay local to the browser.
 
+Visible signatures are not certificate-backed digital signatures. SignLite does not verify signer identity or provide a signing audit trail. Export removes identified JavaScript and Launch actions in supported PDF structures but is not comprehensive sanitization. Editing can invalidate existing digital signatures.
+
 ## Requirements
 
-- Node.js 24 (the version CI pins and the version this repository is developed against)
+- Node.js 24 for CI, or Node.js 26 for supported development
 - npm 11
 
 ## Current status
 
-- Roadmap progress: **33/41 tasks complete**
-- Current phase: **Phase 2 — Batch Mode — the Magic Moment**
+- Current work: browser-app hardening for a controlled desktop-Chromium browser beta, not a native desktop application
+- Release verification and owner acceptance: `docs/release-acceptance.md`
 - Tech stack: **React + Vite + TypeScript + Tailwind + pdf.js + pdf-lib + IndexedDB + Playwright + Vitest**
 
 See the product docs for the full plan:
@@ -101,6 +103,9 @@ npm run typecheck  # TypeScript checks
 npm run lint       # ESLint
 npm run test       # Vitest
 npm run test:e2e   # Playwright end-to-end tests
+npm run verify:production # verify build and write an external artifact receipt
+npm run audit:runtime # block moderate-or-higher runtime advisories
+npm run audit:tooling # block high-or-higher tooling advisories
 ```
 
 ## Testing
@@ -139,6 +144,12 @@ SignLite is built around a strict local-first model:
 
 The app ships bundled assets locally and uses a strict CSP to support the zero-network goal.
 
+IndexedDB records have no application-level encryption. Browser-profile access, extensions, malware, or compromised same-origin code are outside this privacy guarantee. Library exports are plain JSON with PNG bytes and are not full-session backups.
+
+Seven-day inactivity retention is best-effort cleanup while the app runs, not guaranteed deletion while the browser is closed. Active sessions are preserved. Persistent clearing requires browser lock support. Close and reload all SignLite tabs after a release before using the updated maintenance protocol.
+
+The exact verified artifact is published through Cloudflare Pages only after successful CI and production environment approval. See `docs/launch-notes.md`. Do not run a second hosting build that bypasses verification.
+
 ## Known remaining work
 
 The roadmap is not fully complete yet. Remaining items include parts of:
@@ -158,4 +169,4 @@ Track progress in:
 
 ## License
 
-No license file has been added yet.
+See `LICENSE` and `THIRD_PARTY_NOTICES.md`. The owner remains responsible for confirming the intended application license before release.

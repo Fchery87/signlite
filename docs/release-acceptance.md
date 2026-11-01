@@ -1,5 +1,38 @@
 # Release acceptance
 
+## Browser hardening qualification, 2026-11-01
+
+Scope: controlled desktop-Chromium browser beta. No native application, backend, database migration, live deployment, credential setup, or deletion of real browser data is authorized by this qualification. The approved scope is in `docs/plans/2026-11-01-browser-app-hardening-implementation.md`, with policy and supported-location details in ADR 0003.
+
+Technical qualification is being recorded against the new hardening commits, not inferred from the historical table below. The initial fresh baseline had 310 unit passes and 3 timing failures. Its full browser run was externally terminated at 600 seconds. The first integrated browser run had 15 passes, 8 failures, and 13 cases not run. These failures are retained in the implementation logs and are not described as a green baseline.
+
+| Gate | Current evidence |
+| --- | --- |
+| Exact artifact contract | Standalone Node-built-in checker verifies commit, exact file set, and SHA-256. Receipt stays outside published `dist`. Deploy has no application install or rebuild. Artifact unit tests passed. |
+| Storage and lock failure safety | Focused 47-test suite passed after correcting actual native-lock release awaiting, clear failure recovery, and lock cleanup. Native clear/refusal and retained-session tests passed before final regression expansion. |
+| PDF resource adapters | Three Chromium tests passed with self-contained embedded-font CMap fixture, dark-glyph pixel counts, standard-font output, and exact missing-CMap diagnostic. Production factory unit tests exercise actual implementation. |
+| Restricted PDF policy | Serialized location matrix and malformed/budget tests passed, 18 policy tests. Flatten and worker tests passed in focused qualification. Browser policy export passed with unchanged source and removed OpenAction. |
+| PNG and duplicate imports | 20 focused import tests passed, including real PNG decode/export compatibility, same-size differing bytes, envelope rejection, and concurrent ID collision with one additions-counter increment. Browser backup round-trip passed. |
+| Isolated clean install and Node 24 | `npm ci` completed in a disposable source copy without altering working dependencies. Explicit Node 24.15.0 typecheck, lint, Vite build, runtime audit and full-toolchain high-severity gate passed. |
+| Complete current suites and final artifact | Pending final integrated runs. Focused passes do not substitute for complete qualification. |
+
+Logs are under `$JCODE_SCRATCH_DIR/signlite-implementation/`. Earlier aggregate qualification commands hit external time limits under substantial local contention. Their partial output remains preserved. Expected jsdom canvas limitations and PDF-library Node-build diagnostics are not globally suppressed. Build chunk-size and existing mixed import warnings remain visible.
+
+Runtime audit blocks moderate-or-higher advisories. Tooling blocks high-or-higher advisories. The remaining development-only moderate minimatch advisory family has a maintainer-owned review deadline of 2026-12-01 in `docs/dependency-security-policy.md`. This supersedes the old development-high disposition below, not its historical record.
+
+### Owner-only gates remain open
+
+- Private representative document gauntlet, including forms, scanned/text-heavy/multilingual and already digitally signed PDFs.
+- Intended-hardware cold readiness, first page, single/batch export, and memory measurements. Synthetic local timing is not target-hardware acceptance.
+- Real screen-reader validation. Keyboard tests do not establish accessibility conformance.
+- Authorized live origin: HTTPS/HSTS/CSP/framing/MIME/referrer headers, exact artifact identity and rollback checks.
+- Genuine daily-driver entries and 30-day use. The existing log is not backfilled.
+- Licensing and production credentials remain owner decisions.
+
+Close/reload all older SignLite tabs before the new maintenance protocol rollout. Old bundles cannot be assumed to cooperate with the origin lock. A static rollback does not roll browser data back. Keep downloaded PDFs and a library backup, which is not a full-session backup. Seven-day inactivity cleanup is best-effort while the app runs, not guaranteed deletion while closed. Storage has no application-level encryption. Visible signatures are not identity verification, and restricted action removal is not comprehensive PDF sanitization.
+
+## Historical qualification, 2026-10-05
+
 Recorded 2026-10-05 against the working tree on `perf/batch-hardening`. This is not a promoted release. Production promotion stays unauthorized until the owner supplies Cloudflare credentials and the target-hardware measurements.
 
 ## Gates
