@@ -1,5 +1,6 @@
 import { writeTempFixture } from './helpers/tmp';
 import { expect, test, type Page } from '@playwright/test';
+import { deflateSync } from 'node:zlib';
 import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
 
 const FONT_NOT_READY = 'Fonts are still loading. Try again in a moment.';
@@ -44,18 +45,11 @@ async function clearSiteStorage(page: Page) {
 }
 
 function pngFile(width: number, height: number, fillerBytes: number): Buffer {
-  const header = Buffer.alloc(33);
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(header, 0);
-  header.writeUInt32BE(13, 8);
-  Buffer.from('IHDR', 'ascii').copy(header, 12);
-  header.writeUInt32BE(width, 16);
-  header.writeUInt32BE(height, 20);
-  header[24] = 8;
-  header[25] = 6;
-  const filler = Buffer.alloc(fillerBytes, 0x42);
-  const iend = Buffer.alloc(12);
-  Buffer.from('IEND', 'ascii').copy(iend, 4);
-  return Buffer.concat([header, filler, iend]);
+  const crc32 = (bytes: Buffer) => { let crc = 0xffffffff; for (const byte of bytes) { crc ^= byte; for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1)); } return (crc ^ 0xffffffff) >>> 0; };
+  const chunk = (type: string, data: Buffer) => { const out = Buffer.alloc(12 + data.length); out.writeUInt32BE(data.length, 0); out.write(type, 4, 'ascii'); data.copy(out, 8); out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length); return out; };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4); ihdr[8] = 8; ihdr[9] = 6;
+  const raw = Buffer.alloc(height * (1 + width * 4));
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('tEXt', Buffer.alloc(fillerBytes)), chunk('IEND', Buffer.alloc(0))]);
 }
 
 function envelopeEntry(id: string, png: Buffer, overrides: Record<string, unknown> = {}) {
@@ -138,15 +132,16 @@ test.describe('library backup reliability', () => {
       }))],
       ['zero-dims.json', Buffer.from(JSON.stringify({ version: 1, signatures: [envelopeEntry('zero', pngFile(1, 1, 32), { width: 0, height: 0 })] }))],
       ['extreme-dims.json', Buffer.from(JSON.stringify({ version: 1, signatures: [envelopeEntry('extreme', pngFile(5000, 10, 32))] }))],
-      ['conflict.json', Buffer.from(JSON.stringify({
-        version: 1,
-        signatures: [envelopeEntry('big-png', bigPng), envelopeEntry('big-png', pngFile(100, 50, 32))]
-      }))]
     ];
     for (const [name, buffer] of rejections) {
       await page.setInputFiles('input[accept="application/json"]', { name, mimeType: 'application/json', buffer });
       await expect(page.getByText("This isn't a SignLite library file.").first()).toBeVisible();
     }
+    await page.setInputFiles('input[accept="application/json"]', {
+      name: 'conflict.json', mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify({ version: 1, signatures: [envelopeEntry('big-png', bigPng), envelopeEntry('big-png', pngFile(100, 50, 32))] }))
+    });
+    await expect(page.getByText(/same ID|conflict/i).first()).toBeVisible();
     // Identical duplicates are counted, not written twice.
     const same = envelopeEntry('dup', pngFile(100, 50, 32));
     await page.setInputFiles('input[accept="application/json"]', {
@@ -195,4 +190,3 @@ test.describe('library backup reliability', () => {
     expect((await storedAssets(page)).length).toBe(1);
   });
 });
-
