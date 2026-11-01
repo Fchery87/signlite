@@ -263,7 +263,15 @@ export class ActiveSessionLifecycle {
     }
     this.suppressed = false;
     this.lastRevision = null;
-    if (this.authorityFor) await this.assumeSession(this.authorityFor);
+    // A successful clear creates a new session in the store. Do not reacquire
+    // the old identity or replay its last observation before React's identity
+    // effect settles.
+    this.authorityFor = null;
+    this.baseRevisionFor = null;
+    this.baseRevision = null;
+    this.lastObserved = null;
+    this.ownershipAssumed = false;
+    this.update({ authority: 'optimistic', durableRevision: null });
     this.processLatestRevision();
   }
 

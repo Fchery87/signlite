@@ -1,6 +1,6 @@
 import { deleteIfExpired, deleteIfUnchanged, listSessionCandidates, type SessionCandidate } from '../db/history';
 import { clearLocalData } from '../db/localData';
-import { withExclusiveMaintenance, withOriginMaintenance, withSessionLock, type LockOutcome } from './sessionOwnership';
+import { acquireSessionOwnership, withExclusiveMaintenance, withOriginMaintenance, withSessionLock, type LockOutcome } from './sessionOwnership';
 
 export const HISTORY_RETENTION_DAYS = 7;
 export type MaintenanceResult =
@@ -49,10 +49,6 @@ export async function clearEligibleHistory(ownedId?: string): Promise<Maintenanc
   try {
     const candidates = await listSessionCandidates(Number.POSITIVE_INFINITY);
     for (const candidate of candidates) {
-      if (candidate.id === ownedId) {
-        if (await deleteIfUnchanged(candidate.id, candidate.storageRevision) === 'deleted') deleted += 1;
-        continue;
-      }
       const outcome = await withSessionLock(candidate.id, () => deleteIfUnchanged(candidate.id, candidate.storageRevision));
       if (outcome.status === 'unavailable') return { status: 'blocked', reason: 'locks-unavailable' };
       if (outcome.status === 'contended') retainedActive += 1;
@@ -66,10 +62,22 @@ export async function clearEligibleHistory(ownedId?: string): Promise<Maintenanc
 }
 
 export async function clearAllLocalDataSafely(): Promise<MaintenanceResult> {
-  const outcome = await withExclusiveMaintenance(async () => clearLocalData('all'));
-  if (outcome.status === 'unavailable') return { status: 'blocked', reason: 'locks-unavailable' };
-  if (outcome.status === 'contended') return { status: 'blocked', reason: 'another-tab-active' };
-  return { status: 'completed', deleted: outcome.value.sessionsCleared ? 1 : 0, retainedActive: 0, failed: 0 };
+  const candidates = await listSessionCandidates(Number.POSITIVE_INFINITY);
+  const releases: Array<() => Promise<void>> = [];
+  try {
+    for (const candidate of candidates) {
+      const ownership = await acquireSessionOwnership(candidate.id);
+      if (ownership.status === 'unavailable') return { status: 'blocked', reason: 'locks-unavailable' };
+      if (ownership.status === 'contended') return { status: 'blocked', reason: 'another-tab-active' };
+      releases.push(ownership.release);
+    }
+    const outcome = await withExclusiveMaintenance(async () => clearLocalData('all'));
+    if (outcome.status === 'unavailable') return { status: 'blocked', reason: 'locks-unavailable' };
+    if (outcome.status === 'contended') return { status: 'blocked', reason: 'another-tab-active' };
+    return { status: 'completed', deleted: outcome.value.sessionsCleared ? 1 : 0, retainedActive: 0, failed: 0 };
+  } finally {
+    for (const release of releases.reverse()) await release();
+  }
 }
 
 export async function clearHistorySafely(ownedId?: string): Promise<MaintenanceResult> {
