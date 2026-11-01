@@ -2,6 +2,18 @@
 
 ## Browser hardening qualification, 2026-11-01
 
+### Additional failure-boundary qualification
+
+Current implementation qualification is `919ef208a883ac1722e8eee82864d82c475bee70`. Additional native-browser transaction-abort injection found an unhandled `AbortError` from the import transaction's completion promise, even though rollback and retry were atomic. The import path now observes `tx.done` immediately while retaining its final rejection semantics. Permanent `failure-delivery.spec.ts` checks actual abort injection, zero partial assets/counter increments, successful retry and zero page errors. It also checks cyclic PDF policy failure produces no download, no false signed status and no mutation of stored source bytes.
+
+After this fix, typecheck/lint, **356 unit tests across 43 files**, build/verifier/exact-artifact checker, and **41 Chromium tests** passed. Explicit Node 24.15.0 typecheck, all 20 import unit tests and build passed, and its 209 production files matched the Node 26 artifact exactly after normal build-metadata removal. Earlier full Node 24 unit/browser results below belong to the preceding source revision, not a claim that the new full suite ran twice.
+
+Current tested receipt SHA-256: `43d491f6e68fc3b35a7c919f7403a02a94e19b7705bea8a9f100244031cd3937`. Initial static JS gzip is **72,770 bytes**, CSS gzip **4,421 bytes**, across **209 production files**. Evidence: `import-abort-fix-e2e.log`, `post-abort-full-unit.log`, `post-abort-full-e2e-complete.log`, `post-abort-artifact.log`, `post-abort-node24.log`, and `post-abort-node24-artifact.log` under the scratch implementation directory. The combined unit/build/browser command exceeded the external 600-second task budget after green units/build, so the complete browser suite was rerun separately and passed. That incomplete combined run is not represented as a pass.
+
+Further controls on the preceding qualified revision passed: native no-Web-Locks refusal preserves all stores, native full-clear abort rolls back all stores and permits retry, 40 varied serialized policy graphs preserve benign links and are semantically idempotent, and three repeated native safety/PDF runs passed 27 browser cases. Full-artifact tampering controls rejected corruption, missing/extra files, symlinks, wrong commits and empty receipts. These extend evidence but do not replace owner-only acceptance.
+
+### Initial complete hardening qualification
+
 Scope: controlled desktop-Chromium browser beta. No native application, backend, database migration, live deployment, credential setup, or deletion of real browser data is authorized by this qualification. The approved scope is in `docs/plans/2026-11-01-browser-app-hardening-implementation.md`, with policy and supported-location details in ADR 0003.
 
 Technical qualification passed against implementation commit `3daa9d9e09668069d223443f1ad9e1dbea789d7b`. This is engineer-executable qualification, not owner acceptance or production authorization. The initial fresh baseline had 310 unit passes and 3 timing failures. Its full browser run was externally terminated at 600 seconds. The first integrated browser run had 15 passes, 8 failures, and 13 cases not run. These failures are retained in the implementation logs and are not described as a green baseline.
