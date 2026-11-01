@@ -7,6 +7,7 @@ import {
   IMPORT_MAX_JSON_BYTES,
   IMPORT_MAX_PNG_BYTES
 } from '../lib/imagePolicy';
+import { withOriginMaintenance } from '../lib/sessionOwnership';
 
 export type SaveAssetInput = Omit<SignatureAsset, 'id' | 'createdAt' | 'lastUsedAt'>;
 export type UpdateAssetInput = Partial<Pick<SignatureAsset, 'label' | 'lastUsedAt'>>;
@@ -116,7 +117,7 @@ type ValidatedImport = { assets: SignatureAsset[]; identicalDuplicates: number }
 
 /** Validates and decodes the whole envelope before anything is written: a
  *  failed import must leave every previous record unchanged. */
-function validateImportEnvelope(payload: unknown): ValidatedImport {
+async function validateImportEnvelope(payload: unknown): Promise<ValidatedImport> {
   if (typeof payload !== 'object' || payload === null) {
     throw new Error(STRINGS.errors['import-invalid']);
   }
@@ -171,6 +172,19 @@ function validateImportEnvelope(payload: unknown): ValidatedImport {
     if (bytes.byteLength === 0) throw invalid();
     const header = pngHeaderDimensions(bytes);
     if (!header || !pngIsComplete(bytes) || header.width !== candidate.width || header.height !== candidate.height) throw invalid();
+
+    if (typeof createImageBitmap === 'function') {
+      try {
+        const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+        if (bitmap.width !== candidate.width || bitmap.height !== candidate.height) {
+          bitmap.close();
+          throw invalid();
+        }
+        bitmap.close();
+      } catch {
+        throw invalid();
+      }
+    }
 
     const asset: SignatureAsset = {
       id: candidate.id,
@@ -280,9 +294,15 @@ export async function saveAsset(input: SaveAssetInput): Promise<SignatureAsset> 
   }
 
   try {
-    await db.put('signatures', asset);
+    const outcome = await withOriginMaintenance(async () => {
+      const tx = db.transaction(['signatures', 'prefs'], 'readwrite');
+      await tx.objectStore('signatures').put(asset);
+      const prefs = (await tx.objectStore('prefs').get('prefs')) ?? { dateFormat: 'MMM d, yyyy' };
+      await tx.objectStore('prefs').put({ ...prefs, assetsAddedSinceExport: (prefs.assetsAddedSinceExport ?? 0) + 1 }, 'prefs');
+      await tx.done;
+    });
+    if (outcome.status !== 'acquired') throw new Error('Library storage is busy in another tab.');
     void navigator.storage?.persist?.();
-    await bumpAssetsAddedSinceExport();
     return asset;
   } catch (error) {
     if (isQuotaExceededError(error)) {
@@ -394,26 +414,33 @@ export async function importLibrary(file: File): Promise<{ added: number; skippe
     throw new Error(STRINGS.errors['import-invalid']);
   }
 
-  const { assets, identicalDuplicates } = validateImportEnvelope(payload);
-  const existing = new Set((await listAssets()).map((asset) => asset.id));
-  const additions = assets.filter((asset) => !existing.has(asset.id));
-  const skipped = identicalDuplicates + (assets.length - additions.length);
+  const { assets, identicalDuplicates } = await validateImportEnvelope(payload);
   const db = await getDb();
 
   if (!db) {
+    const existing = new Set((await listAssets()).map((asset) => asset.id));
+    const additions = assets.filter((asset) => !existing.has(asset.id));
     additions.forEach((asset) => memoryStore.signatures.set(asset.id, asset));
-    return { added: additions.length, skipped };
+    return { added: additions.length, skipped: identicalDuplicates + assets.length - additions.length };
   }
 
-  const tx = db.transaction('signatures', 'readwrite');
-  for (const asset of additions) {
-    await tx.store.put(asset);
-  }
-  await tx.done;
-  // One increment for the whole import, not one per asset: an N-asset import
-  // would otherwise run 2N transactions and lose counts under concurrency.
-  if (additions.length > 0) await bumpAssetsAddedSinceExport(additions.length);
-  return { added: additions.length, skipped };
+  const outcome = await withOriginMaintenance(async () => {
+    const tx = db.transaction(['signatures', 'prefs'], 'readwrite');
+    let added = 0;
+    for (const asset of assets) {
+      if (await tx.objectStore('signatures').get(asset.id)) continue;
+      await tx.objectStore('signatures').put(asset);
+      added += 1;
+    }
+    if (added > 0) {
+      const prefs = (await tx.objectStore('prefs').get('prefs')) ?? { dateFormat: 'MMM d, yyyy' };
+      await tx.objectStore('prefs').put({ ...prefs, assetsAddedSinceExport: (prefs.assetsAddedSinceExport ?? 0) + added }, 'prefs');
+    }
+    await tx.done;
+    return added;
+  });
+  if (outcome.status !== 'acquired') throw new Error('Library storage is busy in another tab.');
+  return { added: outcome.value, skipped: identicalDuplicates + assets.length - outcome.value };
 }
 
 export function isUsingMemoryStore() {
