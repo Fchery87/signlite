@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, PropsWithChildren } from 'react';
 
 const styles = {
-  primary: 'border border-accent bg-accent text-white hover:bg-[#3350B4] disabled:border-line disabled:bg-sunken disabled:text-quiet',
+  primary: 'border border-accent bg-accent text-white hover:bg-black disabled:border-line disabled:bg-sunken disabled:text-quiet',
   secondary: 'border border-line bg-surface text-ink hover:bg-sunken',
   ghost: 'border border-transparent bg-transparent text-quiet hover:bg-sunken hover:text-ink'
 } as const;

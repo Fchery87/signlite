@@ -42,11 +42,11 @@ button {
 }
 
 ::selection {
-  background: #edf1fc;
+  background: #e8e6de;
 }
 
 .focus-ring {
-  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-subtle focus-visible:ring-offset-2 focus-visible:ring-offset-mist;
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/40 focus-visible:ring-offset-2 focus-visible:ring-offset-mist;
   box-shadow: 0 0 0 1px transparent;
 }
 

@@ -9,13 +9,13 @@ export default {
         mist: '#F7F7F5',
         line: '#E2E2DF',
         quiet: '#6E6E69',
-        accent: '#3B5BCC',
+        accent: '#1A1A18',
         surface: '#FFFFFF',
         sunken: '#EFEFED',
         success: '#1F7A45',
         warning: '#8F6400',
         danger: '#B3261E',
-        'accent-subtle': '#EDF1FC'
+        'accent-subtle': '#EFEEE8'
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
