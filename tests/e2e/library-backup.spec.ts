@@ -1,7 +1,7 @@
 import { writeTempFixture } from './helpers/tmp';
 import { expect, test, type Page } from '@playwright/test';
 import { deflateSync } from 'node:zlib';
-import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
+import { createSamplePdf, openQueuedDocument, waitForRuntimeReady } from './helpers/fixtures';
 
 const FONT_NOT_READY = 'Fonts are still loading. Try again in a moment.';
 
@@ -11,7 +11,7 @@ async function intakeAndOpenEditor(page: Page) {
     mimeType: 'application/pdf',
     buffer: await createSamplePdf()
   });
-  await expect(page.getByRole('heading', { name: 'library-fixture.pdf' })).toBeVisible();
+  await openQueuedDocument(page, 'library-fixture.pdf');
 }
 
 type StoredAsset = { id: string; pngBytes: number[]; label: string; width: number; height: number };

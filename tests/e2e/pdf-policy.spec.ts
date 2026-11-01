@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { PDFDocument, PDFName, PDFString } from 'pdf-lib';
 import { readFile } from 'node:fs/promises';
-import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
+import { createSamplePdf, openQueuedDocument, waitForRuntimeReady } from './helpers/fixtures';
 
 test('download applies the restricted action policy and keeps searchable content', async ({ page }) => {
   const pdf = await PDFDocument.load(await createSamplePdf());
@@ -12,7 +12,7 @@ test('download applies the restricted action policy and keeps searchable content
   await waitForRuntimeReady(page);
   page.on('request', (request) => { if (request.url().startsWith('http')) requests.push(request.url()); });
   await page.locator('input[accept="application/pdf"]').setInputFiles({ name: 'policy.pdf', mimeType: 'application/pdf', buffer: source });
-  await expect(page.getByRole('heading', { name: 'policy.pdf', exact: true })).toBeVisible();
+  await openQueuedDocument(page, 'policy.pdf');
   await page.getByRole('button', { name: 'Text', exact: true }).click();
   await page.getByTestId('placement-layer').click({ position: { x: 150, y: 150 } });
   await expect(page.getByRole('main').getByRole('button', { name: 'Text', exact: true })).toBeVisible();

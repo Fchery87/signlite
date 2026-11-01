@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { unzipSync } from 'fflate';
 import { PDFDocument } from 'pdf-lib';
 import { readFile } from 'node:fs/promises';
-import { createBatchPdf, waitForRuntimeReady } from './helpers/fixtures';
+import { createBatchPdf, openQueuedDocument, waitForRuntimeReady } from './helpers/fixtures';
 
 const BATCH_SENTINEL = 'SIGNLITE BATCH OK';
 
@@ -54,12 +54,13 @@ test('restores a batch session and downloads a quiet signed zip', async ({ page 
 
   await page.locator('input[accept="application/pdf"]').setInputFiles(fixtures);
 
+  await openQueuedDocument(page, 'batch-03.pdf');
   const batchPanel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Batch' }) }).first();
   const batchItems = batchPanel.locator('[draggable="true"][role="button"]');
 
   await expect(batchPanel.getByRole('heading', { name: 'Batch', exact: true })).toBeVisible({ timeout: 60000 });
   await expect(batchPanel.getByText('batch-10.pdf')).toBeVisible({ timeout: 60000 });
-  await expect(page.getByRole('heading', { name: 'batch-01.pdf' })).toBeVisible({ timeout: 60000 });
+  await expect(page.getByRole('heading', { name: 'batch-03.pdf' })).toBeVisible({ timeout: 60000 });
   await page.waitForTimeout(1000);
   captureRequests = true;
 
@@ -94,7 +95,7 @@ test('restores a batch session and downloads a quiet signed zip', async ({ page 
   await expect(page.getByText('Resume last session?')).toBeVisible();
   await page.getByRole('button', { name: 'Resume' }).click();
 
-  await expect(page.getByRole('heading', { name: 'batch-03.pdf' })).toBeVisible();
+  await openQueuedDocument(page, 'batch-03.pdf');
   await expect(batchItems.nth(0)).toContainText('batch-03.pdf');
   await expect(batchItems.nth(1)).toContainText('batch-01.pdf');
   await expect.poll(async () => batchPanel.locator('span').filter({ hasText: 'Placed' }).count()).toBe(10);

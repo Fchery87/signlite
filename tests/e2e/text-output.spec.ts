@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { expect, test } from '@playwright/test';
 import type { TextItem } from 'pdfjs-dist/types/src/display/api';
-import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
+import { createSamplePdf, openQueuedDocument, waitForRuntimeReady } from './helpers/fixtures';
 
 /** Extracts a page's text with pdf.js in the test process, the same library the
  *  app renders with, so "selectable and extracts correctly" is checked by a
@@ -26,7 +26,7 @@ async function intake(page: import('@playwright/test').Page) {
     mimeType: 'application/pdf',
     buffer: await createSamplePdf()
   });
-  await expect(page.getByRole('heading', { name: 'text-out.pdf' })).toBeVisible({ timeout: 30000 });
+  await openQueuedDocument(page, 'text-out.pdf');
 }
 
 async function addTextPlacement(page: import('@playwright/test').Page, value: string) {

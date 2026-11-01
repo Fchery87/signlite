@@ -3,6 +3,7 @@ import { useSessionStore } from './stores/session';
 import { Button, Toast } from './components/ui';
 import { STRINGS } from './lib/strings';
 import { DropZone } from './components/DropZone';
+import { DocumentQueue } from './components/queue/DocumentQueue';
 import { LocalDataControls } from './components/LocalDataControls';
 import { useRuntimeReadiness } from './lib/useRuntimeReadiness';
 import { ensureRuntimeReady } from './pdf/runtime';
@@ -19,6 +20,7 @@ export default function App() {
   const restoreSession = useSessionStore((state) => state.restoreSession);
   const resetSession = useSessionStore((state) => state.resetSession);
   const mutationLock = useSessionStore((state) => state.mutationLock);
+  const openQueue = useSessionStore((state) => state.openQueue);
   const [toasts, setToasts] = useState<Array<{ id: string; message: string }>>([]);
   const lifecycle = useSessionLifecycle({ session, contentRevision, resetSession });
   const runtime = useRuntimeReadiness();
@@ -41,9 +43,10 @@ export default function App() {
     <div className="min-h-screen bg-mist text-ink">
       <header className="border-b border-line bg-surface">
         <div className="flex items-center justify-between px-6 py-4">
-          <div>
-            <p className="text-caption uppercase text-quiet">{STRINGS.appName}</p>
-            <div className="mt-1 flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="grid size-7 place-items-center rounded-[7px] bg-ink text-caption font-bold text-white" aria-hidden="true">S</span>
+            <p className="text-[15px] font-semibold tracking-[-0.025em] text-ink">{STRINGS.appName}</p>
+            <div className="flex flex-wrap items-center gap-3 border-l border-line pl-3">
               {footerText ? <p className="text-body text-quiet">{footerText}</p> : null}
               {lifecycle.status && lifecycle.status !== 'initializing' ? (
                 <p className="text-caption text-quiet" data-testid="durability-status">{STRINGS.durability[lifecycle.status]}</p>
@@ -53,6 +56,7 @@ export default function App() {
               ) : null}
             </div>
           </div>
+          <p className="text-caption text-quiet">{STRINGS.queue.localOnly}</p>
         </div>
         {resumeSession && view === 'dropzone' && documents.length === 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-3">
@@ -83,6 +87,11 @@ export default function App() {
       </header>
       {view === 'dropzone' ? (
         <>
+          {documents.length > 0 ? (
+            <div className="border-b border-line bg-surface px-6 py-2">
+              <Button variant="secondary" onClick={openQueue}>{STRINGS.queue.backToDocuments}</Button>
+            </div>
+          ) : null}
           <div role="status" aria-live="polite" className="border-b border-line bg-surface px-6 py-2 text-caption text-quiet" data-testid="runtime-readiness">
             {runtime.state.status === 'loading'
               ? STRINGS.readiness.preparing
@@ -105,6 +114,8 @@ export default function App() {
             onToast={pushToast}
           />
         </>
+      ) : view === 'queue' ? (
+        <DocumentQueue onToast={pushToast} />
       ) : (
         <Suspense
           fallback={<div className="px-6 py-10 text-body text-quiet" role="status">{STRINGS.loading.editor}</div>}

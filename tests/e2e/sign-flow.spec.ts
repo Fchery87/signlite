@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { SAMPLE_UPLOAD_PNG, createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
+import { SAMPLE_UPLOAD_PNG, createSamplePdf, openQueuedDocument, waitForRuntimeReady } from './helpers/fixtures';
 
 test('completes a quiet single-doc sign flow with library inputs and keyboard download', async ({ page }) => {
   test.setTimeout(90000);
@@ -32,7 +32,7 @@ test('completes a quiet single-doc sign flow with library inputs and keyboard do
     buffer: await createSamplePdf()
   });
 
-  await expect(page.getByRole('heading', { name: 'sample.pdf' })).toBeVisible();
+  await openQueuedDocument(page, 'sample.pdf');
   const layer = page.getByTestId('placement-layer');
   await expect(layer).toBeVisible();
   await page.waitForTimeout(1000);
@@ -146,7 +146,7 @@ test('accepts a native mouse drag from the library onto the page', async ({ page
     mimeType: 'application/pdf',
     buffer: await createSamplePdf()
   });
-  await expect(page.getByRole('heading', { name: 'native-drag.pdf' })).toBeVisible();
+  await openQueuedDocument(page, 'native-drag.pdf');
   const layer = page.getByTestId('placement-layer');
   await expect(layer).toBeVisible();
   await page.waitForTimeout(1000);

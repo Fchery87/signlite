@@ -86,6 +86,40 @@ describe('placement layer', () => {
     expect(placement?.h).toBeCloseTo(0.24);
   });
 
+  it('places an armed signature where the page is clicked', async () => {
+    const savedAsset = await saveAsset({
+      kind: 'signature', source: 'uploaded', pngBytes: new Uint8Array([1, 2, 3]).buffer,
+      width: 400, height: 100, label: 'Armed asset'
+    });
+    let disarmed = false;
+    const { getByTestId } = render(
+      <div className="relative" style={{ width: 200, height: 100 }}>
+        <PlacementLayer
+          documentId="doc-1"
+          pageIndex={0}
+          pageSize={{ w: 200, h: 100 }}
+          placements={[]}
+          scale={1}
+          selectedPlacementId={null}
+          armedSignature={savedAsset}
+          onArmedPlacement={() => { disarmed = true; }}
+        />
+      </div>
+    );
+
+    const layer = getByTestId('placement-layer');
+    Object.defineProperty(layer, 'getBoundingClientRect', {
+      value: () => ({ left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100 })
+    });
+    dispatchPointer(layer, 'pointerdown', 3, 100, 50);
+
+    await waitFor(() => expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(1));
+    const placement = sessionStoreTestHarness.getState().session.documents[0]?.placements[0];
+    expect(placement).toMatchObject({ type: 'signature', pageIndex: 0, snapshotId: expect.any(String) });
+    expect(placement?.w).toBeCloseTo(0.24);
+    expect(disarmed).toBe(true);
+  });
+
   it('nudges, deselects, and deletes selected placements from the keyboard', () => {
     sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
       id: 'placement-1',

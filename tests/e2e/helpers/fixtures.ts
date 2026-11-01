@@ -125,3 +125,17 @@ export async function waitForRuntimeReady(page: import('@playwright/test').Page)
   const { expect } = await import('@playwright/test');
   await expect(page.getByTestId('runtime-readiness')).toHaveText('Ready to sign offline.', { timeout: 60000 });
 }
+
+export async function openQueuedDocument(page: import('@playwright/test').Page, fileName?: string) {
+  const { expect } = await import('@playwright/test');
+  await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible({ timeout: 60000 });
+  const row = fileName
+    ? page.getByTestId('queue-row').filter({ hasText: fileName }).first()
+    : page.getByTestId('queue-row').first();
+  if (fileName) {
+    await row.getByRole('button', { name: fileName, exact: true }).click();
+  } else {
+    await row.getByRole('button').first().click();
+  }
+  await expect(page.getByTestId('placement-layer').first()).toBeVisible({ timeout: 60000 });
+}

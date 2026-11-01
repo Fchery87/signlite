@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
+import { createSamplePdf, openQueuedDocument, waitForRuntimeReady } from './helpers/fixtures';
 
 // R04 durability: the saved session survives a reload with identical
 // placements, and the UI reports durability accurately.
@@ -14,7 +14,7 @@ test('a reload after Saved restores identical placements', async ({ page }) => {
     mimeType: 'application/pdf',
     buffer: await createSamplePdf()
   });
-  await expect(page.getByRole('heading', { name: 'durable.pdf' })).toBeVisible();
+  await openQueuedDocument(page, 'durable.pdf');
   const layer = page.getByTestId('placement-layer');
   await expect(layer).toBeVisible();
   await page.waitForTimeout(1000);
@@ -45,7 +45,7 @@ test('a reload after Saved restores identical placements', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible();
   await page.getByRole('button', { name: 'Resume' }).click();
 
-  await expect(page.getByRole('heading', { name: 'durable.pdf' })).toBeVisible();
+  await openQueuedDocument(page, 'durable.pdf');
   await expect(page.getByRole('main').getByRole('button', { name: 'signature' })).toHaveCount(1);
   await expect(page.getByTestId('durability-status')).toHaveText('Saved.', { timeout: 15000 });
 });

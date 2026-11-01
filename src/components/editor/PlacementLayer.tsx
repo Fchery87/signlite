@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
-import type { DragEvent } from 'react';
+import type { DragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { Placement, SignatureAsset } from '../../db/schema';
 import { getAsset, touchAsset } from '../../db/signatures';
 import { clampRect, screenToNormalized } from '../../pdf/coords';
+import { placementLabel } from '../../lib/placements';
 import { useSessionStore } from '../../stores/session';
 import { PlacedElement } from './PlacedElement';
 import { STRINGS } from '../../lib/strings';
@@ -16,6 +17,8 @@ type PlacementLayerProps = {
   placements: Placement[];
   scale: number;
   selectedPlacementId: string | null;
+  armedSignature?: SignatureAsset | null;
+  onArmedPlacement?: () => void;
   onToast?: (message: string) => void;
   onAnnouncePlacement?: (type: Placement['type'], pageIndex: number) => void;
 };
@@ -64,6 +67,8 @@ export function PlacementLayer({
   placements,
   scale,
   selectedPlacementId,
+  armedSignature = null,
+  onArmedPlacement,
   onToast,
   onAnnouncePlacement
 }: PlacementLayerProps) {
@@ -196,12 +201,53 @@ export function PlacementLayer({
     onToast?.(STRINGS.announcements.placedOnPage(asset.kind === 'signature' ? 'Signature' : 'Initials', pageIndex + 1));
   };
 
+  const placeArmedAt = async (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!armedSignature || mutationLocked) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const width = 0.24;
+    const naturalHeight = width * (armedSignature.height / armedSignature.width) * (pageSize.w / pageSize.h);
+    const minHeight = MIN_PLACEMENT_PX / (pageSize.h * scale);
+    const height = Math.max(minHeight, Math.min(naturalHeight, 0.3));
+    const normalized = screenToNormalized(
+      {
+        x: event.clientX - bounds.left - (pageSize.w * scale * width) / 2,
+        y: event.clientY - bounds.top - (pageSize.h * scale * height) / 2,
+        w: pageSize.w * scale * width,
+        h: pageSize.h * scale * height
+      },
+      pageSize,
+      scale,
+      1,
+      {
+        minW: MIN_PLACEMENT_PX / (pageSize.w * scale),
+        minH: minHeight
+      }
+    );
+    const inserted = await addSignaturePlacement(documentId, armedSignature, {
+      id: crypto.randomUUID(),
+      pageIndex,
+      ...normalized
+    });
+    if (!inserted) {
+      onToast?.(STRINGS.editor.placementFailed);
+      return;
+    }
+    await touchAsset(armedSignature.id);
+    onArmedPlacement?.();
+    onAnnouncePlacement?.(armedSignature.kind, pageIndex);
+    onToast?.(STRINGS.announcements.placedOnPage(placementLabel(armedSignature.kind), pageIndex + 1));
+  };
+
   return (
     <div
       data-testid="placement-layer"
-      className="absolute inset-0 z-10"
+      className={`absolute inset-0 z-10 ${armedSignature ? 'cursor-crosshair ring-2 ring-inset ring-accent/50' : ''}`}
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) {
+          if (armedSignature) {
+            void placeArmedAt(event);
+            return;
+          }
           setSelection(documentId, null);
         }
       }}

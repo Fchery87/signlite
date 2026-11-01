@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
+import { createSamplePdf, openQueuedDocument, waitForRuntimeReady } from './helpers/fixtures';
 
 // A second tab shares IndexedDB and the Web Locks namespace, not editing authority.
 test('a second tab opens the saved session read-only while the first tab keeps saving', async ({ browser }) => {
@@ -10,7 +10,7 @@ test('a second tab opens the saved session read-only while the first tab keeps s
     await owner.goto('/');
     await waitForRuntimeReady(owner);
     await owner.locator('input[accept="application/pdf"]').setInputFiles({ name: 'owned.pdf', mimeType: 'application/pdf', buffer: await createSamplePdf() });
-    await expect(owner.getByRole('heading', { name: 'owned.pdf' })).toBeVisible();
+    await openQueuedDocument(owner, 'owned.pdf');
     const layer = owner.getByTestId('placement-layer');
     await expect(layer).toBeVisible();
     await owner.getByRole('button', { name: 'Add library item' }).click();
@@ -34,7 +34,7 @@ test('a second tab opens the saved session read-only while the first tab keeps s
     await observer.goto('/');
     await waitForRuntimeReady(observer);
     await observer.getByRole('button', { name: 'Resume', exact: true }).click();
-    await expect(observer.getByRole('heading', { name: 'owned.pdf' })).toBeVisible();
+    await openQueuedDocument(observer, 'owned.pdf');
     await expect(observer.getByTestId('read-only-banner')).toBeVisible();
     await place(260);
     await expect(owner.getByRole('main').getByRole('button', { name: 'Signature', exact: true })).toHaveCount(2);
@@ -42,6 +42,7 @@ test('a second tab opens the saved session read-only while the first tab keeps s
     await observer.reload();
     await waitForRuntimeReady(observer);
     await observer.getByRole('button', { name: 'Resume', exact: true }).click();
+    await openQueuedDocument(observer, 'owned.pdf');
     await expect(observer.getByRole('main').getByRole('button', { name: 'Signature', exact: true })).toHaveCount(2);
     await expect(observer.getByTestId('read-only-banner')).toBeVisible();
   } finally {

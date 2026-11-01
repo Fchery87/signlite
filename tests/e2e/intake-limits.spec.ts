@@ -21,9 +21,9 @@ test('refuses the 51st document of an oversized batch without parsing it', async
 
   // 50 documents make it in; the 51st is named in the refusal.
   await expect(page.getByText('50 documents loaded.')).toBeVisible({ timeout: 60000 });
-  await expect(page.getByRole('button', { name: 'doc-49.pdf, Pending' })).toBeVisible();
+  await expect(page.getByTestId('queue-row').filter({ hasText: 'doc-49.pdf' })).toBeVisible();
   await expect(page.getByRole('status').filter({ hasText: 'doc-50.pdf — Session limit is 50 documents.' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'doc-50.pdf, Pending' })).toHaveCount(0);
+  await expect(page.getByTestId('queue-row').filter({ hasText: 'doc-50.pdf' })).toHaveCount(0);
 });
 
 test('accepts the valid subset of a mixed batch and reports each rejected file', async ({ page }) => {
@@ -42,9 +42,9 @@ test('accepts the valid subset of a mixed batch and reports each rejected file',
   ]);
 
   await expect(page.getByText('2 documents loaded.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'first.pdf, Pending' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'second.pdf, Pending' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'notes.txt, Pending' })).toHaveCount(0);
+  await expect(page.getByTestId('queue-row').filter({ hasText: 'first.pdf' })).toBeVisible();
+  await expect(page.getByTestId('queue-row').filter({ hasText: 'second.pdf' })).toBeVisible();
+  await expect(page.getByTestId('queue-row').filter({ hasText: 'notes.txt' })).toHaveCount(0);
   await expect(page.getByRole('status').filter({ hasText: 'notes.txt — PDF only for now.' })).toBeVisible();
 });
 

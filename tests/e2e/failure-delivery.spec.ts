@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test';
 import { PDFDocument, PDFName, PDFString } from 'pdf-lib';
-import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
+import { createSamplePdf, openQueuedDocument, waitForRuntimeReady } from './helpers/fixtures';
 
 test('import rollback keeps both asset additions and preference counters atomic and retry succeeds', async ({ page }) => {
   test.setTimeout(120000);
   await page.goto('/');
   await waitForRuntimeReady(page);
   await page.locator('input[accept="application/pdf"]').setInputFiles({ name: 'import-abort.pdf', mimeType: 'application/pdf', buffer: await createSamplePdf() });
-  await expect(page.getByRole('heading', { name: 'import-abort.pdf' })).toBeVisible();
+  await openQueuedDocument(page, 'import-abort.pdf');
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.evaluate(() => {
@@ -51,7 +51,7 @@ test('cyclic supported action graph refuses export without download or signed st
   const downloads: string[] = [];
   page.on('download', (download) => downloads.push(download.suggestedFilename()));
   await page.locator('input[accept="application/pdf"]').setInputFiles({ name: 'cyclic.pdf', mimeType: 'application/pdf', buffer: source });
-  await expect(page.getByRole('heading', { name: 'cyclic.pdf' })).toBeVisible();
+  await openQueuedDocument(page, 'cyclic.pdf');
   await page.getByRole('button', { name: 'Text', exact: true }).click();
   await page.getByRole('main').getByRole('button', { name: 'Download', exact: true }).click();
   await expect(page.getByText('Cannot safely apply PDF export policy: cyclic action chain.')).toBeVisible();

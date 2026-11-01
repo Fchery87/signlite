@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import type { Placement } from '../../db/schema';
+import type { Placement, SignatureAsset } from '../../db/schema';
 import type { LoadedPdf } from '../../pdf/render';
 import { startPageRender, type PageRender } from '../../pdf/render';
 import { PlacementLayer } from './PlacementLayer';
@@ -19,6 +19,8 @@ type PageCanvasProps = {
   onToast?: (message: string) => void;
   loading?: boolean;
   onAnnouncePlacement?: (type: Placement['type'], pageIndex: number) => void;
+  armedSignature?: SignatureAsset | null;
+  onArmedPlacement?: () => void;
 };
 
 export function PageCanvas({
@@ -34,7 +36,9 @@ export function PageCanvas({
   onPageElement,
   onToast,
   loading = false,
-  onAnnouncePlacement
+  onAnnouncePlacement,
+  armedSignature = null,
+  onArmedPlacement
 }: PageCanvasProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -159,6 +163,8 @@ export function PageCanvas({
           placements={placements}
           scale={scale}
           selectedPlacementId={selectedPlacementId}
+          armedSignature={armedSignature}
+          onArmedPlacement={onArmedPlacement}
           onToast={onToast}
           onAnnouncePlacement={onAnnouncePlacement}
         />

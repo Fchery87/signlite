@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
+import { createSamplePdf, openQueuedDocument, waitForRuntimeReady } from './helpers/fixtures';
 
 test('keyboard signing reaches download, and narrow screens open the pages sidebar', async ({ page }) => {
   test.setTimeout(90000);
@@ -11,7 +11,7 @@ test('keyboard signing reaches download, and narrow screens open the pages sideb
     mimeType: 'application/pdf',
     buffer: await createSamplePdf()
   });
-  await expect(page.getByRole('heading', { name: 'sample.pdf' })).toBeVisible();
+  await openQueuedDocument(page, 'sample.pdf');
 
   const pages = page.getByRole('button', { name: 'Show pages' });
   await expect(pages).toBeVisible();
@@ -42,4 +42,20 @@ test('a clear confirmation traps Tab and returns focus when cancelled', async ({
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   await expect(opener).toBeFocused();
+});
+
+test('the document queue does not overflow a narrow viewport', async ({ page }) => {
+  test.setTimeout(90000);
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto('/');
+  await waitForRuntimeReady(page);
+  await page.locator('input[accept="application/pdf"]').setInputFiles({
+    name: 'queue-narrow.pdf',
+    mimeType: 'application/pdf',
+    buffer: await createSamplePdf()
+  });
+
+  await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible({ timeout: 60000 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+  await expect(page.getByRole('button', { name: 'Add PDFs' })).toBeVisible();
 });

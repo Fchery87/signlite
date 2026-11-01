@@ -156,7 +156,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
       selectedDocumentId: result.selectedDocumentId,
       selectedPlacementId: result.selectedPlacementId,
       copiedPlacement: result.copiedPlacement,
-      view: result.session.documents.length > 0 ? 'editor' : 'dropzone',
+      view: result.session.documents.length === 0 ? 'dropzone' : get().view === 'editor' ? 'editor' : 'queue',
       ownershipRevision: get().ownershipRevision + 1,
       contentRevision: get().contentRevision + 1
     });
@@ -173,7 +173,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
       selectedDocumentId: result.selectedDocumentId,
       selectedPlacementId: result.selectedPlacementId,
       copiedPlacement: result.copiedPlacement,
-      view: result.session.documents.length > 0 ? 'editor' : 'dropzone',
+      view: result.session.documents.length === 0 ? 'dropzone' : get().view === 'editor' ? 'editor' : 'queue',
       ownershipRevision: get().ownershipRevision + 1,
       contentRevision: get().contentRevision + 1
     });
@@ -461,7 +461,8 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
       selectedPlacementId: result.selectedPlacementId,
       history: result.history,
       copiedPlacement: result.copiedPlacement,
-      view: result.session.documents.length > 0 ? 'editor' : 'dropzone',
+      view: result.session.documents.length > 0 ? 'queue' : 'dropzone',
+      armedSignature: null,
       ownershipRevision: ownershipRevision + 1,
       contentRevision: get().contentRevision + 1
     });

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createPerformancePdf, pdfFixture, waitForRuntimeReady } from './helpers/fixtures';
+import { createPerformancePdf, openQueuedDocument, pdfFixture, waitForRuntimeReady } from './helpers/fixtures';
 
 const DOCUMENT_COUNT = 20;
 const MAX_BATCH_MS = 30_000;
@@ -17,6 +17,7 @@ test('keeps the production batch path responsive for a 20-document stack', async
   await waitForRuntimeReady(page);
   await page.locator('input[accept="application/pdf"]').setInputFiles(fixtures);
 
+  await openQueuedDocument(page, 'performance-01.pdf');
   const batchPanel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Batch' }) }).first();
   await expect(batchPanel.getByRole('heading', { name: 'Batch', exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('heading', { name: 'performance-01.pdf' })).toBeVisible({ timeout: 60_000 });

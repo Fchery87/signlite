@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import * as pdfjs from 'pdfjs-dist';
-import { ROTATED_CROPPED_GEOMETRY, createRotatedCroppedPdf, waitForRuntimeReady } from './helpers/fixtures';
+import { ROTATED_CROPPED_GEOMETRY, createRotatedCroppedPdf, openQueuedDocument, waitForRuntimeReady } from './helpers/fixtures';
 
 /**
  * R02 acceptance evidence: the exported PDF must place markers at the same
@@ -170,7 +170,7 @@ async function runPlacementAndExport(
     mimeType: 'application/pdf',
     buffer: await createRotatedCroppedPdf()
   });
-  await expect(page.getByRole('heading', { name: 'rotated.pdf' })).toBeVisible();
+  await openQueuedDocument(page, 'rotated.pdf');
   await expect(page.getByTestId('placement-layer')).toBeVisible();
   await page.waitForTimeout(1000);
 

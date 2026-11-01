@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
+import { createSamplePdf, openQueuedDocument, waitForRuntimeReady } from './helpers/fixtures';
 
 test('history clear preserves a record held by another tab and reports partial cleanup', async ({ browser }) => {
   const context = await browser.newContext();
@@ -51,7 +51,7 @@ test('full clear refuses another active tab without discarding current work', as
     await waitForRuntimeReady(owner);
     await waitForRuntimeReady(cleaner);
     await cleaner.locator('input[accept="application/pdf"]').setInputFiles({ name: 'preserved.pdf', mimeType: 'application/pdf', buffer: await createSamplePdf() });
-    await expect(cleaner.getByRole('heading', { name: 'preserved.pdf' })).toBeVisible();
+    await openQueuedDocument(cleaner, 'preserved.pdf');
     await cleaner.getByRole('complementary').filter({ has: cleaner.getByRole('heading', { name: 'Library', exact: true }) }).getByRole('button', { name: 'Text', exact: true }).click();
     await expect(cleaner.getByTestId('durability-status')).toHaveText('Saved.');
     await cleaner.getByTestId('clear-all-data').click();
@@ -66,6 +66,7 @@ test('full clear refuses another active tab without discarding current work', as
     await cleaner.reload();
     await waitForRuntimeReady(cleaner);
     await cleaner.getByRole('button', { name: 'Resume', exact: true }).click();
+    await openQueuedDocument(cleaner, 'preserved.pdf');
     await expect(cleaner.getByRole('main').getByRole('button', { name: 'Text', exact: true })).toHaveCount(2);
   } finally { await context.close(); }
 });

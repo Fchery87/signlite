@@ -1,7 +1,7 @@
 import { mkdirSync } from 'fs';
 import { promises as fs } from 'fs';
 import { expect, test } from '@playwright/test';
-import { createBatchPdf, createSamplePdf, SAMPLE_UPLOAD_PNG } from './helpers/fixtures';
+import { createBatchPdf, createSamplePdf, openQueuedDocument, SAMPLE_UPLOAD_PNG } from './helpers/fixtures';
 
 const READY = 'Ready to sign offline.';
 
@@ -48,7 +48,7 @@ test('complete signing flow works offline once ready', async ({ page }) => {
     { name: 'offline-a.pdf', mimeType: 'application/pdf', buffer: await createSamplePdf() },
     { name: 'offline-b.pdf', mimeType: 'application/pdf', buffer: await createBatchPdf('Offline B', 2) }
   ]);
-  await expect(page.getByRole('heading', { name: 'offline-a.pdf' })).toBeVisible();
+  await openQueuedDocument(page, 'offline-a.pdf');
 
   // A typed signature works offline (bundled font, no fetch).
   await page.getByRole('button', { name: 'Add library item' }).click();

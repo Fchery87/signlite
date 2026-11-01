@@ -95,6 +95,9 @@ export function EditorView({ onToast }: EditorViewProps) {
   const transitionDocumentOutput = useSessionStore((state) => state.transitionDocumentOutput);
   const removeDocument = useSessionStore((state) => state.removeDocument);
   const addDocuments = useSessionStore((state) => state.addDocuments);
+  const openQueue = useSessionStore((state) => state.openQueue);
+  const armedSignature = useSessionStore((state) => state.armedSignature);
+  const disarmSignature = useSessionStore((state) => state.disarmSignature);
   const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
   const sessionId = useSessionStore((state) => state.session.id);
   const selectedDocument = documents.find((document) => document.docId === selectedDocumentId) ?? documents[0] ?? null;
@@ -419,6 +422,14 @@ export function EditorView({ onToast }: EditorViewProps) {
         </aside>
 
         <main className="surface-card flex min-h-0 min-w-0 flex-col shadow-panel">
+          {armedSignature ? (
+            <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b border-accent/30 bg-accent-subtle px-6 py-2 text-body text-ink">
+              <span>{STRINGS.editor.placeArmed(placementLabel(armedSignature.kind))}</span>
+              <Button variant="ghost" className="px-2 py-1 text-caption" onClick={disarmSignature}>
+                {STRINGS.buttons.cancel}
+              </Button>
+            </div>
+          ) : null}
           <div className="border-b border-line px-6 py-3 text-caption text-quiet">
             <p>{VISUAL_SIGNATURE_DISCLOSURE}</p>
             <p className="mt-1">{EXPORT_POLICY_DISCLOSURE}</p>
@@ -426,6 +437,7 @@ export function EditorView({ onToast }: EditorViewProps) {
           {/* Document identity leads and truncates; the control cluster never shrinks
               and wraps to its own line rather than spilling past the card edge. */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-line px-6 py-4">
+            <Button variant="secondary" onClick={openQueue}>{STRINGS.queue.allDocuments}</Button>
             <div className="min-w-[9rem] flex-1 basis-0">
               <h1 className="truncate text-h1 text-ink" title={selectedDocument.fileName}>
                 {selectedDocument.fileName}
@@ -548,6 +560,8 @@ export function EditorView({ onToast }: EditorViewProps) {
                     onToast={onToast}
                     loading={pdfState.status === 'loading'}
                     onAnnouncePlacement={announcePlacement}
+                    armedSignature={armedSignature}
+                    onArmedPlacement={disarmSignature}
                   />
                 ))}
             </div>

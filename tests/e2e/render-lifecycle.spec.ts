@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createBatchPdf, createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
+import { createBatchPdf, createSamplePdf, openQueuedDocument, waitForRuntimeReady } from './helpers/fixtures';
 
 /** True when the editor's page canvas has at least one non-white pixel, i.e. the
  *  document actually painted rather than leaving a blank surface behind. */
@@ -46,7 +46,7 @@ async function intake(page: Page, files: Array<{ name: string; buffer: Buffer }>
   await page
     .locator('input[accept="application/pdf"]')
     .setInputFiles(files.map((file) => ({ name: file.name, mimeType: 'application/pdf', buffer: file.buffer })));
-  await expect(page.getByRole('heading', { name: files[0]!.name })).toBeVisible();
+  await openQueuedDocument(page, files[0]!.name);
 }
 
 test.describe('PDF resource lifecycle', () => {

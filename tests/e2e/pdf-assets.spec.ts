@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { createCMapPdf } from './helpers/pdfAssets';
-import { createSamplePdf } from './helpers/fixtures';
+import { createSamplePdf, openQueuedDocument } from './helpers/fixtures';
 
 async function glyphPixels(page: import('@playwright/test').Page): Promise<number> {
   return page.locator('main canvas').first().evaluate((element) => {
@@ -24,6 +24,7 @@ async function loadPdf(page: import('@playwright/test').Page, buffer: Buffer, na
   await page.goto('/');
   await expect(page.getByTestId('runtime-readiness')).toHaveText('Ready to sign offline.', { timeout: 60000 });
   await page.locator('input[accept="application/pdf"]').setInputFiles({ name, mimeType: 'application/pdf', buffer });
+  await openQueuedDocument(page, name);
   return warnings;
 }
 

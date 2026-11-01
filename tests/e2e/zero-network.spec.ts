@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { createSamplePdf } from './helpers/fixtures';
+import { createSamplePdf, openQueuedDocument } from './helpers/fixtures';
 
 const EXPECTED_CSP =
   "default-src 'self'; connect-src 'none'; worker-src 'self' blob:; img-src 'self' data: blob:; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
@@ -48,7 +48,7 @@ test('first-use signing after readiness issues no requests', async ({ page }) =>
     mimeType: 'application/pdf',
     buffer: await createSamplePdf()
   });
-  await expect(page.getByRole('heading', { name: 'quiet.pdf' })).toBeVisible();
+  await openQueuedDocument(page, 'quiet.pdf');
   await page.waitForTimeout(1500);
 
   expect(requests).toEqual([]);

@@ -63,11 +63,11 @@ const savedSignature = {
 describe('session store', () => {
   beforeEach(resetStore);
 
-  it('adds documents and switches to editor view', () => {
+  it('adds documents and switches to the document queue', () => {
     sessionStoreTestHarness.getState().addDocuments([makeDocument('doc-1')]);
 
     const state = sessionStoreTestHarness.getState();
-    expect(state.view).toBe('editor');
+    expect(state.view).toBe('queue');
     expect(state.session.documents).toHaveLength(1);
   });
 
