@@ -31,4 +31,4 @@ npm run build
 npm run verify:production
 ```
 
-The current production build's initial `index` and `ui-vendor` chunks total approximately 64 KiB gzip. PDF rendering and flattening remain lazy chunks.
+The 2026-11-01 qualified implementation `3daa9d9` has 72,761 bytes of initial static JS gzip (approximately 71 KiB), measured by the production verifier's manifest/static-import traversal. PDF rendering and flattening remain lazy chunks. This shell-transfer figure is not cold signing readiness, which also prepares resident PDF assets and workers. The complete Chromium suite passed the existing 20-document responsiveness case, but no new target-hardware timing is claimed.
