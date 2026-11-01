@@ -27,6 +27,13 @@ let useMemory = false;
 let lastExportAtCache: number | null = null;
 let dateFormatCache: string | null = null;
 
+async function withLibraryWrite<T>(operation: () => Promise<T>): Promise<T> {
+  const outcome = await withOriginMaintenance(operation);
+  if (outcome.status === 'acquired') return outcome.value;
+  if (outcome.status === 'unavailable') return operation();
+  throw new Error('Library storage is busy in another tab.');
+}
+
 function isQuotaExceededError(error: unknown) {
   return error instanceof DOMException && error.name === 'QuotaExceededError';
 }
@@ -115,6 +122,16 @@ function pngIsComplete(bytes: Uint8Array) {
 
 type ValidatedImport = { assets: SignatureAsset[]; identicalDuplicates: number };
 
+function assetsEqual(left: SignatureAsset, right: SignatureAsset) {
+  const leftBytes = new Uint8Array(left.pngBytes);
+  const rightBytes = new Uint8Array(right.pngBytes);
+  return left.kind === right.kind && left.source === right.source && left.width === right.width &&
+    left.height === right.height && left.label === right.label && left.createdAt === right.createdAt &&
+    left.lastUsedAt === right.lastUsedAt && left.strokeData === right.strokeData &&
+    left.typedText === right.typedText && left.typedFont === right.typedFont &&
+    leftBytes.length === rightBytes.length && leftBytes.every((value, index) => value === rightBytes[index]);
+}
+
 /** Validates and decodes the whole envelope before anything is written: a
  *  failed import must leave every previous record unchanged. */
 async function validateImportEnvelope(payload: unknown): Promise<ValidatedImport> {
@@ -173,17 +190,20 @@ async function validateImportEnvelope(payload: unknown): Promise<ValidatedImport
     const header = pngHeaderDimensions(bytes);
     if (!header || !pngIsComplete(bytes) || header.width !== candidate.width || header.height !== candidate.height) throw invalid();
 
+    try {
+      const { PDFDocument } = await import('pdf-lib');
+      const image = await (await PDFDocument.create()).embedPng(bytes);
+      if (image.width !== candidate.width || image.height !== candidate.height) throw invalid();
+    } catch {
+      throw invalid();
+    }
     if (typeof createImageBitmap === 'function') {
-      try {
-        const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-        if (bitmap.width !== candidate.width || bitmap.height !== candidate.height) {
-          bitmap.close();
-          throw invalid();
-        }
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+      if (bitmap.width !== candidate.width || bitmap.height !== candidate.height) {
         bitmap.close();
-      } catch {
         throw invalid();
       }
+      bitmap.close();
     }
 
     const asset: SignatureAsset = {
@@ -203,14 +223,7 @@ async function validateImportEnvelope(payload: unknown): Promise<ValidatedImport
 
     const previous = byId.get(asset.id);
     if (previous) {
-      const leftBytes = new Uint8Array(previous.pngBytes);
-      const rightBytes = new Uint8Array(asset.pngBytes);
-      const sameBytes = leftBytes.length === rightBytes.length && leftBytes.every((value, index) => value === rightBytes[index]);
-      const sameMetadata = previous.kind === asset.kind && previous.source === asset.source &&
-        previous.width === asset.width && previous.height === asset.height && previous.label === asset.label &&
-        previous.createdAt === asset.createdAt && previous.lastUsedAt === asset.lastUsedAt &&
-        previous.strokeData === asset.strokeData && previous.typedText === asset.typedText && previous.typedFont === asset.typedFont;
-      if (!sameBytes || !sameMetadata) throw new Error(STRINGS.errors['import-conflict']);
+      if (!assetsEqual(previous, asset)) throw new Error(STRINGS.errors['import-conflict']);
       identicalDuplicates += 1;
       continue;
     }
@@ -234,7 +247,7 @@ async function putPrefsRecord(prefs: Prefs) {
     memoryStore.prefs = prefs;
     return;
   }
-  await db.put('prefs', prefs, 'prefs');
+  await withLibraryWrite(() => db.put('prefs', prefs, 'prefs').then(() => undefined));
 }
 
 export function getLastExportAt() {
@@ -287,6 +300,11 @@ export async function saveAsset(input: SaveAssetInput): Promise<SignatureAsset> 
   const now = Date.now();
   const asset: SignatureAsset = { ...input, id: crypto.randomUUID(), createdAt: now, lastUsedAt: now };
   const db = await getDb();
+  if (db && typeof (db as { transaction?: unknown }).transaction !== 'function') {
+    useMemory = true;
+    memoryStore.signatures.set(asset.id, asset);
+    throw new Error(STRINGS.errors.quota);
+  }
   if (!db) {
     memoryStore.signatures.set(asset.id, asset);
     await bumpAssetsAddedSinceExport();
@@ -294,14 +312,13 @@ export async function saveAsset(input: SaveAssetInput): Promise<SignatureAsset> 
   }
 
   try {
-    const outcome = await withOriginMaintenance(async () => {
+    await withLibraryWrite(async () => {
       const tx = db.transaction(['signatures', 'prefs'], 'readwrite');
       await tx.objectStore('signatures').put(asset);
       const prefs = (await tx.objectStore('prefs').get('prefs')) ?? { dateFormat: 'MMM d, yyyy' };
       await tx.objectStore('prefs').put({ ...prefs, assetsAddedSinceExport: (prefs.assetsAddedSinceExport ?? 0) + 1 }, 'prefs');
       await tx.done;
     });
-    if (outcome.status !== 'acquired') throw new Error('Library storage is busy in another tab.');
     void navigator.storage?.persist?.();
     return asset;
   } catch (error) {
@@ -349,11 +366,15 @@ export async function updateAsset(id: string, updates: UpdateAssetInput): Promis
     return null;
   }
 
-  const current = await db.get('signatures', id);
-  if (!current) return null;
-  const next = { ...current, ...updates };
-  await db.put('signatures', next);
-  return next;
+  return withLibraryWrite(async () => {
+    const tx = db.transaction('signatures', 'readwrite');
+    const current = await tx.store.get(id);
+    if (!current) return null;
+    const next = { ...current, ...updates };
+    await tx.store.put(next);
+    await tx.done;
+    return next;
+  });
 }
 
 export async function touchAsset(id: string): Promise<void> {
@@ -366,7 +387,7 @@ export async function deleteAsset(id: string): Promise<void> {
   if (!db) {
     return;
   }
-  await db.delete('signatures', id);
+  await withLibraryWrite(() => db.delete('signatures', id));
 }
 
 export async function exportLibrary(): Promise<Blob> {
@@ -419,16 +440,28 @@ export async function importLibrary(file: File): Promise<{ added: number; skippe
 
   if (!db) {
     const existing = new Set((await listAssets()).map((asset) => asset.id));
+    const current = await listAssets();
+    for (const asset of assets) {
+      const prior = current.find((item) => item.id === asset.id);
+      if (prior && !assetsEqual(prior, asset)) throw new Error(STRINGS.errors['import-conflict']);
+    }
     const additions = assets.filter((asset) => !existing.has(asset.id));
     additions.forEach((asset) => memoryStore.signatures.set(asset.id, asset));
     return { added: additions.length, skipped: identicalDuplicates + assets.length - additions.length };
   }
 
-  const outcome = await withOriginMaintenance(async () => {
+  const added = await withLibraryWrite(async () => {
     const tx = db.transaction(['signatures', 'prefs'], 'readwrite');
     let added = 0;
     for (const asset of assets) {
-      if (await tx.objectStore('signatures').get(asset.id)) continue;
+      const prior = await tx.objectStore('signatures').get(asset.id);
+      if (prior) {
+        if (!assetsEqual(prior, asset)) {
+          tx.abort();
+          throw new Error(STRINGS.errors['import-conflict']);
+        }
+        continue;
+      }
       await tx.objectStore('signatures').put(asset);
       added += 1;
     }
@@ -439,8 +472,7 @@ export async function importLibrary(file: File): Promise<{ added: number; skippe
     await tx.done;
     return added;
   });
-  if (outcome.status !== 'acquired') throw new Error('Library storage is busy in another tab.');
-  return { added: outcome.value, skipped: identicalDuplicates + assets.length - outcome.value };
+  return { added, skipped: identicalDuplicates + assets.length - added };
 }
 
 export function isUsingMemoryStore() {

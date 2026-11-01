@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, waitFor } from '@testing-library/react';
-import { deleteAsset, exportLibrary, getLastExportAt, importLibrary, listAssets, markLibraryExportOffered, resetSignaturePrefsCacheForTests } from '../../src/db/signatures';
+import { deleteAsset, exportLibrary, getLastExportAt, importLibrary, listAssets, markLibraryExportOffered, resetSignaturePrefsCache } from '../../src/db/signatures';
 import { openSignliteDb } from '../../src/db/schema';
 import { ImportExport } from '../../src/components/library/ImportExport';
 
@@ -81,7 +81,7 @@ function bigChunks(bytes: Uint8Array, chunk: number) {
 describe('ImportExport component', () => {
   beforeEach(async () => {
     await clearLibrary();
-    resetSignaturePrefsCacheForTests();
+    resetSignaturePrefsCache();
     const db = await openSignliteDb();
     await db.clear('prefs');
   });

@@ -1,5 +1,6 @@
 import { deleteAsset, exportLibrary, getAsset, importLibrary, listAssets, saveAsset, updateAsset } from '../../src/db/signatures';
 import * as schema from '../../src/db/schema';
+import { deflateSync } from 'node:zlib';
 
 async function clearLibrary() {
   const assets = await listAssets();
@@ -87,6 +88,7 @@ describe('signature store', () => {
     const quotaError = new DOMException('Quota exceeded', 'QuotaExceededError');
     const openDbSpy = vi.spyOn(schema, 'openSignliteDb').mockResolvedValue({
       put: vi.fn().mockRejectedValue(quotaError),
+      transaction: vi.fn(() => { throw quotaError; }),
       getAll: vi.fn().mockResolvedValue([]),
       get: vi.fn().mockResolvedValue(null),
       delete: vi.fn().mockResolvedValue(undefined)
@@ -121,31 +123,37 @@ describe('signature store', () => {
 });
 
 function pngBytes(width: number, height: number, fillerBytes = 0): Uint8Array {
-  const header = new Uint8Array(33);
-  header.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
-  header.set([0, 0, 0, 0x0d], 8);
-  header.set([0x49, 0x48, 0x44, 0x52], 12);
-  new DataView(header.buffer).setUint32(16, width);
-  new DataView(header.buffer).setUint32(20, height);
-  header[24] = 8;
-  header[25] = 6;
-  const iend = new Uint8Array(12);
-  iend.set([0x49, 0x45, 0x4e, 0x44], 4);
-  const filler = new Uint8Array(fillerBytes).fill(0x42);
-  const png = new Uint8Array(header.length + filler.length + iend.length);
-  png.set(header, 0);
-  png.set(filler, header.length);
-  png.set(iend, header.length + filler.length);
+  const crc32 = (bytes: Uint8Array) => {
+    let crc = 0xffffffff;
+    for (const byte of bytes) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Uint8Array) => {
+    const out = new Uint8Array(12 + data.length);
+    new DataView(out.buffer).setUint32(0, data.length);
+    out.set(new TextEncoder().encode(type), 4);
+    out.set(data, 8);
+    new DataView(out.buffer).setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+    return out;
+  };
+  const ihdr = new Uint8Array(13);
+  const view = new DataView(ihdr.buffer);
+  view.setUint32(0, width); view.setUint32(4, height); ihdr[8] = 8; ihdr[9] = 6;
+  const rows = new Uint8Array(height * (1 + width * 4));
+  const idat = chunk('IDAT', deflateSync(rows));
+  const extra = fillerBytes > 0 ? chunk('tEXt', new Uint8Array(fillerBytes)) : new Uint8Array();
+  const parts = [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), idat, extra, chunk('IEND', new Uint8Array())];
+  const png = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let offset = 0; for (const part of parts) { png.set(part, offset); offset += part.length; }
   return png;
 }
 
 function pngOfSize(totalBytes: number): Uint8Array {
-  // A complete PNG of an exact byte length: header at the front, IEND trailer
-  // at the very end, filler between.
-  const png = new Uint8Array(totalBytes).fill(0x42);
-  png.set(pngBytes(100, 50).subarray(0, 33), 0);
-  png.set([0x49, 0x45, 0x4e, 0x44], totalBytes - 8);
-  return png;
+  const base = pngBytes(100, 50);
+  return pngBytes(100, 50, totalBytes - base.length - 12);
 }
 
 function base64Of(bytes: Uint8Array): string {
