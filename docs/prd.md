@@ -99,9 +99,12 @@ signlite/
 │   │   │   ├── DrawPad.tsx        # signature_pad wrapper modal
 │   │   │   ├── TypePad.tsx        # Typed-signature modal (script font picker)
 │   │   │   └── ImportExport.tsx   # Library backup/restore UI
+│   │   ├── queue/
+│   │   │   ├── DocumentQueue.tsx  # Post-intake document list, selection, batch actions
+│   │   │   ├── SignatureDock.tsx  # Saved signature picker, upload, draw, type
+│   │   │   └── TemplateApplyDialog.tsx # Template copy confirmation
 │   │   └── batch/
-│   │       ├── BatchPanel.tsx     # Document list, order, per-doc status
-│   │       └── ApplyToAll.tsx     # Template apply + progress + zip download
+│   │       └── useBatchDownload.ts # Shared batch download lifecycle
 │   ├── stores/
 │   │   └── session.ts             # Zustand: open docs, placements, selection, batch state
 │   ├── db/
@@ -429,17 +432,17 @@ States:
 Key Interactions: drag asset from tray → drop on page → placement created at drop point sized proportionally (~20% page width for signatures) → drag to move, corner handles to resize, arrows to nudge, Delete to remove; click date/text button → element appears centered on current page in edit mode; Download → flatten → browser download + toast "Done. Downloaded {name}-signed.pdf."
 Components Used: tray, thumbnail-rail, canvas-stage, placement-handles, button-primary, toast, modal (draw/type pads).
 
-### Screen: Batch Panel (editor extension)
-Route: `/` (state: ≥ 2 documents loaded)
-Purpose: order the stack, apply the template, track progress, download the zip.
-Layout: narrow docked panel: ordered document list (name, page count, status chip: pending / placed / needs review / signed), drag handles for reorder, per-doc remove; footer with "Apply to all" and "Download all (.zip)".
+### Screen: Documents queue (post-intake home)
+Route: `/` (state: documents loaded)
+Purpose: review the stack, apply a saved signature, copy a template, reorder or remove documents, and download.
+Layout: document table with selection, reorder handle, status, and row actions; saved-signature dock; header and selection-bar actions for batch apply and download.
 States:
-- **Empty:** n/a (panel only exists with documents).
-- **Loading (applying/flattening):** per-doc progress states tick through; footer button shows "Signing 4 of 12…".
-- **Populated:** statuses current; clicking a doc switches the editor canvas to it.
-- **Error:** failed docs get a red status chip with the message on hover/tap; zip still offered for the successes.
-Key Interactions: reorder via drag → batch order updates; "Apply to all" → template placements copied to all pending docs, mismatches flagged "needs review"; click flagged doc → editor opens it for manual placement; "Download all" → worker progress → zip download + "Done. 12 documents signed." (count reflects successes).
-Components Used: doc-list, status-chip, button-primary, progress-inline.
+- **Empty:** the queue is replaced by the drop zone.
+- **Loading (applying/flattening):** download button reports "Signing 4 of 12…"; cancel remains available until delivery.
+- **Populated:** statuses current; clicking a file opens the editor; selecting rows enables batch apply and download.
+- **Error:** failed docs show the message inline; download still covers eligible documents.
+Key Interactions: select docs → apply the saved signature (same-kind placements are replaced after confirmation, review docs keep their warning); row menu → open, sign, copy template placements, move up/down, remove; Add PDFs → drop zone → return to queue; Download all or selected → worker progress → zip + "Done. 12 documents signed."
+Components Used: document table, signature dock, selection bar, status labels, button-primary, modal.
 
 ### Modal: Draw Pad / Type Pad / Import-Export
 Purpose: create library assets; back up and restore.

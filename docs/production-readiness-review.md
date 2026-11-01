@@ -148,7 +148,7 @@ Reference. [MDN frame-ancestors](https://developer.mozilla.org/en-US/docs/Web/HT
 - Add session export and import if restoring complete work across browsers matters. Signature-library backup currently excludes PDFs and placements.
 - Implement up to five recent sessions if the P2 FR-017 requirement remains in scope. It is not a launch blocker for a single-session personal tool.
 - Add saved batch placement presets after correctness work. They improve the repeated batch workflow without changing the local-first architecture.
-- Make narrow screens usable by collapsing sidebars. The fixed 280 px and 320 px columns leave no practical editing area on small viewports. Touch-first signing can remain deferred.
+- Make narrow screens usable by collapsing sidebars. The fixed 280 px and 320 px columns leave no practical editing area on small viewports. Touch-first signing can remain deferred. **Addressed 2026-11-01:** the sidebars collapse, the queue fits 390px without horizontal scrolling, and the queue → editor → download flow is covered by `tests/e2e/mobile-flow.spec.ts`. Touch-first signing remains deferred.
 - Await bundled font readiness before rasterizing typed signatures. Font preloads reduce the race but do not guarantee that the intended font is ready.
 - Add the project license and bundled font notices before public distribution. Confirm license terms against the actual assets.
 - Reconcile README and roadmap status. README says 33 of 41, the roadmap header says 35, and five unchecked task entries imply 36 complete. Completion should reflect verification evidence.

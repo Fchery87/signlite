@@ -37,4 +37,9 @@ test('uploads a signature, replaces existing placements, and reorders the queue'
   await firstHandle.focus();
   await page.keyboard.press('Alt+ArrowDown');
   await expect(page.getByTestId('queue-row').first()).toContainText('doc-two.pdf');
+
+  const shortcutDownload = page.waitForEvent('download', { timeout: 120000 });
+  await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+Shift+S`);
+  const batch = await shortcutDownload;
+  expect(batch.suggestedFilename()).toMatch(/^signlite-batch-\d{4}-\d{2}-\d{2}\.zip$/);
 });

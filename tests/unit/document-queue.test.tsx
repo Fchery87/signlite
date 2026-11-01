@@ -143,6 +143,10 @@ describe('DocumentQueue', () => {
     });
     expect(onToast).toHaveBeenCalledWith('Applied to 1 document.');
 
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for source.pdf' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move down' }));
+    expect(sessionStoreTestHarness.getState().session.documents.map((document) => document.docId)).toEqual(['target', 'source']);
+
     fireEvent.click(screen.getByRole('button', { name: 'More actions for target.pdf' }));
     fireEvent.click(screen.getByRole('button', { name: 'Remove from session' }));
     expect(sessionStoreTestHarness.getState().session.documents.map((document) => document.docId)).toEqual(['source']);

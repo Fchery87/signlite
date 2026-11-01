@@ -143,27 +143,27 @@ The founder document gauntlet, target-hardware measurements, live hosting, scree
 > **Goal:** Drop a stack, place a saved signature once, apply to all, download a zip of signed PDFs — 10+ documents in under two minutes, with per-document progress, overrides, and graceful partial failure.
 
 **Reference sections — read these before starting this phase:**
-- PRD: § 5 User Stories US-006, § 6 FR-010..FR-012, § 4 API Specification (flatten.worker protocol), § 8 UI/UX (Batch Panel), § 11 Edge Cases (Batch), § 7 Non-Functional > Performance
+- PRD: § 5 User Stories US-006, § 6 FR-010..FR-012, § 4 API Specification (flatten.worker protocol), § 8 UI/UX (Documents queue), § 11 Edge Cases (Batch), § 7 Non-Functional > Performance
 - Vision: § 3 Product Strategy > Magic Moment Design, > Core User Flows (Flow 3)
 
 **Phase prompt — give this to your coding agent:**
 > "Read docs/product-roadmap.md and find Phase 2. Then read only the Reference sections listed above from docs/prd.md and docs/product-vision.md. Continue from the first unchecked task. After each task, mark it complete in the roadmap and update the Status line. When all tasks are done, create a branch `phase-2/batch-mode-the-magic-moment`, commit, push, and open a PR for review."
 
-- [x] **TASK-024** — Build the BatchPanel: ordered document list with status chips, reorder, remove, doc switching.
-  Files: `src/components/batch/BatchPanel.tsx`, `src/stores/session.ts`
-  Notes: FR-010 — panel appears when ≥ 2 docs; drag-reorder updates batch order; status chips per `SessionDocument.status` plus "needs review"; clicking a doc switches the editor canvas to it. Verify: drop 5 PDFs, reorder, remove one, switch between them with placements intact per doc.
+- [x] **TASK-024** — Build the document queue: ordered document list with status, reorder, remove, and document opening.
+  Files: `src/components/queue/DocumentQueue.tsx`, `src/stores/session.ts`
+  Notes: FR-010 — the queue is the post-intake home; drag or keyboard reorder updates batch order; status follows `SessionDocument.status` plus "needs review"; clicking a doc opens the editor. Later consolidation moved remove and move actions into the row menu.
 
 - [x] **TASK-025** — Implement template placement and apply-to-all.
-  Files: `src/components/batch/ApplyToAll.tsx`, `src/stores/session.ts`
-  Notes: FR-011 / US-006 — placements on the first (template) doc copy to all `pending` docs at the same normalized coords and page index; docs lacking that page index flagged "needs review" and skipped; after apply, per-doc placements diverge freely (template edits don't re-propagate unless re-applied, which confirms overwrite). Page-size aspect deviation > 10% flags "differs from template — review". Verify: 5-doc stack incl. one 1-page doc with a page-2 template → 4 applied, 1 flagged.
+  Files: `src/components/queue/TemplateApplyDialog.tsx`, `src/stores/session.ts`
+  Notes: FR-011 / US-006 — placements on the source doc copy to every other doc at the same normalized coords and page index; docs lacking that page index are flagged "needs review" and skipped; after apply, per-doc placements diverge freely. Page-size aspect deviation > 10% flags "differs from template — review". Template copy is now a queue row action.
 
 - [x] **TASK-026** — Build the flatten web worker with the message protocol.
   Files: `src/workers/flatten.worker.ts`, `src/pdf/flatten.ts`
   Notes: PRD § 4 worker protocol — refactor `flatten.ts` to be environment-agnostic (no DOM) and shared; worker receives transferable ArrayBuffers, flattens sequentially, posts per-doc progress; per-doc failure posts `error` for that doc and continues (Edge Cases § Batch). Single-doc download may keep the main-thread path. Verify: Vitest for shared flatten logic; manual 10-doc run keeps the UI responsive (drag a placement during flatten).
 
 - [x] **TASK-027** — Add fflate zip assembly and the batch download flow.
-  Files: `src/workers/flatten.worker.ts`, `src/components/batch/ApplyToAll.tsx`, `src/lib/files.ts`
-  Notes: FR-012 — zip built in the worker (`signlite-batch-{yyyy-MM-dd}.zip`), signed docs named `{stem}-signed.pdf` with collision suffixes; "Download all" button drives per-doc progress ("Signing 4 of 12…"); partial failure → zip of successes + per-doc error chips; success toast "Done. {n} documents signed." Verify: 10 docs × 5 pages completes < 15 s processing; corrupt doc injected mid-batch doesn't abort the rest.
+  Files: `src/workers/flatten.worker.ts`, `src/components/batch/useBatchDownload.ts`, `src/components/queue/DocumentQueue.tsx`, `src/lib/files.ts`
+  Notes: FR-012 — zip built in the worker (`signlite-batch-{yyyy-MM-dd}.zip`), signed docs named `{stem}-signed.pdf` with collision suffixes; "Download all" in the queue drives per-doc progress ("Signing 4 of 12…") and Cmd/Ctrl+Shift+S triggers the same attempt; partial failure → zip of successes + per-doc errors; success toast "Done. {n} documents signed."
 
 - [x] **TASK-028** — Extend autosave and restore to full batch state.
   Files: `src/db/history.ts`, `src/stores/session.ts`
