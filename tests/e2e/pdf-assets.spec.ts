@@ -1,20 +1,31 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { createCMapPdf } from './helpers/pdfAssets';
 
-/** Browser-level smoke test for the production PDF.js resource adapters. */
-test('bundled PDF factories render text without font warnings', async ({ page }) => {
+async function loadPdf(page: import('@playwright/test').Page, buffer: Buffer, name: string) {
   const warnings: string[] = [];
   page.on('console', (message) => {
     if (message.type() === 'warning' || message.type() === 'error') warnings.push(message.text());
   });
   await page.goto('/');
-  const result = await page.evaluate(async () => {
-    const { BundledCMapReaderFactory, BundledStandardFontDataFactory } = await import('../../src/pdf/assetFactories');
-    const cmap = await new BundledCMapReaderFactory().fetch({ name: '90ms-RKSJ-H' });
-    const font = await new BundledStandardFontDataFactory().fetch({ filename: 'FoxitFixed.pfb' });
-    return { cmapBytes: cmap.cMapData.byteLength, compressed: cmap.isCompressed, fontBytes: font.byteLength };
+  await expect(page.getByTestId('runtime-readiness')).toHaveText('Ready to sign offline.', { timeout: 60000 });
+  await page.locator('input[accept="application/pdf"]').setInputFiles({ name, mimeType: 'application/pdf', buffer });
+  return warnings;
+}
+
+test('renders a valid CMap PDF with glyph output and no font diagnostics', async ({ page }) => {
+  const warnings = await loadPdf(page, createCMapPdf(), 'cmap.pdf');
+  await expect(page.locator('canvas').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'cmap.pdf' })).toBeVisible();
+  const paintedPixels = await page.locator('canvas').first().evaluate((canvas) => {
+    const context = canvas.getContext('2d');
+    if (!context) return 0;
+    return Array.from(context.getImageData(0, 0, canvas.width, canvas.height).data).filter((value) => value !== 0).length;
   });
-  expect(result.cmapBytes).toBeGreaterThan(0);
-  expect(result.compressed).toBe(true);
-  expect(result.fontBytes).toBeGreaterThan(0);
-  expect(warnings.filter((warning) => /font|cmap/i.test(warning))).toEqual([]);
+  expect(paintedPixels).toBeGreaterThan(0);
+  expect(warnings.filter((warning) => /font|cmap|standardfont/i.test(warning))).toEqual([]);
+});
+
+test('reports a valid PDF with an unavailable CMap instead of silently succeeding', async ({ page }) => {
+  await loadPdf(page, createCMapPdf('ValidButMissing-CMap'), 'missing-cmap.pdf');
+  await expect(page.getByText(/unable to render|failed|error/i).first()).toBeVisible({ timeout: 30000 });
 });
