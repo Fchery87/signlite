@@ -80,10 +80,12 @@ test.describe('PDF resource lifecycle', () => {
       { name: 'second.pdf', buffer: await createBatchPdf('Second', 3) }
     ]);
 
-    // Alternate faster than a load can settle, so loads are cancelled mid-flight.
+    // Alternate through the queue faster than a load can settle.
     for (let round = 0; round < 4; round += 1) {
-      await page.getByRole('button', { name: /first\.pdf/ }).click();
-      await page.getByRole('button', { name: /second\.pdf/ }).click();
+      await page.getByRole('button', { name: 'All documents' }).click();
+      await page.getByRole('button', { name: 'first.pdf', exact: true }).click();
+      await page.getByRole('button', { name: 'All documents' }).click();
+      await page.getByRole('button', { name: 'second.pdf', exact: true }).click();
     }
 
     await expect(page.getByRole('heading', { name: 'second.pdf' })).toBeVisible();
@@ -102,15 +104,16 @@ test.describe('PDF resource lifecycle', () => {
     ]);
     await waitForPaint(page);
 
-    // Every row's Remove button shares one label, so scope it to the row.
     for (const name of ['extra-0.pdf', 'extra-1.pdf', 'extra-2.pdf']) {
-      await page.getByRole('listitem').filter({ hasText: name }).getByRole('button', { name: 'Remove' }).click();
-      await expect(page.getByRole('listitem').filter({ hasText: name })).toHaveCount(0);
+      await page.getByRole('button', { name: 'All documents' }).click();
+      await page.getByRole('button', { name: `More actions for ${name}` }).click();
+      await page.getByRole('button', { name: 'Remove from session' }).click();
+      await expect(page.getByTestId('queue-row').filter({ hasText: name })).toHaveCount(0);
+      await openQueuedDocument(page, 'base.pdf');
       await waitForPaint(page);
     }
 
-    // With every extra gone the list unmounts and base.pdf is the only document,
-    // so it must still be the rendered one.
+    // With every extra gone base.pdf remains the only document and editor target.
     await expect(page.getByRole('heading', { name: 'base.pdf' })).toBeVisible();
     await waitForPaint(page);
     expect(errors).toEqual([]);

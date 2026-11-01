@@ -1,10 +1,12 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionDocument } from '../../db/schema';
 import { STRINGS } from '../../lib/strings';
+import { EXPORT_POLICY_DISCLOSURE } from '../../lib/productPolicy';
 import { useSessionStore } from '../../stores/session';
 import { useBatchDownload } from '../batch/useBatchDownload';
 import { Button, Modal } from '../ui';
 import { SignatureDock } from './SignatureDock';
+import { TemplateApplyDialog } from './TemplateApplyDialog';
 import { useSignatureAssets } from './useSignatureAssets';
 
 type QueueFilter = 'all' | 'review' | 'signed';
@@ -51,6 +53,7 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
   const applySignatureToDocuments = useSessionStore((state) => state.applySignatureToDocuments);
   const previewSavedSignatureApply = useSessionStore((state) => state.previewSavedSignatureApply);
   const reorderDocuments = useSessionStore((state) => state.reorderDocuments);
+  const removeDocument = useSessionStore((state) => state.removeDocument);
   const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
   const { assets, selected: signature, select: selectSignature, refresh: refreshSignatures } = useSignatureAssets();
   const batch = useBatchDownload(onToast);
@@ -61,6 +64,8 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
   const [applyOpen, setApplyOpen] = useState(false);
   const [applying, setApplying] = useState(false);
   const [draggedDocId, setDraggedDocId] = useState<string | null>(null);
+  const [actionDocId, setActionDocId] = useState<string | null>(null);
+  const [templateSourceId, setTemplateSourceId] = useState<string | null>(null);
   const reorderRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const reviewCount = useMemo(() => documents.filter(needsReview).length, [documents]);
@@ -92,6 +97,8 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
     });
   }, [documents, filter, query]);
   const allVisibleSelected = filtered.length > 0 && filtered.every((document) => selected.has(document.docId));
+  const actionDocument = documents.find((document) => document.docId === actionDocId) ?? null;
+  const templateSource = documents.find((document) => document.docId === templateSourceId) ?? null;
 
   const toggle = (docId: string) => {
     setSelected((current) => {
@@ -160,6 +167,20 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
     if (mutationLocked || batch.isRunning || docIds?.length === 0) return;
     void batch.start(docIds);
   };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        if (mutationLocked || batch.isRunning || downloadableCount === 0) return;
+        void batch.start();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [batch, downloadableCount, mutationLocked]);
 
   return (
     <section className="min-h-[calc(100vh-73px)] px-4 py-4 pb-24 sm:px-6">
@@ -233,7 +254,9 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
                   <th className="py-2 pr-2 font-medium sm:pr-4">{STRINGS.queue.columnDocument}</th>
                   <th className="hidden w-20 py-2 pr-4 font-medium sm:table-cell">{STRINGS.queue.columnPages}</th>
                   <th className="w-24 py-2 pr-2 font-medium sm:w-40 sm:pr-4">{STRINGS.queue.columnStatus}</th>
-                  <th className="w-16 py-2 pr-2 font-medium sm:w-20 sm:pr-5">{STRINGS.queue.columnAction}</th>
+                  <th className="w-10 py-2 pr-2 font-medium sm:w-24 sm:pr-5">
+                    <span className="sr-only sm:not-sr-only">{STRINGS.queue.columnAction}</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -330,13 +353,26 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
                         </span>
                       </td>
                       <td className="py-3 pr-2 sm:pr-5">
-                        <Button
-                          variant="ghost"
-                          className="px-2 text-caption font-medium text-ink"
-                          onClick={() => openDocument(document.docId, action.arm ? signature : null)}
-                        >
-                          {action.label}
-                        </Button>
+                        <div className="flex items-center justify-end gap-0.5">
+                          <Button
+                            variant="ghost"
+                            className="hidden px-1.5 text-caption font-medium text-ink sm:inline-flex"
+                            onClick={() => openDocument(document.docId, action.arm ? signature : null)}
+                          >
+                            {action.label}
+                          </Button>
+                          <button
+                            type="button"
+                            aria-label={STRINGS.queue.moreActions(document.fileName)}
+                            aria-expanded={actionDocId === document.docId}
+                            onClick={() => setActionDocId(document.docId)}
+                            className="focus-ring flex size-7 items-center justify-center rounded-sm text-quiet hover:bg-sunken hover:text-ink"
+                          >
+                            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true">
+                              <circle cx="3" cy="8" r="1.2" /><circle cx="8" cy="8" r="1.2" /><circle cx="13" cy="8" r="1.2" />
+                            </svg>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -359,6 +395,7 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
             <p className="text-body font-medium text-ink">{STRINGS.queue.localOnly}</p>
             <p className="mt-1 text-caption leading-5 text-quiet">{STRINGS.queue.localNote}</p>
             <p className="mt-2 text-caption text-quiet">{STRINGS.batch.readyForDownload(downloadableCount)}</p>
+            <p className="mt-2 border-t border-line pt-2 text-caption leading-5 text-quiet">{EXPORT_POLICY_DISCLOSURE}</p>
           </div>
         </div>
       </div>
@@ -412,6 +449,91 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
           </div>
         </div>
       </Modal>
+
+      <Modal
+        open={actionDocument !== null}
+        title={actionDocument?.fileName ?? ''}
+        onClose={() => setActionDocId(null)}
+      >
+        {actionDocument ? (
+          <div className="flex flex-col gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setActionDocId(null);
+                openDocument(actionDocument.docId);
+              }}
+            >
+              {STRINGS.queue.openInEditor}
+            </Button>
+            {actionDocument.status === 'pending' && signature ? (
+              <Button
+                onClick={() => {
+                  setActionDocId(null);
+                  openDocument(actionDocument.docId, signature);
+                }}
+              >
+                {STRINGS.queue.sign}
+              </Button>
+            ) : null}
+            {actionDocument.placements.length > 0 && documents.length > 1 ? (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setTemplateSourceId(actionDocument.docId);
+                  setActionDocId(null);
+                }}
+              >
+                {STRINGS.queue.templateAction}
+              </Button>
+            ) : null}
+            <Button
+              variant="secondary"
+              disabled={documents.findIndex((document) => document.docId === actionDocument.docId) <= 0}
+              onClick={() => {
+                moveDocument(actionDocument.docId, -1);
+                setActionDocId(null);
+              }}
+            >
+              {STRINGS.queue.moveUp}
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={documents.findIndex((document) => document.docId === actionDocument.docId) >= documents.length - 1}
+              onClick={() => {
+                moveDocument(actionDocument.docId, 1);
+                setActionDocId(null);
+              }}
+            >
+              {STRINGS.queue.moveDown}
+            </Button>
+            <Button
+              variant="secondary"
+              className="text-danger"
+              disabled={mutationLocked}
+              onClick={() => {
+                const docId = actionDocument.docId;
+                setSelected((current) => {
+                  const next = new Set(current);
+                  next.delete(docId);
+                  return next;
+                });
+                removeDocument(docId);
+                setActionDocId(null);
+              }}
+            >
+              {STRINGS.queue.removeDocument}
+            </Button>
+          </div>
+        ) : null}
+      </Modal>
+
+      <TemplateApplyDialog
+        sourceDocId={templateSourceId}
+        sourceFileName={templateSource?.fileName ?? ''}
+        onClose={() => setTemplateSourceId(null)}
+        onToast={onToast}
+      />
     </section>
   );
 }

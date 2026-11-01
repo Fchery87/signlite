@@ -74,11 +74,13 @@ test('complete signing flow works offline once ready', async ({ page }) => {
 
   // Editing while offline keeps saving (reload-safe editing within the loaded
   // tab; an offline reload is O03 and not claimed here).
-  await page.getByRole('button', { name: 'offline-b.pdf' }).click();
+  await page.getByRole('button', { name: 'All documents' }).click();
+  await page.getByRole('button', { name: 'offline-b.pdf', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'offline-b.pdf' })).toBeVisible();
 
   // Single download works offline: back to the document with placements.
-  await page.getByRole('button', { name: 'offline-a.pdf' }).click();
+  await page.getByRole('button', { name: 'All documents' }).click();
+  await page.getByRole('button', { name: 'offline-a.pdf', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'offline-a.pdf' })).toBeVisible();
   const singleDownload = page.waitForEvent('download');
   await page.getByRole('main').getByRole('button', { name: 'Download', exact: true }).click();
@@ -87,9 +89,11 @@ test('complete signing flow works offline once ready', async ({ page }) => {
   await expect(single.suggestedFilename()).toBe('offline-a-signed.pdf');
 
   // Apply the template's placements to the batch, still offline.
-  await page.getByRole('button', { name: 'Apply to all' }).click();
-  await expect(page.getByRole('dialog', { name: 'Replace existing placements?' })).toBeVisible();
-  await page.getByRole('button', { name: 'Replace and apply' }).click();
+  await page.getByRole('button', { name: 'All documents' }).click();
+  await page.getByRole('button', { name: 'More actions for offline-a.pdf' }).click();
+  await page.getByRole('button', { name: 'Copy placements to all' }).click();
+  await expect(page.getByRole('dialog', { name: 'Copy placements from offline-a.pdf?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Copy to 1 document' }).click();
   await expect(page.getByText('Applied to 1 document.')).toBeVisible();
 
   // Batch download works offline.
@@ -97,7 +101,7 @@ test('complete signing flow works offline once ready', async ({ page }) => {
   const batchDownload = page.waitForEvent('download', { timeout: 120000 });
   const batch = await batchDownload;
   await batch.saveAs('artifacts/readiness/R09/offline-batch.zip');
-  await expect(page.getByText(/Downloaded/)).toBeVisible();
+  await expect(page.getByText('Done. 2 documents signed.')).toBeVisible();
 
   const zip = await fs.readFile('artifacts/readiness/R09/offline-batch.zip');
   expect(zip.subarray(0, 2).toString('latin1')).toBe('PK');

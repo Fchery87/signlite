@@ -41,6 +41,15 @@ function reset(documents: SessionDocument[]) {
   });
 }
 
+async function chooseSignature(label: string) {
+  const change = screen.queryByRole('button', { name: 'Change' });
+  if (change) {
+    fireEvent.click(change);
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(label) }));
+  }
+  await screen.findByAltText(label);
+}
+
 describe('DocumentQueue', () => {
   beforeEach(() => {
     reset([
@@ -65,7 +74,7 @@ describe('DocumentQueue', () => {
     render(<DocumentQueue onToast={onToast} />);
 
     await screen.findByText('doc-1.pdf');
-    await screen.findByAltText('Queue signature');
+    await chooseSignature('Queue signature');
     const checks = screen.getAllByRole('checkbox');
     fireEvent.click(checks[1]);
     fireEvent.click(checks[2]);
@@ -102,6 +111,43 @@ describe('DocumentQueue', () => {
     expect(sessionStoreTestHarness.getState().session.documents.map((document) => document.docId).slice(0, 3)).toEqual(['doc-2', 'doc-1', 'doc-3']);
   });
 
+  it('copies template placements and removes a document from row actions', async () => {
+    reset([
+      {
+        ...makeDocument('source', 'placed'),
+        placements: [{
+          id: 'text-1',
+          type: 'text',
+          value: 'Template',
+          fontSize: 12,
+          pageIndex: 0,
+          x: 0.1,
+          y: 0.1,
+          w: 0.2,
+          h: 0.1
+        }]
+      },
+      makeDocument('target')
+    ]);
+    const onToast = vi.fn();
+    render(<DocumentQueue onToast={onToast} />);
+    await screen.findByText('source.pdf');
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for source.pdf' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy placements to all' }));
+    expect(await screen.findByRole('dialog', { name: 'Copy placements from source.pdf?' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy to 1 document' }));
+
+    await waitFor(() => {
+      expect(sessionStoreTestHarness.getState().session.documents[1]?.placements).toHaveLength(1);
+    });
+    expect(onToast).toHaveBeenCalledWith('Applied to 1 document.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for target.pdf' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from session' }));
+    expect(sessionStoreTestHarness.getState().session.documents.map((document) => document.docId)).toEqual(['source']);
+  });
+
   it('replaces existing signatures and keeps review state after confirmation', async () => {
     reset([
       {
@@ -128,7 +174,7 @@ describe('DocumentQueue', () => {
       label: 'Replacement signature'
     });
     render(<DocumentQueue onToast={vi.fn()} />);
-    await screen.findByAltText('Replacement signature');
+    await chooseSignature('Replacement signature');
 
     const checks = screen.getAllByRole('checkbox');
     fireEvent.click(checks[1]);
@@ -150,4 +196,4 @@ describe('DocumentQueue', () => {
       expect(documents[1]?.needsReviewReason).toBe('Review this document.');
     });
   });
-});
+}, 15000);

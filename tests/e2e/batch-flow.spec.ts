@@ -54,26 +54,17 @@ test('restores a batch session and downloads a quiet signed zip', async ({ page 
 
   await page.locator('input[accept="application/pdf"]').setInputFiles(fixtures);
 
-  await openQueuedDocument(page, 'batch-03.pdf');
-  const batchPanel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Batch' }) }).first();
-  const batchItems = batchPanel.locator('[draggable="true"][role="button"]');
+  await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible({ timeout: 60000 });
+  const reorder = page.getByRole('button', { name: /Reorder batch-03\.pdf/ });
+  await reorder.focus();
+  await page.keyboard.press('Alt+ArrowUp');
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(page.getByTestId('queue-row').first()).toContainText('batch-03.pdf');
 
-  await expect(batchPanel.getByRole('heading', { name: 'Batch', exact: true })).toBeVisible({ timeout: 60000 });
-  await expect(batchPanel.getByText('batch-10.pdf')).toBeVisible({ timeout: 60000 });
-  await expect(page.getByRole('heading', { name: 'batch-03.pdf' })).toBeVisible({ timeout: 60000 });
+  await openQueuedDocument(page, 'batch-03.pdf');
   await page.waitForTimeout(1000);
   captureRequests = true;
 
-  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
-  const templateTarget = batchItems.filter({ hasText: 'batch-01.pdf' }).first();
-  const newTemplate = batchItems.filter({ hasText: 'batch-03.pdf' }).first();
-  await newTemplate.dispatchEvent('dragstart', { dataTransfer });
-  await templateTarget.dispatchEvent('dragover', { dataTransfer });
-  await templateTarget.dispatchEvent('drop', { dataTransfer });
-
-  await expect(batchItems.nth(0)).toContainText('batch-03.pdf');
-  await newTemplate.click();
-  await expect(page.getByRole('heading', { name: 'batch-03.pdf' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Text', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Text', exact: true }).click();
   await expect(page.getByText('Text box added to page.')).toBeVisible();
@@ -83,11 +74,13 @@ test('restores a batch session and downloads a quiet signed zip', async ({ page 
   await page.locator('main input[value="Text"]').last().fill(BATCH_SENTINEL);
   await page.keyboard.press('Tab');
 
-  await page.getByRole('button', { name: 'Apply to all' }).click();
-  await expect(page.getByRole('dialog', { name: 'Replace existing placements?' })).toBeVisible();
-  await page.getByRole('button', { name: 'Replace and apply' }).click();
+  await page.getByRole('button', { name: 'All documents' }).click();
+  await page.getByRole('button', { name: 'More actions for batch-03.pdf' }).click();
+  await page.getByRole('button', { name: 'Copy placements to all' }).click();
+  await expect(page.getByRole('dialog', { name: 'Copy placements from batch-03.pdf?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Copy to 9 documents' }).click();
   await expect(page.getByText('Applied to 9 documents.')).toBeVisible();
-  await expect.poll(async () => batchPanel.locator('span').filter({ hasText: 'Placed' }).count()).toBe(10);
+  await expect(page.getByText('10 documents ready for zip download.')).toBeVisible();
 
   await page.waitForTimeout(700);
   captureRequests = false;
@@ -95,10 +88,9 @@ test('restores a batch session and downloads a quiet signed zip', async ({ page 
   await expect(page.getByText('Resume last session?')).toBeVisible();
   await page.getByRole('button', { name: 'Resume' }).click();
 
-  await openQueuedDocument(page, 'batch-03.pdf');
-  await expect(batchItems.nth(0)).toContainText('batch-03.pdf');
-  await expect(batchItems.nth(1)).toContainText('batch-01.pdf');
-  await expect.poll(async () => batchPanel.locator('span').filter({ hasText: 'Placed' }).count()).toBe(10);
+  await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible({ timeout: 60000 });
+  await expect(page.getByTestId('queue-row').nth(0)).toContainText('batch-03.pdf');
+  await expect(page.getByTestId('queue-row').nth(1)).toContainText('batch-01.pdf');
   await expect(page.getByText('10 documents ready for zip download.')).toBeVisible();
 
   requests.length = 0;

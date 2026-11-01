@@ -18,17 +18,17 @@ test('keeps the production batch path responsive for a 20-document stack', async
   await page.locator('input[accept="application/pdf"]').setInputFiles(fixtures);
 
   await openQueuedDocument(page, 'performance-01.pdf');
-  const batchPanel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Batch' }) }).first();
-  await expect(batchPanel.getByRole('heading', { name: 'Batch', exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('heading', { name: 'performance-01.pdf' })).toBeVisible({ timeout: 60_000 });
 
   await page.getByRole('button', { name: 'Text', exact: true }).click();
   await expect(page.getByText('Text box added to page.')).toBeVisible();
-  await page.getByRole('button', { name: 'Apply to all' }).click();
-  await expect(page.getByRole('dialog', { name: 'Replace existing placements?' })).toBeVisible();
-  await page.getByRole('button', { name: 'Replace and apply' }).click();
+  await page.getByRole('button', { name: 'All documents' }).click();
+  await page.getByRole('button', { name: 'More actions for performance-01.pdf' }).click();
+  await page.getByRole('button', { name: 'Copy placements to all' }).click();
+  await expect(page.getByRole('dialog', { name: 'Copy placements from performance-01.pdf?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Copy to 19 documents' }).click();
   await expect(page.getByText('Applied to 19 documents.')).toBeVisible();
-  await expect.poll(async () => batchPanel.locator('span').filter({ hasText: 'Placed' }).count()).toBe(DOCUMENT_COUNT);
+  await expect(page.getByText(`${DOCUMENT_COUNT} documents ready for zip download.`)).toBeVisible();
 
   // Let the initial PDF page/thumbnail paints settle before measuring the
   // worker-backed batch operation. Those paints belong to editing readiness,

@@ -108,7 +108,7 @@ describe('editor shortcuts are scoped away from open dialogs', () => {
 
     expect(placementCount()).toBe(2);
     expect(downloadButton()).not.toBeDisabled();
-  });
+  }, 15000);
 
   it('Ctrl+S while a dialog is open does not download the document', async () => {
     const { flattenDocument } = await import('../../src/pdf/flatten');

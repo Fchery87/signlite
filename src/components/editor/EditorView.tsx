@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Modal, isAnyModalOpen } from '../ui';
-import { BatchPanel } from '../batch/BatchPanel';
-import { ApplyToAll } from '../batch/ApplyToAll';
 import { useSessionStore } from '../../stores/session';
 import { STRINGS } from '../../lib/strings';
 import { EXPORT_POLICY_DISCLOSURE, VISUAL_SIGNATURE_DISCLOSURE } from '../../lib/productPolicy';
@@ -33,7 +31,6 @@ const MIN_PLACEMENT_HEIGHT = 0.08;
 
 const shortcutRows = [
   { key: 'Cmd/Ctrl+S', action: STRINGS.shortcuts.currentDownload },
-  { key: 'Cmd/Ctrl+Shift+S', action: STRINGS.shortcuts.batchDownload },
   { key: 'Cmd/Ctrl+C', action: STRINGS.shortcuts.copySelection },
   { key: 'Cmd/Ctrl+V', action: STRINGS.shortcuts.pasteOnPage },
   { key: 'Cmd/Ctrl+D', action: STRINGS.shortcuts.duplicateSelection },
@@ -331,12 +328,6 @@ export function EditorView({ onToast }: EditorViewProps) {
       }
 
       const isPrimaryModifier = event.metaKey || event.ctrlKey;
-      if (isPrimaryModifier && event.shiftKey && event.key.toLowerCase() === 's') {
-        event.preventDefault();
-        window.dispatchEvent(new CustomEvent('signlite:batch-download'));
-        return;
-      }
-
       if (isPrimaryModifier && event.key.toLowerCase() === 's') {
         event.preventDefault();
         void handleDownload();
@@ -393,7 +384,6 @@ export function EditorView({ onToast }: EditorViewProps) {
           >
             {STRINGS.editor.hidePages}
           </button>
-          <BatchPanel />
           <div className="surface-card min-h-0 overflow-auto p-4 shadow-panel">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -577,7 +567,6 @@ export function EditorView({ onToast }: EditorViewProps) {
           >
             {libraryOpen ? STRINGS.editor.hideLibrary : STRINGS.editor.showLibrary}
           </button>
-          <ApplyToAll onToast={onToast} />
           <div className="surface-card shrink-0 p-4 shadow-panel">
             <LibraryTray
               onToast={onToast}
