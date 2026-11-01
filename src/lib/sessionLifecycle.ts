@@ -1,8 +1,9 @@
-import { commitSession, deleteIfUnchanged, historyStorageProblem, isUsingMemoryHistory, loadLatestSession, pruneOldSessions } from '../db/history';
+import { commitSession, deleteIfUnchanged, historyStorageProblem, isUsingMemoryHistory, loadLatestSession } from '../db/history';
 import type { CommitExpectation, CommitResult, DeleteResult } from '../db/history';
 import { hydrateSignaturePrefs, isUsingMemoryStore } from '../db/signatures';
 import { normalizeSession } from './normalizeSession';
 import { acquireSessionOwnership, withSessionLock, type OwnershipResult } from './sessionOwnership';
+import { pruneExpiredSessions } from './localDataMaintenance';
 import type { WorkSession } from '../db/schema';
 
 export interface StartupResult {
@@ -20,9 +21,7 @@ export async function startupAndDiscover(): Promise<StartupResult> {
   try {
     // Hold each victim's session lock while deleting it, so a live owner in
     // another tab never loses its record. Without Web Locks, skip deletion.
-    await pruneOldSessions(Date.now() - 7 * 24 * 60 * 60 * 1000, async (id, operation) => {
-      return (await withSessionLock(id, operation)).status === 'acquired';
-    });
+    await pruneExpiredSessions(Date.now() - 7 * 24 * 60 * 60 * 1000);
   } catch {
     // Cleanup failure: discovery still proceeds.
   }

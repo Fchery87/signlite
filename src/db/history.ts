@@ -49,6 +49,7 @@ export type LoadOneResult =
 export type LatestResult = LoadOneResult;
 
 export type DeleteResult = 'deleted' | 'changed' | 'missing';
+export type SessionCandidate = { id: string; storageRevision: number; updatedAt: number };
 
 /** Records written before storage revisions existed read as revision 0; the
  *  first guarded update legitimately expects 0 and advances them to 1. */
@@ -172,6 +173,48 @@ export async function deleteIfUnchanged(id: string, expectedRevision: number): P
   return 'deleted';
 }
 
+/** Discovers only immutable deletion candidates. Callers acquire locks after
+ * discovery, then use deleteIfExpired in a fresh transaction. */
+export async function listSessionCandidates(cutoff: number): Promise<SessionCandidate[]> {
+  const db = await getDb();
+  if (!db) {
+    if (historyStorageProblem() === 'upgrade-blocked') return [];
+    return Array.from(memorySessions.values())
+      .filter((session) => session.updatedAt < cutoff)
+      .map((session) => ({ id: session.id, storageRevision: memoryRevisions.get(session.id) ?? 0, updatedAt: session.updatedAt }));
+  }
+  const records: SessionCandidate[] = [];
+  const tx = db.transaction('sessions', 'readonly');
+  let cursor = await tx.store.openCursor();
+  while (cursor) {
+    if (cursor.value.updatedAt < cutoff) records.push({ id: cursor.value.id, storageRevision: recordRevision(cursor.value), updatedAt: cursor.value.updatedAt });
+    cursor = await cursor.continue();
+  }
+  await tx.done;
+  return records;
+}
+
+export async function deleteIfExpired(id: string, expectedRevision: number, cutoff: number): Promise<DeleteResult> {
+  const db = await getDb();
+  if (!db) {
+    if (historyStorageProblem() === 'upgrade-blocked') return 'missing';
+    const existing = memoryGet(id);
+    if (existing.status !== 'found') return 'missing';
+    if (existing.storageRevision !== expectedRevision) return 'changed';
+    if (existing.session.updatedAt >= cutoff) return 'changed';
+    dropMemory(id);
+    return 'deleted';
+  }
+  const tx = db.transaction('sessions', 'readwrite');
+  const existing = await tx.store.get(id);
+  if (!existing) return 'missing';
+  if (recordRevision(existing) !== expectedRevision || existing.updatedAt >= cutoff) return 'changed';
+  await tx.store.delete(id);
+  await tx.done;
+  dropMemory(id);
+  return 'deleted';
+}
+
 /** Legacy blind writer: no production caller remains (the lifecycle commits
  *  through `commitSession`). Kept as a test fixture for storage fallback
  *  contracts; do not call from app code. */
@@ -202,26 +245,6 @@ export async function clearSession(id: string): Promise<void> {
   if (!db) return;
   await db.delete('sessions', id);
   useMemory = memorySessions.size > 0;
-}
-
-export async function pruneOldSessions(
-  cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000,
-  withLock?: (id: string, operation: () => Promise<void>) => Promise<boolean>
-) {
-  const db = await getDb();
-  if (!db) return;
-  const tx = db.transaction('sessions', 'readwrite');
-  let cursor = await tx.store.openCursor();
-  while (cursor) {
-    if (cursor.value.updatedAt < cutoff) {
-      const current = cursor;
-      const key = current.primaryKey;
-      if (withLock) await withLock(key, async () => { await current.delete(); });
-      else await current.delete();
-    }
-    cursor = await cursor.continue();
-  }
-  await tx.done;
 }
 
 /** Drops every in-memory session mirror. IndexedDB clearing stays with the

@@ -13,7 +13,7 @@ export type LockOutcome<T> =
   | { status: 'unavailable' };
 
 type LockManagerLike = {
-  request: (name: string, options: { ifAvailable?: boolean }, callback: (lock: { name: string } | null) => unknown) => Promise<unknown>;
+  request: (name: string, options: { ifAvailable?: boolean; mode?: 'shared' | 'exclusive' }, callback: (lock: { name: string } | null) => unknown) => Promise<unknown>;
 };
 
 function lockManager(): LockManagerLike | null {
@@ -55,13 +55,26 @@ export async function acquireSessionOwnership(id: string): Promise<OwnershipResu
 /** Runs an operation while briefly holding a session's lock. Contended or
  *  unavailable locks yield a skip outcome instead of running the operation. */
 export async function withSessionLock<T>(id: string, operation: () => Promise<T>): Promise<LockOutcome<T>> {
+  return withNamedLock(sessionLockName(id), 'exclusive', operation);
+}
+
+export const ORIGIN_MAINTENANCE_LOCK_NAME = 'signlite:maintenance:v1';
+
+export function withOriginMaintenance<T>(operation: () => Promise<T>): Promise<LockOutcome<T>> {
+  return withNamedLock(ORIGIN_MAINTENANCE_LOCK_NAME, 'shared', operation);
+}
+
+export function withExclusiveMaintenance<T>(operation: () => Promise<T>): Promise<LockOutcome<T>> {
+  return withNamedLock(ORIGIN_MAINTENANCE_LOCK_NAME, 'exclusive', operation);
+}
+
+async function withNamedLock<T>(name: string, mode: 'shared' | 'exclusive', operation: () => Promise<T>): Promise<LockOutcome<T>> {
   const locks = lockManager();
   if (!locks) return { status: 'unavailable' };
-  const name = sessionLockName(id);
   let entered = false;
   let outcome: LockOutcome<T> = { status: 'contended' };
   try {
-    await locks.request(name, { ifAvailable: true }, async (lock) => {
+    await locks.request(name, { ifAvailable: true, mode }, async (lock) => {
       if (!lock) return;
       entered = true;
       outcome = { status: 'acquired', value: await operation() };
