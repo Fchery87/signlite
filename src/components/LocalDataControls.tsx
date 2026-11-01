@@ -21,7 +21,6 @@ type LocalDataControlsProps = {
  *  mutation lease. The current editor already holds its session lock, so it
  *  clears directly. Asking for that lock again would wait on itself. */
 export function LocalDataControls({ lifecycle, onToast }: LocalDataControlsProps) {
-  const sessionId = useSessionStore((state: PublicSessionState) => state.session.id);
   const resetSession = useSessionStore((state: PublicSessionState) => state.resetSession);
   const mutationLocked = useSessionStore((state: PublicSessionState) => state.mutationLock !== null);
   const [confirmKind, setConfirmKind] = useState<LocalDataClearKind | null>(null);
@@ -41,7 +40,7 @@ export function LocalDataControls({ lifecycle, onToast }: LocalDataControlsProps
 
   const erase = async (_kind: LocalDataClearKind) => {
     await lifecycle.prepareForLocalDataClear();
-    const result = _kind === 'all' ? await clearAllLocalDataSafely() : await clearHistorySafely(sessionId);
+    const result = _kind === 'all' ? await clearAllLocalDataSafely() : await clearHistorySafely();
     if (result.status === 'blocked') throw new Error(STRINGS.localData.locksUnavailable);
     if (result.status === 'failed') throw result.cause;
     return result;

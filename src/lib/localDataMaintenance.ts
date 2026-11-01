@@ -43,7 +43,7 @@ export function maintenanceWarning(result: MaintenanceResult): string | null {
   return result.retainedActive > 0 ? 'Some active or recently changed Work Sessions were retained.' : null;
 }
 
-export async function clearEligibleHistory(ownedId?: string): Promise<MaintenanceResult> {
+export async function clearEligibleHistory(): Promise<MaintenanceResult> {
   let deleted = 0;
   let retainedActive = 0;
   try {
@@ -64,24 +64,27 @@ export async function clearEligibleHistory(ownedId?: string): Promise<Maintenanc
 export async function clearAllLocalDataSafely(): Promise<MaintenanceResult> {
   const candidates = await listSessionCandidates(Number.POSITIVE_INFINITY);
   const releases: Array<() => Promise<void>> = [];
-  try {
+  const outcome = await withExclusiveMaintenance(async () => {
     for (const candidate of candidates) {
       const ownership = await acquireSessionOwnership(candidate.id);
-      if (ownership.status === 'unavailable') return { status: 'blocked', reason: 'locks-unavailable' };
-      if (ownership.status === 'contended') return { status: 'blocked', reason: 'another-tab-active' };
+      if (ownership.status === 'unavailable') return { status: 'blocked', reason: 'locks-unavailable' } as const;
+      if (ownership.status === 'contended') return { status: 'blocked', reason: 'another-tab-active' } as const;
       releases.push(ownership.release);
     }
-    const outcome = await withExclusiveMaintenance(async () => clearLocalData('all'));
+    return { status: 'completed', value: await clearLocalData('all') } as const;
+  });
+  try {
     if (outcome.status === 'unavailable') return { status: 'blocked', reason: 'locks-unavailable' };
     if (outcome.status === 'contended') return { status: 'blocked', reason: 'another-tab-active' };
-    return { status: 'completed', deleted: outcome.value.sessionsCleared ? 1 : 0, retainedActive: 0, failed: 0 };
+    if (outcome.value.status === 'blocked') return outcome.value;
+    return { status: 'completed', deleted: outcome.value.value.sessionsCleared ? 1 : 0, retainedActive: 0, failed: 0 };
   } finally {
     for (const release of releases.reverse()) await release();
   }
 }
 
-export async function clearHistorySafely(ownedId?: string): Promise<MaintenanceResult> {
-  const outcome = await withOriginMaintenance(() => clearEligibleHistory(ownedId));
+export async function clearHistorySafely(): Promise<MaintenanceResult> {
+  const outcome = await withOriginMaintenance(() => clearEligibleHistory());
   if (outcome.status === 'unavailable') return { status: 'blocked', reason: 'locks-unavailable' };
   if (outcome.status === 'contended') return { status: 'blocked', reason: 'another-tab-active' };
   return outcome.value;
