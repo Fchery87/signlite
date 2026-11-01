@@ -28,6 +28,7 @@ function resetStore() {
     copiedPlacement: null,
     history: { past: [], future: [] },
     view: 'dropzone',
+    armedSignature: null,
     ownershipRevision: 0,
     contentRevision: 0,
     mutationLease: null,
@@ -47,6 +48,18 @@ const basePlacement = {
   h: 0.1
 };
 
+const savedSignature = {
+  id: 'signature-1',
+  kind: 'signature' as const,
+  source: 'typed' as const,
+  pngBytes: new Uint8Array([1, 2, 3]).buffer,
+  width: 200,
+  height: 80,
+  label: 'Saved signature',
+  createdAt: 1,
+  lastUsedAt: 1
+};
+
 describe('session store', () => {
   beforeEach(resetStore);
 
@@ -56,6 +69,24 @@ describe('session store', () => {
     const state = sessionStoreTestHarness.getState();
     expect(state.view).toBe('editor');
     expect(state.session.documents).toHaveLength(1);
+  });
+
+  it('applies one saved signature to selected documents and moves between queue and editor', async () => {
+    const store = sessionStoreTestHarness.getState();
+    store.addDocuments([makeDocument('doc-1'), makeDocument('doc-2')]);
+
+    const outcome = await sessionStoreTestHarness.getState().applySignatureToDocuments(savedSignature, ['doc-1', 'doc-2']);
+    expect(outcome).toMatchObject({ ok: true, appliedDocIds: ['doc-1', 'doc-2'], skipped: [] });
+    const applied = sessionStoreTestHarness.getState();
+    expect(applied.session.documents.every((document) => document.placements.length === 1 && document.status === 'placed')).toBe(true);
+    expect(Object.keys(applied.session.signatureSnapshots ?? {})).toHaveLength(1);
+
+    applied.openDocument('doc-1', savedSignature);
+    expect(sessionStoreTestHarness.getState()).toMatchObject({ view: 'editor', selectedDocumentId: 'doc-1', armedSignature: savedSignature });
+    sessionStoreTestHarness.getState().openQueue();
+    expect(sessionStoreTestHarness.getState()).toMatchObject({ view: 'queue', armedSignature: null });
+    sessionStoreTestHarness.getState().openDropzone();
+    expect(sessionStoreTestHarness.getState().view).toBe('dropzone');
   });
 
   it('refuses intake that would exceed the document, page, or byte ceilings and mutates nothing', () => {

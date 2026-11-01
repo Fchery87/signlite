@@ -565,6 +565,114 @@ export type ApplyToAllResult = CompleteStateResult & {
   needsReviewDocIds?: string[];
 };
 
+export type ApplySavedSignatureRequest = {
+  asset: SignatureAssetInput;
+  docIds: string[];
+};
+
+export type ApplySavedSignatureSkipReason = 'missing-document' | 'existing-signature' | 'needs-review' | 'missing-page';
+
+export type ApplySavedSignatureSkip = {
+  docId: string;
+  reason: ApplySavedSignatureSkipReason;
+};
+
+export type ApplySavedSignatureResult = CompleteStateResult & {
+  appliedDocIds?: string[];
+  skipped?: ApplySavedSignatureSkip[];
+};
+
+/** Places one saved signature on page one of every selected document that has
+ *  no signature yet, sharing one content-addressed snapshot across the batch. */
+export async function applySignatureToDocuments(
+  session: WorkSession,
+  history: History,
+  request: ApplySavedSignatureRequest
+): Promise<ApplySavedSignatureResult> {
+  const assetError = validateAssetDimensions(request.asset.width, request.asset.height)
+    ?? (request.asset.pngBytes.byteLength === 0
+      ? { reason: 'missing-snapshot' as const, message: 'Signature image bytes are required' }
+      : null);
+  if (assetError) return { ok: false, error: assetError };
+
+  const uniqueDocIds = Array.from(new Set(request.docIds));
+  if (uniqueDocIds.length === 0) {
+    return { ok: false, error: { reason: 'nothing-to-apply', message: 'Select at least one document' } };
+  }
+
+  const skipped: ApplySavedSignatureSkip[] = [];
+  const targets: SessionDocument[] = [];
+  for (const docId of uniqueDocIds) {
+    const document = session.documents.find((candidate) => candidate.docId === docId);
+    if (!document) {
+      skipped.push({ docId, reason: 'missing-document' });
+      continue;
+    }
+    if (document.status === 'needs-review' || document.needsReviewReason) {
+      skipped.push({ docId, reason: 'needs-review' });
+      continue;
+    }
+    if (document.placements.some((placement) => placement.type === 'signature' || placement.type === 'initials')) {
+      skipped.push({ docId, reason: 'existing-signature' });
+      continue;
+    }
+    if (!document.pageSizes[0]) {
+      skipped.push({ docId, reason: 'missing-page' });
+      continue;
+    }
+    targets.push(document);
+  }
+
+  if (targets.length === 0) {
+    return { ok: false, error: { reason: 'nothing-to-apply', message: 'No selected document can take a signature' } };
+  }
+
+  const snapshot = await createSignatureSnapshot(request.asset);
+  const width = 0.24;
+  const targetIds = new Set(targets.map((document) => document.docId));
+  const appliedDocIds: string[] = [];
+  const documents = session.documents.map((document) => {
+    if (!targetIds.has(document.docId)) return document;
+    const page = document.pageSizes[0];
+    const height = Math.max(0.04, Math.min(width * (request.asset.height / request.asset.width) * (page.w / Math.max(page.h, 1)), 0.3));
+    const x = Math.max(0.02, Math.min(0.1, 1 - width - 0.02));
+    const y = Math.max(0.02, Math.min(0.88 - height, 1 - height - 0.02));
+    const placement: Placement = {
+      id: crypto.randomUUID(),
+      type: request.asset.kind,
+      snapshotId: snapshot.id,
+      pageIndex: 0,
+      x,
+      y,
+      w: width,
+      h: height
+    };
+    appliedDocIds.push(document.docId);
+    return {
+      ...document,
+      placements: [...document.placements, placement],
+      status: 'placed' as const,
+      batchError: undefined
+    };
+  });
+
+  const nextSession: WorkSession = {
+    ...session,
+    updatedAt: Date.now(),
+    documents,
+    templatePlacements: syncTemplatePlacements(documents),
+    signatureSnapshots: { ...(session.signatureSnapshots ?? {}), [snapshot.id]: session.signatureSnapshots?.[snapshot.id] ?? snapshot }
+  };
+  const complete = completeState(
+    nextSession,
+    pushHistoryEntry(history, session),
+    null,
+    null,
+    null
+  );
+  return { ...complete, appliedDocIds, skipped };
+}
+
 function templateMismatchReason(
   templateDocument: SessionDocument,
   targetDocument: SessionDocument,

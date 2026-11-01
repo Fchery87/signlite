@@ -1,6 +1,7 @@
 import {
   addDocuments,
   addSignaturePlacement,
+  applySignatureToDocuments,
   addTextPlacement,
   copyPlacement,
   duplicatePlacement,
@@ -58,6 +59,83 @@ const PLACEMENT_INPUT = {
   w: 0.2,
   h: 0.1
 };
+
+describe('WorkSessionEditor.applySignatureToDocuments', () => {
+  it('places one shared signature snapshot on every eligible selected document', async () => {
+    const existing: SessionDocument = {
+      ...makeDoc('doc-existing'),
+      placements: [{
+        id: 'existing',
+        type: 'signature',
+        snapshotId: 'snapshot-existing',
+        pageIndex: 0,
+        x: 0.1,
+        y: 0.1,
+        w: 0.2,
+        h: 0.1
+      }],
+      status: 'placed'
+    };
+    const review: SessionDocument = { ...makeDoc('doc-review'), needsReviewReason: STRINGS.batch.needsReviewAspect };
+    const session = makeSession([makeDoc('doc-1'), makeDoc('doc-2'), existing, review]);
+
+    const result = await applySignatureToDocuments(session, emptyHistory(), {
+      asset: ASSET,
+      docIds: ['doc-1', 'doc-2', 'doc-existing', 'doc-review', 'missing']
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.appliedDocIds).toEqual(['doc-1', 'doc-2']);
+    expect(result.skipped).toEqual([
+      { docId: 'doc-existing', reason: 'existing-signature' },
+      { docId: 'doc-review', reason: 'needs-review' },
+      { docId: 'missing', reason: 'missing-document' }
+    ]);
+    expect(result.history.past).toHaveLength(1);
+
+    const snapshotIds = result.session.documents
+      .filter((doc) => doc.docId === 'doc-1' || doc.docId === 'doc-2')
+      .map((doc) => doc.placements[0]);
+    expect(snapshotIds).toHaveLength(2);
+    for (const placement of snapshotIds) {
+      expect(placement?.type).toBe('signature');
+      expect(placement?.pageIndex).toBe(0);
+      expect(placement?.snapshotId).toBeTruthy();
+      expect(placement && placement.x + placement.w).toBeLessThanOrEqual(1.01);
+      expect(placement && placement.y + placement.h).toBeLessThanOrEqual(1.01);
+    }
+    expect(snapshotIds[0]?.snapshotId).toBe(snapshotIds[1]?.snapshotId);
+    expect(Object.keys(result.session.signatureSnapshots ?? {})).toEqual([snapshotIds[0]?.snapshotId]);
+    expect(result.session.documents.find((doc) => doc.docId === 'doc-1')?.status).toBe('placed');
+    expect(result.session.documents.find((doc) => doc.docId === 'doc-review')?.placements).toHaveLength(0);
+  });
+
+  it('refuses a selection with no document that can take a signature', async () => {
+    const existing: SessionDocument = {
+      ...makeDoc('doc-existing'),
+      placements: [{
+        id: 'existing',
+        type: 'initials',
+        snapshotId: 'snapshot-existing',
+        pageIndex: 0,
+        x: 0.1,
+        y: 0.1,
+        w: 0.2,
+        h: 0.1
+      }]
+    };
+    const result = await applySignatureToDocuments(makeSession([existing]), emptyHistory(), {
+      asset: ASSET,
+      docIds: ['doc-existing', 'missing']
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.reason).toBe('nothing-to-apply');
+  });
+});
 
 describe('WorkSessionEditor.addSignaturePlacement', () => {
   it('produces a placement with snapshot, one history entry, and selection', async () => {

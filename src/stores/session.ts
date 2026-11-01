@@ -9,6 +9,7 @@ import {
   confirmApplyToAll as editorConfirmApplyToAll,
   stampPlacementOnEveryPage as editorStampPlacementOnEveryPage,
   addSignaturePlacement as editorAddSignaturePlacement,
+  applySignatureToDocuments as editorApplySignatureToDocuments,
   addTextPlacement as editorAddTextPlacement,
   updatePlacement as editorUpdatePlacement,
   removePlacement as editorRemovePlacement,
@@ -26,6 +27,7 @@ import {
   type PlacementChanges,
   type WorkSessionEditorState,
   type ApplyToAllPreview,
+  type ApplySavedSignatureSkip,
   type MutationLease
 } from '../lib/workSessionEditor';
 import { normalizeSession } from '../lib/normalizeSession';
@@ -38,7 +40,7 @@ import type { FlattenWorkerResponse } from '../workers/flatten.worker';
 
 export type { ApplyToAllPreview };
 
-export type ViewState = 'dropzone' | 'editor';
+export type ViewState = 'dropzone' | 'queue' | 'editor';
 
 /** Outcome of committing an intake result. Non-'ok' values are surfaced to the user. */
 export type IntakeCommitOutcome = 'ok' | 'lease' | 'session-changed' | 'budget';
@@ -48,6 +50,13 @@ export type ApplyTemplatePlacementsResult = {
   appliedDocIds: string[];
   needsReviewDocIds: string[];
   error?: 'stale-preview' | 'rejected';
+};
+
+export type ApplySavedSignatureOutcome = {
+  ok: boolean;
+  appliedDocIds: string[];
+  skipped: ApplySavedSignatureSkip[];
+  error?: 'rejected' | 'nothing-to-apply';
 };
 
 type SessionState = {
@@ -61,6 +70,8 @@ type SessionState = {
   contentRevision: number;
   mutationLease: MutationLease | null;
   mutationLock: Readonly<{ owner: string }> | null;
+  /** Transient: the saved signature armed for click placement in the editor. */
+  armedSignature: SignatureAsset | null;
   addDocuments: (docs: SessionDocument[], expectedSessionId?: string) => IntakeCommitOutcome;
   removeDocument: (docId: string) => void;
   reorderDocuments: (docIds: string[]) => void;
@@ -89,8 +100,13 @@ type SessionState = {
   releaseMutationLease: (capability: MutationLease) => boolean;
   previewApplyTemplatePlacements: (sourceDocId: string) => ApplyToAllPreview | null;
   applyTemplatePlacements: (sourceDocId: string, preview: ApplyToAllPreview) => ApplyTemplatePlacementsResult;
+  applySignatureToDocuments: (asset: SignatureAsset, docIds: string[]) => Promise<ApplySavedSignatureOutcome>;
   stampPlacementOnEveryPage: (docId: string, placementId: string) => { ok: boolean; added: number };
   setSelection: (docId: string | null, placementId: string | null) => void;
+  openDocument: (docId: string, armedSignature?: SignatureAsset | null) => void;
+  openQueue: () => void;
+  openDropzone: () => void;
+  disarmSignature: () => void;
   restoreSession: (session: WorkSession) => Promise<boolean>;
   resetSession: () => void;
 };
@@ -125,6 +141,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
   contentRevision: 0,
   mutationLease: null,
   mutationLock: null,
+  armedSignature: null,
 
   addDocuments: (docs, expectedSessionId) => {
     if (get().mutationLease) return 'lease';
@@ -212,6 +229,42 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
         contentRevision: get().contentRevision + 1
       });
       return result.placement;
+    }
+  },
+
+  applySignatureToDocuments: async (asset, docIds) => {
+    const rejected: ApplySavedSignatureOutcome = { ok: false, appliedDocIds: [], skipped: [], error: 'rejected' };
+    if (get().mutationLease) return rejected;
+    const ownershipRevision = get().ownershipRevision;
+    // The snapshot hash is asynchronous. Re-read the session after it settles,
+    // and never overwrite a mutation that landed in between.
+    while (true) {
+      const state = get();
+      if (state.ownershipRevision !== ownershipRevision || state.mutationLease) return rejected;
+      const result = await editorApplySignatureToDocuments(state.session, state.history, { asset, docIds });
+      if (!result.ok) {
+        return {
+          ok: false,
+          appliedDocIds: [],
+          skipped: [],
+          error: result.error.reason === 'nothing-to-apply' ? 'nothing-to-apply' : 'rejected'
+        };
+      }
+      if (get().ownershipRevision !== ownershipRevision || get().mutationLease) return rejected;
+      if (get().session !== state.session || get().history !== state.history) continue;
+
+      set({
+        session: result.session,
+        history: result.history,
+        selectedDocumentId: result.selectedDocumentId,
+        selectedPlacementId: result.selectedPlacementId,
+        contentRevision: state.contentRevision + 1
+      });
+      return {
+        ok: true,
+        appliedDocIds: result.appliedDocIds ?? [],
+        skipped: result.skipped ?? []
+      };
     }
   },
 
@@ -362,6 +415,20 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
     };
   },
 
+  openDocument: (docId, armedSignature = null) => {
+    if (!get().session.documents.some((document) => document.docId === docId)) return;
+    set({ view: 'editor', selectedDocumentId: docId, selectedPlacementId: null, armedSignature });
+  },
+
+  openQueue: () => {
+    if (get().session.documents.length === 0) return;
+    set({ view: 'queue', selectedPlacementId: null, armedSignature: null });
+  },
+
+  openDropzone: () => set({ view: 'dropzone', armedSignature: null }),
+
+  disarmSignature: () => set({ armedSignature: null }),
+
 
   stampPlacementOnEveryPage: (docId, placementId) => {
     if (get().mutationLease) return { ok: false, added: 0 };
@@ -408,7 +475,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
     if (!result.ok) return;
     set({ session: result.session, selectedDocumentId: result.selectedDocumentId,
       selectedPlacementId: result.selectedPlacementId, history: result.history,
-      copiedPlacement: result.copiedPlacement, view: 'dropzone',
+      copiedPlacement: result.copiedPlacement, view: 'dropzone', armedSignature: null,
       ownershipRevision: state.ownershipRevision + 1, contentRevision: state.contentRevision + 1 });
   }
 }));
