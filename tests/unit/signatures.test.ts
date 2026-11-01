@@ -294,6 +294,20 @@ describe('import envelope validation', () => {
     await expect(importEnvelope([envelopeAsset({ id: 'same-size', pngBytes: base64Of(changed) })])).rejects.toThrow('same ID');
     expect(new Uint8Array((await getAsset('same-size'))!.pngBytes)).toEqual(base64ToBytes(original.pngBytes));
   });
+
+  it('serializes conflicting concurrent imports and increments additions only once', async () => {
+    await (await schema.openSignliteDb()).clear('prefs');
+    const first = envelopeAsset({ id: 'concurrent', label: 'first' });
+    const second = envelopeAsset({ id: 'concurrent', label: 'second' });
+    const results = await Promise.allSettled([importEnvelope([first]), importEnvelope([second])]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(rejected?.status === 'rejected' && rejected.reason.message).toContain('same ID');
+    const assets = await listAssets();
+    expect(assets).toHaveLength(1);
+    expect(['first', 'second']).toContain(assets[0]!.label);
+    expect((await (await schema.openSignliteDb()).get('prefs', 'prefs'))?.assetsAddedSinceExport).toBe(1);
+  });
 });
 
 function base64ToBytes(value: string) {

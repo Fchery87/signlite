@@ -12,6 +12,33 @@ async function documentWithAction(type: string) {
 }
 
 describe('restricted PDF export policy', () => {
+  it.each(['catalog', 'page', 'annotation', 'field', 'outline'])('removes %s additional actions in serialized output', async (owner) => {
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage();
+    const action = pdf.context.register(pdf.context.obj({ S: 'JavaScript', JS: PDFString.of('fixture') }));
+    const target = owner === 'catalog' ? pdf.catalog : owner === 'page' ? page.node : pdf.context.obj({ AA: { E: action } });
+    target.set(key('AA'), pdf.context.obj({ E: action }));
+    if (owner === 'annotation') page.node.set(key('Annots'), pdf.context.obj([target]));
+    if (owner === 'field') pdf.catalog.set(key('AcroForm'), pdf.context.obj({ Fields: [target] }));
+    if (owner === 'outline') pdf.catalog.set(key('Outlines'), pdf.context.obj({ First: target }));
+    applyExportPolicy(pdf);
+    const loaded = await PDFDocument.load(await pdf.save());
+    let saved: PDFDict = loaded.catalog;
+    if (owner === 'page') saved = loaded.getPage(0).node;
+    if (owner === 'annotation') saved = loaded.getPage(0).node.lookup(key('Annots'), PDFArray).lookup(0, PDFDict);
+    if (owner === 'field') saved = loaded.catalog.lookup(key('AcroForm'), PDFDict).lookup(key('Fields'), PDFArray).lookup(0, PDFDict);
+    if (owner === 'outline') saved = loaded.catalog.lookup(key('Outlines'), PDFDict).lookup(key('First'), PDFDict);
+    expect(saved.lookup(key('AA'), PDFDict).has(key('E'))).toBe(false);
+  });
+
+  it('rejects malformed additional actions and work-budget overflow', async () => {
+    const { pdf } = await documentWithAction('Launch');
+    pdf.catalog.set(key('AA'), PDFString.of('not a dictionary'));
+    expect(() => applyExportPolicy(pdf)).toThrow(PdfExportPolicyError);
+    const { pdf: bounded } = await documentWithAction('JavaScript');
+    expect(() => applyExportPolicy(bounded, { maxWork: 1 })).toThrow(PdfExportPolicyError);
+  });
+
   it.each(['JavaScript', 'Launch'])('removes a catalog %s action and preserves ordinary content', async (type) => {
     const { pdf } = await documentWithAction(type);
     const originalPages = pdf.getPageCount();
