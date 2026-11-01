@@ -3,6 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": "^24.0.0 || ^26.0.0",
+    "npm": "^11.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -13,7 +17,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:build": "npm run build && playwright test",
-    "verify:production": "node scripts/verify-production.mjs"
+    "verify:production": "node scripts/verify-production.mjs",
+    "audit:runtime": "npm audit --omit=dev --audit-level=moderate",
+    "audit:tooling": "npm audit --audit-level=high"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
@@ -34,22 +40,22 @@
     "@types/node": "^24.2.0",
     "@types/react": "^18.3.24",
     "@types/react-dom": "^18.3.7",
-    "@typescript-eslint/eslint-plugin": "^8.39.1",
-    "@typescript-eslint/parser": "^8.39.1",
+    "@typescript-eslint/eslint-plugin": "^8.72.1",
+    "@typescript-eslint/parser": "^8.72.1",
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.21",
-    "eslint": "^9.34.0",
+    "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "fake-indexeddb": "^6.1.0",
     "jsdom": "^26.1.0",
-    "postcss": "^8.5.6",
+    "postcss": "^8.5.32",
     "prettier": "^3.6.2",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.9.2",
-    "typescript-eslint": "^8.39.1",
-    "vite": "^7.1.3",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^7.3.7",
     "vite-plugin-static-copy": "^3.1.0",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.12"
   }
 }
