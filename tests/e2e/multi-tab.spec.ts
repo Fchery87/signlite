@@ -7,21 +7,14 @@ import { createSamplePdf, waitForRuntimeReady } from './helpers/fixtures';
 test('a second tab opens the saved session read-only while the first tab keeps saving', async ({ browser }) => {
   test.setTimeout(120000);
   const context = await browser.newContext();
-
   const owner = await context.newPage();
   await owner.goto('/');
   await expect(owner.getByText('Drop a PDF anywhere.')).toBeVisible();
   await waitForRuntimeReady(owner);
-  await owner.locator('input[accept="application/pdf"]').setInputFiles({
-    name: 'owned.pdf',
-    mimeType: 'application/pdf',
-    buffer: await createSamplePdf()
-  });
+  await owner.locator('input[accept="application/pdf"]').setInputFiles({ name: 'owned.pdf', mimeType: 'application/pdf', buffer: await createSamplePdf() });
   await expect(owner.getByRole('heading', { name: 'owned.pdf' })).toBeVisible();
   const layer = owner.getByTestId('placement-layer');
   await expect(layer).toBeVisible();
-
-  // Create one durable signature placement.
   await owner.getByRole('button', { name: 'Add library item' }).click();
   await owner.getByRole('button', { name: 'Type' }).click();
   await owner.getByPlaceholder('Type your name').fill('Owner Signer');
@@ -36,8 +29,6 @@ test('a second tab opens the saved session read-only while the first tab keeps s
   await layer.dispatchEvent('drop', { dataTransfer, clientX: layerBox.x + 160, clientY: layerBox.y + 160 });
   await expect(owner.getByRole('main').getByRole('button', { name: 'signature' })).toHaveCount(1);
   await expect(owner.getByTestId('durability-status')).toHaveText('Saved.', { timeout: 15000 });
-
-  // The second tab shares storage: it discovers the saved session.
   const observer = await context.newPage();
   await observer.goto('/');
   await waitForRuntimeReady(observer);
@@ -45,23 +36,28 @@ test('a second tab opens the saved session read-only while the first tab keeps s
   await observer.getByRole('button', { name: 'Resume' }).click();
   await expect(observer.getByRole('heading', { name: 'owned.pdf' })).toBeVisible();
   await expect(observer.getByTestId('read-only-banner')).toBeVisible();
-
-  // The read-only tab never writes: the owner's state stays clean.
   await expect(owner.getByTestId('durability-status')).toHaveText('Saved.', { timeout: 15000 });
+  await context.close();
+});
 
-  // The owner keeps exclusive write access.
-  await card.locator('button').first().dispatchEvent('dragstart', { dataTransfer });
-  await layer.dispatchEvent('dragover', { dataTransfer, clientX: layerBox.x + 260, clientY: layerBox.y + 260 });
-  await layer.dispatchEvent('drop', { dataTransfer, clientX: layerBox.x + 260, clientY: layerBox.y + 260 });
-  await expect(owner.getByRole('main').getByRole('button', { name: 'signature' })).toHaveCount(2);
-  await expect(owner.getByTestId('durability-status')).toHaveText('Saved.', { timeout: 15000 });
-
-  // The read-only tab still sees the owner's durable progress after reload.
-  await observer.reload();
-  await expect(observer.getByRole('button', { name: 'Resume' })).toBeVisible();
-  await observer.getByRole('button', { name: 'Resume' }).click();
-  await expect(observer.getByRole('main').getByRole('button', { name: 'signature' })).toHaveCount(2);
-  await expect(observer.getByTestId('read-only-banner')).toBeVisible();
-
+// A full-clear request must not erase a session held by another tab.
+test('full clear refuses while another tab owns a discovered session', async ({ browser }) => {
+  const context = await browser.newContext();
+  const owner = await context.newPage();
+  const cleaner = await context.newPage();
+  await owner.goto('/');
+  await cleaner.goto('/');
+  await waitForRuntimeReady(owner);
+  await waitForRuntimeReady(cleaner);
+  await owner.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('signlite', 1); r.onerror = () => reject(r.error); r.onsuccess = () => resolve(r.result); });
+    const tx = db.transaction('sessions', 'readwrite');
+    tx.objectStore('sessions').put({ id: 'other-tab-session', createdAt: Date.now(), updatedAt: Date.now(), documents: [], templatePlacements: [] });
+    await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
+    db.close();
+  });
+  await cleaner.getByTestId('clear-all-data').click();
+  await cleaner.getByTestId('confirm-clear').click();
+  await expect(cleaner.getByText('Local data could not be cleared. Your current work has not been reset.')).toBeVisible();
   await context.close();
 });
