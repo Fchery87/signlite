@@ -1,62 +1,21 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const root = resolve(import.meta.dirname, '..');
-const workflow = await readFile(resolve(root, '.github', 'workflows', 'deploy.yml'), 'utf8');
+const workflow = await readFile(resolve(import.meta.dirname, '..', '.github', 'workflows', 'deploy.yml'), 'utf8');
+const fail = (message) => { throw new Error(`deploy gate check failed: ${message}`); };
+const requireMatch = (pattern, message) => { if (!pattern.test(workflow)) fail(message); };
 
-function fail(message) {
-  console.error(`deploy gate check failed: ${message}`);
-  process.exit(1);
-}
+requireMatch(/workflow_run:\s*\n\s*workflows:\s*\[ci\]\s*\n\s*types:\s*\[completed\]\s*\n\s*branches:\s*\[main\]/, 'trigger must be completed main-branch ci workflow runs');
+if (/workflow_dispatch:/.test(workflow)) fail('manual dispatch must remain disabled; re-run the successful ci workflow instead');
+requireMatch(/if:\s*github\.event\.workflow_run\.conclusion == 'success'/, 'publish must require successful ci');
+requireMatch(/ref:\s*\$\{\{ github\.event\.workflow_run\.head_sha \}\}/, 'checkout must use the triggering ci commit');
+requireMatch(/run-id:\s*\$\{\{ github\.event\.workflow_run\.id \}\}/, 'artifact must come from the triggering ci run');
+requireMatch(/path:\s*production-artifact/, 'artifact must download into its own directory');
+requireMatch(/actions\/setup-node@v4[\s\S]*node-version:\s*24/, 'standalone checker requires explicit Node setup');
+requireMatch(/node scripts\/check-production-artifact\.mjs production-artifact\/dist production-artifact\/artifact-manifest\.json \$\{\{ github\.event\.workflow_run\.head_sha \}\}/, 'downloaded artifact must be checked against the triggering commit');
+requireMatch(/cloudflare\/wrangler-action@v3/, 'verified artifact must publish with Wrangler');
+requireMatch(/pages deploy production-artifact\/dist/, 'Wrangler must publish the checked directory');
+if (/npm (ci|install)|npm run build/.test(workflow)) fail('deployment must not install dependencies or rebuild');
+if (/actions\/(deploy-pages|upload-pages-artifact)/.test(workflow)) fail('deployment must not use GitHub Pages');
 
-const trigger = workflow.match(/workflow_run:\s*\n\s*workflows:\s*\[(.+?)\]/);
-if (!trigger || !trigger[1].split(',').map((name) => name.trim().replace(/['"]/g, '')).includes('ci')) {
-  fail('deploy.yml must trigger on workflow_run of the ci workflow.');
-}
-if (!/types:\s*\[(.+?)\]/.test(workflow) || !workflow.match(/types:\s*\[(.+?)\]/)[1].includes('completed')) {
-  fail('deploy.yml must trigger on workflow_run completion.');
-}
-
-const gate = workflow.match(/if:\s*(.+)$/m);
-if (!gate) {
-  fail('deploy.yml publish job must define an eligibility condition.');
-}
-const condition = gate[1].trim();
-
-const successRefs = condition.match(/conclusion\s*==\s*'success'/g) ?? [];
-if (successRefs.length === 0) {
-  fail("the publish job condition must require github.event.workflow_run.conclusion == 'success'.");
-}
-
-function eligibleFor(conclusion, eventName) {
-  if (eventName === 'workflow_dispatch') return true;
-  return successRefs.length > 0 && conclusion === 'success' && !/conclusion\s*==\s*'failure'/.test(condition);
-}
-
-const cases = [
-  { conclusion: 'success', eventName: 'workflow_run', expected: true },
-  { conclusion: 'failure', eventName: 'workflow_run', expected: false },
-  { conclusion: 'cancelled', eventName: 'workflow_run', expected: false }
-];
-
-for (const { conclusion, eventName, expected } of cases) {
-  if (eligibleFor(conclusion, eventName) !== expected) {
-    fail(`a ${conclusion} CI run must ${expected ? 'allow' : 'block'} the publish path.`);
-  }
-  console.log(`ci ${conclusion} on workflow_run -> publish eligible: ${eligibleFor(conclusion, eventName)}`);
-}
-
-if (!/cloudflare\/wrangler-action/.test(workflow)) {
-  fail('deploy.yml must upload the verified artifact with wrangler.');
-}
-if (/actions\/deploy-pages/.test(workflow) || /actions\/upload-pages-artifact/.test(workflow)) {
-  fail('deploy.yml still publishes through GitHub Pages.');
-}
-if (!/download-artifact@v4/.test(workflow) || !/production-dist/.test(workflow)) {
-  fail('deploy.yml must download the production-dist artifact CI already verified.');
-}
-if (/npm run build/.test(workflow)) {
-  fail('deploy.yml must not rebuild. It publishes the CI artifact.');
-}
-
-console.log('deploy gate check passed: publication uploads the verified artifact only after a successful ci run.');
+console.log('deploy gate check passed: successful main ci runs publish only their exact verified artifact.');

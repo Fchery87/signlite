@@ -5,8 +5,6 @@ on:
     workflows: [ci]
     types: [completed]
     branches: [main]
-  workflow_dispatch:
-
 permissions:
   contents: read
   actions: read
@@ -17,14 +15,19 @@ concurrency:
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     environment: production
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Node for the standalone artifact checker
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
 
       - name: Download the verified CI artifact
         uses: actions/download-artifact@v4
@@ -32,17 +35,16 @@ jobs:
           name: production-dist
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: dist
+          path: production-artifact
 
-      - name: Refuse a rebuild
-        run: |
-          test -f dist/index.html
-          test -f dist/.vite/manifest.json
-          test ! -d node_modules
+      # To retry publication, re-run the successful CI workflow so this job
+      # receives a fresh workflow_run event tied to the same checked artifact.
+      - name: Verify the exact downloaded artifact
+        run: node scripts/check-production-artifact.mjs production-artifact/dist production-artifact/artifact-manifest.json ${{ github.event.workflow_run.head_sha }}
 
       - name: Publish the verified artifact
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --commit-dirty=true
+          command: pages deploy production-artifact/dist --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --commit-dirty=true

@@ -1,12 +1,11 @@
-import { createHash } from 'node:crypto';
-import { readdir, readFile, rm } from 'node:fs/promises';
+import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
-import { join, relative, resolve, sep } from 'node:path';
+import { join, relative, resolve } from 'node:path';
+import { createProductionReceipt } from './production-artifact.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const dist = resolve(root, 'dist');
-// Outside test-results/ so Playwright runs cannot wipe the receipt.
-const receiptDir = resolve(root, 'artifacts', 'readiness', 'R01');
+const receiptPath = resolve(root, 'artifact-manifest.json');
 
 async function listFiles(dir) {
   const entries = await readdir(dir, { withFileTypes: true, recursive: true });
@@ -87,22 +86,15 @@ const resolveSha = async (refPath) => {
 };
 const commit = headRef ? await resolveSha(headRef) : commitSha;
 
-const hashes = {};
-for (const file of allFiles) {
-  if (file.startsWith(join(dist, '.vite'))) continue;
-  const bytes = await readFile(file);
-  hashes[relative(dist, file).split(sep).join('/')] = createHash('sha256').update(bytes).digest('hex');
-}
-
-const { mkdir, writeFile } = await import('node:fs/promises');
-await mkdir(receiptDir, { recursive: true });
-await writeFile(
-  join(receiptDir, 'artifact-manifest.json'),
-  JSON.stringify({ commit, initialJsFiles: [...initialJsFiles].sort(), initialJsGzip, initialCssGzip, fileHashes: hashes }, null, 2)
-);
-
-// Keep the published directory free of build-only metadata.
+// Keep the published directory free of build-only metadata before hashing it.
 await rm(join(dist, '.vite'), { recursive: true, force: true });
+
+const receipt = await createProductionReceipt(dist, commit, {
+  initialJsFiles: [...initialJsFiles].sort(),
+  initialJsGzip,
+  initialCssGzip
+});
+await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
 
 console.log(JSON.stringify({
   initialJsChunks: [...initialJsFiles].sort(),
@@ -111,6 +103,6 @@ console.log(JSON.stringify({
   initialCssGzipBytes: initialCssGzip,
   manifestResolvedFrom: 'dist/.vite/manifest.json via index.html entry',
   commit,
-  receipt: relative(root, join(receiptDir, 'artifact-manifest.json')),
-  fileCount: Object.keys(hashes).length
+  receipt: relative(root, receiptPath),
+  fileCount: Object.keys(receipt.fileHashes).length
 }, null, 2));

@@ -26,6 +26,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: production-dist
-          path: dist
+          path: |
+            dist
+            artifact-manifest.json
           if-no-files-found: error
           retention-days: 7
