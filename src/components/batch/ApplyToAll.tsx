@@ -4,6 +4,7 @@ import { useSessionStore } from '../../stores/session';
 import { createBatchSigning } from '../../stores/session';
 import type { BatchSigning, BatchAttemptProgress } from '../../lib/batchSigning';
 import { STRINGS } from '../../lib/strings';
+import { EXPORT_POLICY_DISCLOSURE } from '../../lib/productPolicy';
 import type { ApplyToAllPreview } from '../../stores/session';
 
 type ApplyToAllProps = {
@@ -189,6 +190,7 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-body font-medium text-ink">{STRINGS.batch.downloadTitle}</p>
+              <p className="mt-1 text-caption text-quiet">{EXPORT_POLICY_DISCLOSURE}</p>
               <p className="mt-1 text-caption text-quiet">
                 {batchProgress
                   ? STRINGS.batch.signingProgress(batchProgress.done, batchProgress.total)

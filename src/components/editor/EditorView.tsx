@@ -4,6 +4,7 @@ import { BatchPanel } from '../batch/BatchPanel';
 import { ApplyToAll } from '../batch/ApplyToAll';
 import { useSessionStore } from '../../stores/session';
 import { STRINGS } from '../../lib/strings';
+import { EXPORT_POLICY_DISCLOSURE, VISUAL_SIGNATURE_DISCLOSURE } from '../../lib/productPolicy';
 import { loadDocument, type LoadedPdf } from '../../pdf/render';
 import { PageCanvas } from './PageCanvas';
 import { PageThumbnails } from './PageThumbnails';
@@ -418,6 +419,10 @@ export function EditorView({ onToast }: EditorViewProps) {
         </aside>
 
         <main className="surface-card flex min-h-0 min-w-0 flex-col shadow-panel">
+          <div className="border-b border-line px-6 py-3 text-caption text-quiet">
+            <p>{VISUAL_SIGNATURE_DISCLOSURE}</p>
+            <p className="mt-1">{EXPORT_POLICY_DISCLOSURE}</p>
+          </div>
           {/* Document identity leads and truncates; the control cluster never shrinks
               and wraps to its own line rather than spilling past the card edge. */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-line px-6 py-4">

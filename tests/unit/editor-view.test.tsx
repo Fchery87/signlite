@@ -98,6 +98,13 @@ function resetStore() {
 }
 
 describe('editor view', () => {
+  it('explains the visual signature and restricted export policy before download', () => {
+    resetStore();
+    render(<EditorView onToast={vi.fn()} />);
+    expect(screen.getByText(/Visual signatures, not certificate-backed digital signatures/)).toBeInTheDocument();
+    expect(screen.getByText(/not comprehensive PDF sanitization/)).toBeInTheDocument();
+  });
+
   beforeEach(() => {
     intersectionObservers.length = 0;
     vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);

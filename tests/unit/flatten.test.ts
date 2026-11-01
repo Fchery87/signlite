@@ -1,5 +1,5 @@
 import { inflateSync } from 'node:zlib';
-import { degrees, PDFDocument } from 'pdf-lib';
+import { degrees, PDFDocument, PDFName, PDFString } from 'pdf-lib';
 
 // The export path lazily loads a ~760 KB bundled font plus its shaper, about
 // three seconds of one-time setup in jsdom on top of each test's PDF work. The
@@ -45,6 +45,21 @@ function inflateContentStreams(output: Uint8Array) {
 }
 
 describe('flattenDocument', () => {
+  it('removes source JavaScript actions when drawing a signature without changing source bytes', async () => {
+    const document = await makeDocument([
+      { id: 'signature', type: 'signature', pageIndex: 0, x: 0.1, y: 0.1, w: 0.3, h: 0.2, assetPngBytes: PNG_BYTES }
+    ]);
+    const source = await PDFDocument.load(document.pdfBytes);
+    source.catalog.set(PDFName.of('OpenAction'), source.context.obj({ S: 'JavaScript', JS: PDFString.of('app.alert("fixture")') }));
+    const bytes = await source.save();
+    document.pdfBytes = bytes.slice().buffer;
+    const original = document.pdfBytes.slice(0);
+    const output = await PDFDocument.load(await flattenDocument(document));
+    expect(output.catalog.has(PDFName.of('OpenAction'))).toBe(false);
+    expect(output.getPage(0).node.Resources()?.has(PDFName.of('XObject'))).toBe(true);
+    expect(document.pdfBytes).toEqual(original);
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-06T12:00:00Z'));

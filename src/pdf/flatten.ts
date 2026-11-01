@@ -6,6 +6,7 @@ import { STRINGS } from '../lib/strings';
 import { collectAssetIds, type FlattenAssetMap } from './assets';
 import { normalizedToPdf, pdfPointFromViewer, viewerRectToPdf } from './coords';
 import { findUnsupportedCharacters, getEmbeddedFontBytes, layoutText, TEXT_PADDING } from './textLayout';
+import { applyExportPolicy, PdfExportPolicyError } from './exportPolicy';
 
 export { collectAssetIds };
 
@@ -84,6 +85,7 @@ export async function assertTextExportable(document: SessionDocument, options: F
 export async function flattenDocument(document: SessionDocument, options: FlattenOptions = {}): Promise<Uint8Array> {
   try {
     const [pdf, fontBytes] = await Promise.all([PDFDocument.load(document.pdfBytes.slice(0)), getEmbeddedFontBytes()]);
+    applyExportPolicy(pdf);
     pdf.registerFontkit((await import('@pdf-lib/fontkit')).default);
     // Subsetted: the font carries Greek and Cyrillic that most exports never
     // draw, and the full face would add ~480 KB to every output document.
@@ -196,7 +198,8 @@ export async function flattenDocument(document: SessionDocument, options: Flatte
     }
 
     return pdf.save({ useObjectStreams: false });
-  } catch {
+  } catch (error) {
+    if (error instanceof PdfExportPolicyError) throw error;
     throw new Error(STRINGS.editor.writeFailed(document.fileName));
   }
 }

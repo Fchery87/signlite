@@ -32,6 +32,13 @@ function reset(documents: SessionDocument[]) {
 describe('apply-to-all confirmation', () => {
   beforeEach(() => reset([]));
 
+  it('discloses restricted export and existing-signature limits beside batch download', () => {
+    reset([{ ...doc('template', 'placed'), placements: [placement] }, doc('other')]);
+    render(<ApplyToAll onToast={vi.fn()} />);
+    expect(screen.getByText(/not comprehensive PDF sanitization/)).toBeInTheDocument();
+    expect(screen.getByText(/can invalidate existing digital signatures/)).toBeInTheDocument();
+  });
+
   it('previews Signed replacement, cancels without mutation, then confirms a fresh copy', () => {
     reset([
       { ...doc('template', 'placed'), placements: [placement] },
