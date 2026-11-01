@@ -18,7 +18,7 @@ const standardFontTable = new Map(PDF_STANDARD_FONTS.map((asset) => [asset.name,
  *  would drag the table into every page load. */
 export class BundledCMapReaderFactory {
   async fetch({ name }: { name: string }) {
-    const asset = cmapTable.get(name);
+    const asset = cmapTable.get(name.endsWith('.bcmap') ? name : `${name}.bcmap`);
     if (!asset) throw new Error(`CMap ${name} is not bundled`);
     return { cMapData: decodeAsset(asset), isCompressed: true };
   }
@@ -28,6 +28,6 @@ export class BundledStandardFontDataFactory {
   async fetch({ filename }: { filename: string }) {
     const asset = standardFontTable.get(filename);
     if (!asset) throw new Error(`Standard font ${filename} is not bundled`);
-    return { data: decodeAsset(asset) };
+    return decodeAsset(asset);
   }
 }
