@@ -16,10 +16,11 @@ test('renders a valid CMap PDF with glyph output and no font diagnostics', async
   const warnings = await loadPdf(page, createCMapPdf(), 'cmap.pdf');
   await expect(page.locator('canvas').first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'cmap.pdf' })).toBeVisible();
-  const paintedPixels = await page.locator('canvas').first().evaluate((canvas) => {
-    const context = canvas.getContext('2d');
+  const paintedPixels = await page.locator('canvas').first().evaluate((element) => {
+    if (!(element instanceof HTMLCanvasElement)) return 0;
+    const context = element.getContext('2d');
     if (!context) return 0;
-    return Array.from(context.getImageData(0, 0, canvas.width, canvas.height).data).filter((value) => value !== 0).length;
+    return Array.from(context.getImageData(0, 0, element.width, element.height).data).filter((value) => value !== 0).length;
   });
   expect(paintedPixels).toBeGreaterThan(0);
   expect(warnings.filter((warning) => /font|cmap|standardfont/i.test(warning))).toEqual([]);
