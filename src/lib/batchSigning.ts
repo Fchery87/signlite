@@ -186,7 +186,7 @@ export class BatchSigning {
    * the cohort, delivers the artifact, confirms Signed state, and releases
    * the lease on every terminal path.
    */
-  async attempt(): Promise<BatchAttemptResult> {
+  async attempt(docIds?: readonly string[]): Promise<BatchAttemptResult> {
     if (this.active) {
       throw new Error('A batch attempt is already in progress.');
     }
@@ -206,7 +206,7 @@ export class BatchSigning {
     }
 
     try {
-      return await this.runAttempt(lease);
+      return await this.runAttempt(lease, docIds);
     } finally {
       this.ports.releaseLease(lease);
       this.active = false;
@@ -215,9 +215,12 @@ export class BatchSigning {
     }
   }
 
-  private async runAttempt(lease: BatchLeaseCapability): Promise<BatchAttemptResult> {
+  private async runAttempt(lease: BatchLeaseCapability, docIds?: readonly string[]): Promise<BatchAttemptResult> {
     // ── 2. Derive the full cohort from current Work Session state ──
-    const documents = this.ports.getDocuments();
+    const selected = docIds ? new Set(docIds) : null;
+    const documents = selected
+      ? this.ports.getDocuments().filter((document) => selected.has(document.docId))
+      : this.ports.getDocuments();
     const snapshots = this.ports.getSnapshots();
     const cohort = deriveCohort(documents, snapshots);
 

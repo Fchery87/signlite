@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Modal } from '../ui';
 import { useSessionStore } from '../../stores/session';
-import { createBatchSigning } from '../../stores/session';
-import type { BatchSigning, BatchAttemptProgress } from '../../lib/batchSigning';
 import { STRINGS } from '../../lib/strings';
 import { EXPORT_POLICY_DISCLOSURE } from '../../lib/productPolicy';
 import type { ApplyToAllPreview } from '../../stores/session';
+import { useBatchDownload } from './useBatchDownload';
 
 type ApplyToAllProps = {
   onToast: (message: string) => void;
@@ -20,10 +19,13 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [applyPreview, setApplyPreview] = useState<ApplyToAllPreview | null>(null);
   const [downloadAfterApply, setDownloadAfterApply] = useState(false);
-  const [isBatchDownloading, setIsBatchDownloading] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<BatchAttemptProgress | null>(null);
-  const [batchDelivering, setBatchDelivering] = useState(false);
-  const batchRef = useRef<BatchSigning | null>(null);
+  const {
+    progress: batchProgress,
+    isRunning: isBatchDownloading,
+    isDelivering: batchDelivering,
+    start: startBatchDownload,
+    cancel: handleCancel
+  } = useBatchDownload(onToast);
 
   const sourceDocumentId = documents.some((document) => document.docId === selectedDocumentId)
     ? selectedDocumentId!
@@ -44,6 +46,7 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
 
   useEffect(() => {
     const handleShortcut = () => {
+      if (mutationLocked || isBatchDownloading || downloadableDocuments.length === 0) return;
       void startBatchDownload();
     };
     window.addEventListener('signlite:batch-download', handleShortcut as EventListener);
@@ -114,50 +117,6 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
     }
     reportApply(result);
     if (shouldDownload) void startBatchDownload();
-  };
-
-  const startBatchDownload = async () => {
-    if (mutationLocked || isBatchDownloading) return;
-    if (downloadableDocuments.length === 0) return;
-
-    setIsBatchDownloading(true);
-    setBatchProgress({ status: 'preparing', done: 0, total: downloadableDocuments.length, failures: {} });
-    setBatchDelivering(false);
-
-    const batch = createBatchSigning(
-      (done, total) => setBatchProgress((prev) => prev ? { ...prev, done, total } : prev),
-      (status) => {
-        if (status === 'delivering') setBatchDelivering(true);
-      }
-    );
-    batchRef.current = batch;
-
-    try {
-      const result = await batch.attempt();
-
-      if (result.cancelled) {
-        onToast(STRINGS.batch.batchCancelled);
-      } else if (result.deliveryFailed) {
-        onToast(STRINGS.batch.batchDeliveryFailed);
-      } else if (result.noEligible) {
-        onToast(STRINGS.batch.batchNoEligible);
-      } else if (result.ok) {
-        onToast(STRINGS.batch.batchDone(result.successCount));
-      } else {
-        onToast(STRINGS.batch.batchFailed);
-      }
-    } catch {
-      onToast(STRINGS.batch.batchFailed);
-    } finally {
-      setIsBatchDownloading(false);
-      setBatchProgress(null);
-      setBatchDelivering(false);
-      batchRef.current = null;
-    }
-  };
-
-  const handleCancel = () => {
-    batchRef.current?.cancel();
   };
 
   if (documents.length < 2) {

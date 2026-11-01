@@ -197,6 +197,15 @@ describe('BatchSigning delivery and Signed transitions', () => {
     expect(p.confirmedDocIds).toEqual(['a', 'b']);
   });
 
+  it('processes and confirms only the requested document subset', async () => {
+    const p = makePorts({ documents: [makeDoc({ docId: 'a' }), makeDoc({ docId: 'b' }), makeDoc({ docId: 'c' })] });
+    const result = await new BatchSigning(p).attempt(['b', 'c']);
+    expect(result.ok).toBe(true);
+    expect(p.request?.docs.map((doc) => doc.docId)).toEqual(['b', 'c']);
+    expect(p.confirmedDocIds).toEqual(['b', 'c']);
+    expect(p.transitions.filter((transition) => transition.status === 'signing').map((transition) => transition.docId)).toEqual(['b', 'c']);
+  });
+
   it('only successful docs are confirmed Signed — per-doc failure excluded', async () => {
     const docs = [makeDoc({ docId: 'fail' }), makeDoc({ docId: 'ok' })];
     const p = makePorts({ documents: docs });
