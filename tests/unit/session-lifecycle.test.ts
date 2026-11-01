@@ -84,6 +84,18 @@ function harness(options: HarnessOptions = {}) {
 }
 
 describe('sessionLifecycle startupAndDiscover', () => {
+  it('resumes saving the same work after a refused clear', async () => {
+    const { lifecycle, commit, flush } = harness();
+    await lifecycle.startup();
+    const session = makeSession('refused-clear');
+    lifecycle.observeRevision(session, 1);
+    await lifecycle.prepareForLocalDataClear();
+    await lifecycle.resumeAfterLocalDataClear();
+    await flush();
+    expect(commit).toHaveBeenCalledWith(expect.objectContaining(session), { mode: 'create' });
+    lifecycle.dispose();
+  });
+
   beforeEach(() => {
     maintenanceMock.pruneExpiredSessions.mockReset().mockImplementation(async () => undefined);
     dbMocks.pruneOldSessions.mockReset().mockResolvedValue(undefined);

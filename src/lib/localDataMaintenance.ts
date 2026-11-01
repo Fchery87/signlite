@@ -62,24 +62,30 @@ export async function clearEligibleHistory(): Promise<MaintenanceResult> {
 }
 
 export async function clearAllLocalDataSafely(): Promise<MaintenanceResult> {
-  const candidates = await listSessionCandidates(Number.POSITIVE_INFINITY);
-  const releases: Array<() => Promise<void>> = [];
-  const outcome = await withExclusiveMaintenance(async () => {
-    for (const candidate of candidates) {
-      const ownership = await acquireSessionOwnership(candidate.id);
-      if (ownership.status === 'unavailable') return { status: 'blocked', reason: 'locks-unavailable' } as const;
-      if (ownership.status === 'contended') return { status: 'blocked', reason: 'another-tab-active' } as const;
-      releases.push(ownership.release);
-    }
-    return { status: 'completed', value: await clearLocalData('all') } as const;
-  });
   try {
+    const outcome = await withExclusiveMaintenance(async (): Promise<MaintenanceResult> => {
+      const releases: Array<() => Promise<void>> = [];
+      try {
+        const candidates = await listSessionCandidates(Number.POSITIVE_INFINITY);
+        // A bounded discovery cannot authorize wiping records outside its cohort.
+        if (candidates.length >= 256) return { status: 'blocked', reason: 'another-tab-active' };
+        for (const candidate of candidates) {
+          const ownership = await acquireSessionOwnership(candidate.id);
+          if (ownership.status === 'unavailable') return { status: 'blocked', reason: 'locks-unavailable' };
+          if (ownership.status === 'contended') return { status: 'blocked', reason: 'another-tab-active' };
+          releases.push(ownership.release);
+        }
+        await clearLocalData('all');
+        return { status: 'completed', deleted: candidates.length, retainedActive: 0, failed: 0 };
+      } finally {
+        for (const release of releases.reverse()) await release();
+      }
+    });
     if (outcome.status === 'unavailable') return { status: 'blocked', reason: 'locks-unavailable' };
     if (outcome.status === 'contended') return { status: 'blocked', reason: 'another-tab-active' };
-    if (outcome.value.status === 'blocked') return outcome.value;
-    return { status: 'completed', deleted: outcome.value.value.sessionsCleared ? 1 : 0, retainedActive: 0, failed: 0 };
-  } finally {
-    for (const release of releases.reverse()) await release();
+    return outcome.value;
+  } catch (cause) {
+    return { status: 'failed', deleted: 0, retainedActive: 0, failed: 1, cause };
   }
 }
 

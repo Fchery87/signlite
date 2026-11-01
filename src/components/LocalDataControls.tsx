@@ -15,11 +15,8 @@ type LocalDataControlsProps = {
   onToast: (message: string) => void;
 };
 
-/** Two separate local-data actions. Clearing history removes Work Sessions.
- *  Clearing all local data also removes the signature library and preferences.
- *  Both refuse to run while another tab owns the session or a batch holds the
- *  mutation lease. The current editor already holds its session lock, so it
- *  clears directly. Asking for that lock again would wait on itself. */
+/** Drain this tab's writer before maintenance. A failed clear resumes the same
+ *  identity. A successful clear discards the old observation before reset. */
 export function LocalDataControls({ lifecycle, onToast }: LocalDataControlsProps) {
   const resetSession = useSessionStore((state: PublicSessionState) => state.resetSession);
   const mutationLocked = useSessionStore((state: PublicSessionState) => state.mutationLock !== null);
@@ -51,11 +48,13 @@ export function LocalDataControls({ lifecycle, onToast }: LocalDataControlsProps
     const kind = confirmKind;
     setBusy(true);
     try {
-      await erase(kind);
+      const result = await erase(kind);
+      lifecycle.completeLocalDataClear();
       resetSession();
-      await lifecycle.resumeAfterLocalDataClear();
       setConfirmKind(null);
-      onToast(kind === 'history' ? STRINGS.localData.clearedHistory : STRINGS.localData.clearedAll);
+      onToast(result.retainedActive > 0
+        ? `Cleared ${result.deleted} saved sessions. Kept ${result.retainedActive} active or changed sessions. Signatures and preferences kept.`
+        : kind === 'history' ? STRINGS.localData.clearedHistory : STRINGS.localData.clearedAll);
     } catch {
       await lifecycle.resumeAfterLocalDataClear();
       onToast('Local data could not be cleared. Your current work has not been reset.');
@@ -65,6 +64,7 @@ export function LocalDataControls({ lifecycle, onToast }: LocalDataControlsProps
   };
 
   const cancel = () => {
+    if (busy) return;
     setConfirmKind(null);
   };
 
@@ -86,6 +86,7 @@ export function LocalDataControls({ lifecycle, onToast }: LocalDataControlsProps
           <p className="text-caption text-quiet">{STRINGS.localData.retentionNote}</p>
           <Button
             variant="secondary"
+            disabled={busy}
             onClick={() => {
               void exportLibrary().then((blob: Blob) => {
                 const url = URL.createObjectURL(blob);
@@ -100,7 +101,7 @@ export function LocalDataControls({ lifecycle, onToast }: LocalDataControlsProps
             {STRINGS.localData.exportFirst}
           </Button>
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={cancel}>
+            <Button variant="secondary" disabled={busy} onClick={cancel}>
               {STRINGS.buttons.cancel}
             </Button>
             <Button variant="secondary" className="text-danger" disabled={busy} onClick={() => void runClear()} data-testid="confirm-clear">

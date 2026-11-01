@@ -61,6 +61,7 @@ export function useSessionLifecycle({ session, contentRevision, resetSession }: 
     resumeSucceeded: () => lifecycle.dismissCandidate(),
     prepareForLocalDataClear: () => lifecycle.prepareForLocalDataClear(),
     resumeAfterLocalDataClear: () => lifecycle.resumeAfterLocalDataClear(),
+    completeLocalDataClear: () => lifecycle.completeLocalDataClear(),
     startFresh: () => {
       if (state.candidate) lifecycle.startFresh(state.candidate.id, resetSession);
     }

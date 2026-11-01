@@ -257,22 +257,22 @@ export class ActiveSessionLifecycle {
   }
 
   async resumeAfterLocalDataClear() {
-    if (!this.originParticipationRelease) {
-      const participation = await acquireOriginParticipation();
-      if (participation.status === 'owned') this.originParticipationRelease = participation.release;
-    }
     this.suppressed = false;
     this.lastRevision = null;
-    // A successful clear creates a new session in the store. Do not reacquire
-    // the old identity or replay its last observation before React's identity
-    // effect settles.
+    if (this.authorityFor) await this.assumeSession(this.authorityFor);
+    this.processLatestRevision();
+  }
+
+  completeLocalDataClear() {
+    // Discard the old observation before resetSession can schedule new effects.
     this.authorityFor = null;
     this.baseRevisionFor = null;
     this.baseRevision = null;
     this.lastObserved = null;
+    this.lastRevision = null;
     this.ownershipAssumed = false;
-    this.update({ authority: 'optimistic', durableRevision: null });
-    this.processLatestRevision();
+    this.suppressed = true;
+    this.update({ authority: 'optimistic', durableRevision: null, candidate: null, status: 'saved' });
   }
 
   startFresh(_predecessorId: string, reset: () => void) {

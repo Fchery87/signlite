@@ -34,7 +34,7 @@ export async function acquireSessionOwnership(id: string): Promise<OwnershipResu
   return new Promise<OwnershipResult>((resolve) => {
     let releaseLock: (() => void) | null = null;
     const untilReleased = new Promise<void>((resolveRelease) => { releaseLock = resolveRelease; });
-    void locks.request(name, { ifAvailable: true }, (lock) => {
+    const request = locks.request(name, { ifAvailable: true }, (lock) => {
       if (!lock) {
         resolve({ status: 'contended' });
         return;
@@ -43,10 +43,12 @@ export async function acquireSessionOwnership(id: string): Promise<OwnershipResu
         status: 'owned',
         release: async () => {
           releaseLock?.();
+          await request;
         }
       });
       return untilReleased;
-    }).catch(() => {
+    });
+    void request.catch(() => {
       resolve({ status: 'unavailable' });
     });
   });
@@ -66,14 +68,15 @@ export async function acquireOriginParticipation(): Promise<OwnershipResult> {
   return new Promise<OwnershipResult>((resolve) => {
     let releaseLock: (() => void) | null = null;
     const untilReleased = new Promise<void>((release) => { releaseLock = release; });
-    void locks.request(ORIGIN_MAINTENANCE_LOCK_NAME, { ifAvailable: true, mode: 'shared' }, (lock) => {
+    const request = locks.request(ORIGIN_MAINTENANCE_LOCK_NAME, { ifAvailable: true, mode: 'shared' }, (lock) => {
       if (!lock) {
         resolve({ status: 'contended' });
         return;
       }
-      resolve({ status: 'owned', release: async () => { releaseLock?.(); } });
+      resolve({ status: 'owned', release: async () => { releaseLock?.(); await request; } });
       return untilReleased;
-    }).catch(() => resolve({ status: 'unavailable' }));
+    });
+    void request.catch(() => resolve({ status: 'unavailable' }));
   });
 }
 
