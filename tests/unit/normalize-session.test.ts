@@ -2,6 +2,7 @@ import { saveAsset } from '../../src/db/signatures';
 import { normalizeSession } from '../../src/lib/normalizeSession';
 import type { WorkSession, Placement, SessionDocument } from '../../src/db/schema';
 import { PDFDocument } from 'pdf-lib';
+import { loadDocument } from '../../src/pdf/render';
 
 // Minimal valid PNG (1x1 transparent) with correct IHDR dimensions.
 const PNG_1x1 = new Uint8Array([
@@ -74,6 +75,12 @@ function legacySig(id: string, opts: { assetId?: string; assetPngBytes?: ArrayBu
 }
 
 describe('normalizeSession', () => {
+  beforeAll(async () => {
+    // Legacy normalization opens real PDFs. Load the large resident PDF data
+    // once outside the first behavior assertion, with an explicit cold budget.
+    const pdf = await loadDocument(REAL_PDF_BYTES.slice(0));
+    await pdf.destroy();
+  }, 60000);
   // AC1: Legacy Placement with valid embedded image interned into snapshot pool
   it('interns a legacy placement with embedded bytes into the snapshot pool', async () => {
     const session = makeSession([makeDoc('doc-1', [legacySig('sig-1', { assetPngBytes: PNG_1x1.slice(0) })])]);
