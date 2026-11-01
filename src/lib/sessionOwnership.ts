@@ -58,22 +58,17 @@ export async function withSessionLock<T>(id: string, operation: () => Promise<T>
   const locks = lockManager();
   if (!locks) return { status: 'unavailable' };
   const name = sessionLockName(id);
+  let entered = false;
+  let outcome: LockOutcome<T> = { status: 'contended' };
   try {
-    return await new Promise<LockOutcome<T>>((resolve) => {
-      void locks.request(name, { ifAvailable: true }, (lock) => {
-        if (!lock) {
-          resolve({ status: 'contended' });
-          return;
-        }
-        return operation().then(
-          (value) => resolve({ status: 'acquired', value }),
-          () => resolve({ status: 'acquired', value: undefined as T })
-        );
-      }).catch(() => {
-        resolve({ status: 'unavailable' });
-      });
+    await locks.request(name, { ifAvailable: true }, async (lock) => {
+      if (!lock) return;
+      entered = true;
+      outcome = { status: 'acquired', value: await operation() };
     });
-  } catch {
+    return outcome;
+  } catch (error) {
+    if (entered) throw error;
     return { status: 'unavailable' };
   }
 }

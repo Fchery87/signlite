@@ -83,6 +83,12 @@ describe('session ownership', () => {
     await settle();
   });
 
+  it('propagates asynchronous operation failures without fabricated success', async () => {
+    stubLocks(fakeLockManager());
+    const error = new Error('operation failed');
+    await expect(withSessionLock('failure', async () => { throw error; })).rejects.toBe(error);
+  });
+
   it('treats a throwing lock request as unavailable', async () => {
     stubLocks({
       request: () => Promise.reject(new DOMException('denied', 'SecurityError'))

@@ -67,6 +67,8 @@ export function LocalDataControls({ lifecycle, onToast }: LocalDataControlsProps
       resetSession();
       setConfirmKind(null);
       onToast(kind === 'history' ? STRINGS.localData.clearedHistory : STRINGS.localData.clearedAll);
+    } catch {
+      onToast('Local data could not be cleared. Your current work has not been reset.');
     } finally {
       setBusy(false);
     }
