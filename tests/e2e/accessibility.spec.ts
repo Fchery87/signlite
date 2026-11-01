@@ -57,5 +57,6 @@ test('the document queue does not overflow a narrow viewport', async ({ page }) 
 
   await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible({ timeout: 60000 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+  expect(await page.locator('table').evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
   await expect(page.getByRole('button', { name: 'Add PDFs' })).toBeVisible();
 });

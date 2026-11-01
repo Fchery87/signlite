@@ -568,6 +568,7 @@ export type ApplyToAllResult = CompleteStateResult & {
 export type ApplySavedSignatureRequest = {
   asset: SignatureAssetInput;
   docIds: string[];
+  options?: ApplySavedSignatureOptions;
 };
 
 export type ApplySavedSignatureSkipReason = 'missing-document' | 'existing-signature' | 'needs-review' | 'missing-page';
@@ -577,13 +578,73 @@ export type ApplySavedSignatureSkip = {
   reason: ApplySavedSignatureSkipReason;
 };
 
+export type ApplySavedSignatureOptions = {
+  replaceExisting?: boolean;
+  includeNeedsReview?: boolean;
+};
+
+export type ApplySavedSignatureTarget = {
+  docId: string;
+  fileName: string;
+  replacesExisting: boolean;
+  endsSignedState: boolean;
+  needsReview: boolean;
+};
+
+export type ApplySavedSignaturePreview = {
+  targets: ApplySavedSignatureTarget[];
+  skipped: ApplySavedSignatureSkip[];
+};
+
 export type ApplySavedSignatureResult = CompleteStateResult & {
   appliedDocIds?: string[];
   skipped?: ApplySavedSignatureSkip[];
 };
 
-/** Places one saved signature on page one of every selected document that has
- *  no signature yet, sharing one content-addressed snapshot across the batch. */
+export function previewSavedSignatureApply(
+  documents: readonly SessionDocument[],
+  docIds: readonly string[],
+  kind: SignatureAssetInput['kind'],
+  options: ApplySavedSignatureOptions = {}
+): ApplySavedSignaturePreview {
+  const targets: ApplySavedSignatureTarget[] = [];
+  const skipped: ApplySavedSignatureSkip[] = [];
+
+  for (const docId of Array.from(new Set(docIds))) {
+    const document = documents.find((candidate) => candidate.docId === docId);
+    if (!document) {
+      skipped.push({ docId, reason: 'missing-document' });
+      continue;
+    }
+    const needsReviewDocument = document.status === 'needs-review' || Boolean(document.needsReviewReason);
+    if (needsReviewDocument && !options.includeNeedsReview) {
+      skipped.push({ docId, reason: 'needs-review' });
+      continue;
+    }
+    const hasSameKind = document.placements.some((placement) => placement.type === kind);
+    if (hasSameKind && !options.replaceExisting) {
+      skipped.push({ docId, reason: 'existing-signature' });
+      continue;
+    }
+    if (!document.pageSizes[0]) {
+      skipped.push({ docId, reason: 'missing-page' });
+      continue;
+    }
+    targets.push({
+      docId,
+      fileName: document.fileName,
+      replacesExisting: hasSameKind,
+      endsSignedState: document.status === 'signed',
+      needsReview: needsReviewDocument
+    });
+  }
+
+  return { targets, skipped };
+}
+
+/** Places one saved signature on page one of every selected document, sharing
+ *  one content-addressed snapshot across the batch. Confirmed options may
+ *  replace same-kind placements and include documents marked for review. */
 export async function applySignatureToDocuments(
   session: WorkSession,
   history: History,
@@ -595,44 +656,23 @@ export async function applySignatureToDocuments(
       : null);
   if (assetError) return { ok: false, error: assetError };
 
-  const uniqueDocIds = Array.from(new Set(request.docIds));
-  if (uniqueDocIds.length === 0) {
+  if (request.docIds.length === 0) {
     return { ok: false, error: { reason: 'nothing-to-apply', message: 'Select at least one document' } };
   }
 
-  const skipped: ApplySavedSignatureSkip[] = [];
-  const targets: SessionDocument[] = [];
-  for (const docId of uniqueDocIds) {
-    const document = session.documents.find((candidate) => candidate.docId === docId);
-    if (!document) {
-      skipped.push({ docId, reason: 'missing-document' });
-      continue;
-    }
-    if (document.status === 'needs-review' || document.needsReviewReason) {
-      skipped.push({ docId, reason: 'needs-review' });
-      continue;
-    }
-    if (document.placements.some((placement) => placement.type === 'signature' || placement.type === 'initials')) {
-      skipped.push({ docId, reason: 'existing-signature' });
-      continue;
-    }
-    if (!document.pageSizes[0]) {
-      skipped.push({ docId, reason: 'missing-page' });
-      continue;
-    }
-    targets.push(document);
-  }
+  const preview = previewSavedSignatureApply(session.documents, request.docIds, request.asset.kind, request.options);
 
-  if (targets.length === 0) {
+  if (preview.targets.length === 0) {
     return { ok: false, error: { reason: 'nothing-to-apply', message: 'No selected document can take a signature' } };
   }
 
   const snapshot = await createSignatureSnapshot(request.asset);
   const width = 0.24;
-  const targetIds = new Set(targets.map((document) => document.docId));
+  const targets = new Map(preview.targets.map((target) => [target.docId, target]));
   const appliedDocIds: string[] = [];
   const documents = session.documents.map((document) => {
-    if (!targetIds.has(document.docId)) return document;
+    const target = targets.get(document.docId);
+    if (!target) return document;
     const page = document.pageSizes[0];
     const height = Math.max(0.04, Math.min(width * (request.asset.height / request.asset.width) * (page.w / Math.max(page.h, 1)), 0.3));
     const x = Math.max(0.02, Math.min(0.1, 1 - width - 0.02));
@@ -650,8 +690,11 @@ export async function applySignatureToDocuments(
     appliedDocIds.push(document.docId);
     return {
       ...document,
-      placements: [...document.placements, placement],
-      status: 'placed' as const,
+      placements: [
+        ...document.placements.filter((current) => !(target.replacesExisting && current.type === request.asset.kind)),
+        placement
+      ],
+      status: target.needsReview ? 'needs-review' as const : 'placed' as const,
       batchError: undefined
     };
   });
@@ -670,7 +713,7 @@ export async function applySignatureToDocuments(
     null,
     null
   );
-  return { ...complete, appliedDocIds, skipped };
+  return { ...complete, appliedDocIds, skipped: preview.skipped };
 }
 
 function templateMismatchReason(

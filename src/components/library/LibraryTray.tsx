@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SignatureAsset } from '../../db/schema';
-import { deleteAsset, listAssets, saveAsset, touchAsset, updateAsset } from '../../db/signatures';
+import { deleteAsset, listAssets, touchAsset, updateAsset } from '../../db/signatures';
 import { STRINGS } from '../../lib/strings';
 import { Button, Modal } from '../ui';
 import { DrawPad } from './DrawPad';
 import { TypePad } from './TypePad';
 import { ImportExport } from './ImportExport';
-import { bufferToObjectUrl, canvasToPngBytes, imageFileToCanvas } from './canvas';
+import { bufferToObjectUrl } from './canvas';
+import { uploadSignatureFile } from './uploadSignatureFile';
 import { ASSET_DRAG_TYPE } from '../editor/PlacementLayer';
-import { UPLOAD_MAX_FILE_BYTES } from '../../lib/imagePolicy';
 
 type LibraryTrayProps = {
   onToast: (message: string) => void;
@@ -50,35 +50,11 @@ export function LibraryTray({ onToast, onAddDate, onAddText, onStampDate, onStam
 
   const handleUpload = async (file: File | null) => {
     if (!file) return;
-
-    if (!['image/png', 'image/jpeg'].includes(file.type) || file.size > UPLOAD_MAX_FILE_BYTES) {
-      onToast(STRINGS.errors[file.size > UPLOAD_MAX_FILE_BYTES ? 'upload-too-large' : 'upload-invalid']);
-      return;
-    }
-
-    try {
-      const canvas = await imageFileToCanvas(file);
-      await saveAsset({
-        kind: 'signature',
-        source: 'uploaded',
-        pngBytes: await canvasToPngBytes(canvas),
-        width: canvas.width,
-        height: canvas.height,
-        label: file.name.replace(/\.[^.]+$/, '') || 'Uploaded signature'
-      });
-      await refreshAssets();
-      onToast(STRINGS.library.imageSaved);
-    } catch (error) {
-      if (error instanceof Error && error.message === STRINGS.errors.quota) {
-        await refreshAssets();
-        onToast(error.message);
-      } else {
-        onToast(error instanceof Error ? error.message : STRINGS.library.uploadFailed);
-      }
-    } finally {
-      if (inputRef.current) {
-        inputRef.current.value = '';
-      }
+    const result = await uploadSignatureFile(file);
+    await refreshAssets();
+    onToast(result.ok ? STRINGS.library.imageSaved : result.message);
+    if (inputRef.current) {
+      inputRef.current.value = '';
     }
   };
 

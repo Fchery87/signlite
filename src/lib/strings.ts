@@ -224,10 +224,14 @@ export const STRINGS = {
     signingProgress: (done: number, total: number) => total > 0 ? `Signing ${done} of ${total}…` : 'Signing…',
     cancel: 'Cancel',
     applyTitle: (count: number) => `Apply signature to ${count} document${count === 1 ? '' : 's'}`,
-    applyBody: (eligible: number, skipped: number) =>
-      `The saved signature is placed on page 1 of ${eligible} document${eligible === 1 ? '' : 's'}.${
-        skipped > 0 ? ` ${skipped} selected document${skipped === 1 ? ' is' : 's are'} skipped because they already have a signature or need review.` : ''
-      }`,
+    applyBody: (eligible: number, replaced: number, review: number, signedEnd: number, skipped: number) => {
+      const parts = [`The saved signature is placed on page 1 of ${eligible} document${eligible === 1 ? '' : 's'}.`];
+      if (replaced > 0) parts.push(`Existing signatures or initials are replaced on ${replaced} document${replaced === 1 ? '' : 's'}.`);
+      if (review > 0) parts.push(`${review} document${review === 1 ? ' keeps' : 's keep'} Needs review after placement.`);
+      if (signedEnd > 0) parts.push(`Signed state ends on ${signedEnd} document${signedEnd === 1 ? '' : 's'}.`);
+      if (skipped > 0) parts.push(`${skipped} selected document${skipped === 1 ? ' is' : 's are'} skipped.`);
+      return parts.join(' ');
+    },
     applyConfirm: (count: number) => `Apply to ${count} document${count === 1 ? '' : 's'}`,
     applied: (count: number) => `Signature added to ${count} document${count === 1 ? '' : 's'}.`,
     appliedSkipped: (applied: number, skipped: number) => `Signature added to ${applied}. ${skipped} skipped.`,
@@ -241,6 +245,7 @@ export const STRINGS = {
     chooseSignature: 'Choose a signature',
     draw: 'Draw',
     type: 'Type',
+    upload: 'Upload',
     localOnly: 'Local only',
     localNote: 'Files stay on this device.'
   },

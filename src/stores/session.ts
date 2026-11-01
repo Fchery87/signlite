@@ -10,6 +10,7 @@ import {
   stampPlacementOnEveryPage as editorStampPlacementOnEveryPage,
   addSignaturePlacement as editorAddSignaturePlacement,
   applySignatureToDocuments as editorApplySignatureToDocuments,
+  previewSavedSignatureApply as editorPreviewSavedSignatureApply,
   addTextPlacement as editorAddTextPlacement,
   updatePlacement as editorUpdatePlacement,
   removePlacement as editorRemovePlacement,
@@ -27,6 +28,8 @@ import {
   type PlacementChanges,
   type WorkSessionEditorState,
   type ApplyToAllPreview,
+  type ApplySavedSignatureOptions,
+  type ApplySavedSignaturePreview,
   type ApplySavedSignatureSkip,
   type MutationLease
 } from '../lib/workSessionEditor';
@@ -100,7 +103,8 @@ type SessionState = {
   releaseMutationLease: (capability: MutationLease) => boolean;
   previewApplyTemplatePlacements: (sourceDocId: string) => ApplyToAllPreview | null;
   applyTemplatePlacements: (sourceDocId: string, preview: ApplyToAllPreview) => ApplyTemplatePlacementsResult;
-  applySignatureToDocuments: (asset: SignatureAsset, docIds: string[]) => Promise<ApplySavedSignatureOutcome>;
+  applySignatureToDocuments: (asset: SignatureAsset, docIds: string[], options?: ApplySavedSignatureOptions) => Promise<ApplySavedSignatureOutcome>;
+  previewSavedSignatureApply: (docIds: string[], kind: SignatureAsset['kind'], options?: ApplySavedSignatureOptions) => ApplySavedSignaturePreview;
   stampPlacementOnEveryPage: (docId: string, placementId: string) => { ok: boolean; added: number };
   setSelection: (docId: string | null, placementId: string | null) => void;
   openDocument: (docId: string, armedSignature?: SignatureAsset | null) => void;
@@ -232,7 +236,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
-  applySignatureToDocuments: async (asset, docIds) => {
+  applySignatureToDocuments: async (asset, docIds, options) => {
     const rejected: ApplySavedSignatureOutcome = { ok: false, appliedDocIds: [], skipped: [], error: 'rejected' };
     if (get().mutationLease) return rejected;
     const ownershipRevision = get().ownershipRevision;
@@ -241,7 +245,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
     while (true) {
       const state = get();
       if (state.ownershipRevision !== ownershipRevision || state.mutationLease) return rejected;
-      const result = await editorApplySignatureToDocuments(state.session, state.history, { asset, docIds });
+      const result = await editorApplySignatureToDocuments(state.session, state.history, { asset, docIds, options });
       if (!result.ok) {
         return {
           ok: false,
@@ -267,6 +271,9 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
       };
     }
   },
+
+  previewSavedSignatureApply: (docIds, kind, options) =>
+    editorPreviewSavedSignatureApply(get().session.documents, docIds, kind, options),
 
   updatePlacement: (docId, placementId, next, coalesceKey, historyMode) => {
     if (get().mutationLease) return;

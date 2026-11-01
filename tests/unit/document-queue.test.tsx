@@ -94,4 +94,60 @@ describe('DocumentQueue', () => {
     expect(screen.getByText('doc-review.pdf')).toBeInTheDocument();
     expect(screen.queryByText('doc-1.pdf')).not.toBeInTheDocument();
   });
+
+  it('moves a document with Alt plus Arrow Down', async () => {
+    render(<DocumentQueue onToast={vi.fn()} />);
+    await screen.findByText('doc-1.pdf');
+    fireEvent.keyDown(screen.getByRole('button', { name: /Reorder doc-1\.pdf/ }), { key: 'ArrowDown', altKey: true });
+    expect(sessionStoreTestHarness.getState().session.documents.map((document) => document.docId).slice(0, 3)).toEqual(['doc-2', 'doc-1', 'doc-3']);
+  });
+
+  it('replaces existing signatures and keeps review state after confirmation', async () => {
+    reset([
+      {
+        ...makeDocument('doc-existing', 'signed'),
+        placements: [{
+          id: 'old-signature',
+          type: 'signature',
+          snapshotId: 'old-snapshot',
+          pageIndex: 0,
+          x: 0.1,
+          y: 0.1,
+          w: 0.2,
+          h: 0.1
+        }]
+      },
+      makeDocument('doc-review', 'needs-review', 'Review this document.')
+    ]);
+    await saveAsset({
+      kind: 'signature',
+      source: 'typed',
+      pngBytes: new Uint8Array([4, 5, 6]).buffer,
+      width: 200,
+      height: 80,
+      label: 'Replacement signature'
+    });
+    render(<DocumentQueue onToast={vi.fn()} />);
+    await screen.findByAltText('Replacement signature');
+
+    const checks = screen.getAllByRole('checkbox');
+    fireEvent.click(checks[1]);
+    fireEvent.click(checks[2]);
+    fireEvent.click(screen.getByRole('button', { name: 'Apply signature' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Apply signature to 2 documents' });
+    expect(dialog).toHaveTextContent('Existing signatures or initials are replaced on 1 document.');
+    expect(dialog).toHaveTextContent('1 document keeps Needs review after placement.');
+    expect(dialog).toHaveTextContent('Signed state ends on 1 document.');
+    fireEvent.click(screen.getByRole('button', { name: 'Apply to 2 documents' }));
+
+    await waitFor(() => {
+      const documents = sessionStoreTestHarness.getState().session.documents;
+      expect(documents[0]?.placements).toHaveLength(1);
+      expect(documents[0]?.placements[0]?.id).not.toBe('old-signature');
+      expect(documents[0]?.status).toBe('placed');
+      expect(documents[1]?.placements).toHaveLength(1);
+      expect(documents[1]?.status).toBe('needs-review');
+      expect(documents[1]?.needsReviewReason).toBe('Review this document.');
+    });
+  });
 });

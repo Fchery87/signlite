@@ -2,6 +2,7 @@ import {
   addDocuments,
   addSignaturePlacement,
   applySignatureToDocuments,
+  previewSavedSignatureApply,
   addTextPlacement,
   copyPlacement,
   duplicatePlacement,
@@ -117,7 +118,7 @@ describe('WorkSessionEditor.applySignatureToDocuments', () => {
       ...makeDoc('doc-existing'),
       placements: [{
         id: 'existing',
-        type: 'initials',
+        type: 'signature',
         snapshotId: 'snapshot-existing',
         pageIndex: 0,
         x: 0.1,
@@ -134,6 +135,76 @@ describe('WorkSessionEditor.applySignatureToDocuments', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.reason).toBe('nothing-to-apply');
+  });
+
+  it('replaces same-kind placements and includes review documents when confirmed', async () => {
+    const existing: SessionDocument = {
+      ...makeDoc('doc-existing'),
+      placements: [{
+        id: 'old-signature',
+        type: 'signature',
+        snapshotId: 'snapshot-old',
+        pageIndex: 0,
+        x: 0.1,
+        y: 0.1,
+        w: 0.2,
+        h: 0.1
+      }],
+      status: 'signed'
+    };
+    const initialsOnly: SessionDocument = {
+      ...makeDoc('doc-initials'),
+      placements: [{
+        id: 'initials',
+        type: 'initials',
+        snapshotId: 'snapshot-initials',
+        pageIndex: 0,
+        x: 0.1,
+        y: 0.1,
+        w: 0.1,
+        h: 0.06
+      }]
+    };
+    const review: SessionDocument = {
+      ...makeDoc('doc-review'),
+      status: 'needs-review',
+      needsReviewReason: STRINGS.batch.needsReviewAspect
+    };
+    const documents = [existing, initialsOnly, review];
+    const preview = previewSavedSignatureApply(documents, documents.map((document) => document.docId), 'signature', {
+      replaceExisting: true,
+      includeNeedsReview: true
+    });
+    expect(preview.skipped).toEqual([]);
+    expect(preview.targets.map((target) => ({
+      docId: target.docId,
+      replacesExisting: target.replacesExisting,
+      endsSignedState: target.endsSignedState,
+      needsReview: target.needsReview
+    }))).toEqual([
+      { docId: 'doc-existing', replacesExisting: true, endsSignedState: true, needsReview: false },
+      { docId: 'doc-initials', replacesExisting: false, endsSignedState: false, needsReview: false },
+      { docId: 'doc-review', replacesExisting: false, endsSignedState: false, needsReview: true }
+    ]);
+
+    const result = await applySignatureToDocuments(makeSession(documents), emptyHistory(), {
+      asset: ASSET,
+      docIds: documents.map((document) => document.docId),
+      options: { replaceExisting: true, includeNeedsReview: true }
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.appliedDocIds).toEqual(['doc-existing', 'doc-initials', 'doc-review']);
+    expect(result.skipped).toEqual([]);
+    const applied = result.session.documents;
+    expect(applied[0]?.placements).toHaveLength(1);
+    expect(applied[0]?.placements[0]?.id).not.toBe('old-signature');
+    expect(applied[0]?.status).toBe('placed');
+    expect(applied[1]?.placements.map((placement) => placement.type)).toEqual(['initials', 'signature']);
+    expect(applied[2]?.placements).toHaveLength(1);
+    expect(applied[2]?.status).toBe('needs-review');
+    expect(applied[2]?.needsReviewReason).toBe(STRINGS.batch.needsReviewAspect);
   });
 });
 

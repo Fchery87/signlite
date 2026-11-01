@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SignatureAsset } from '../../db/schema';
 import { touchAsset } from '../../db/signatures';
 import { STRINGS } from '../../lib/strings';
 import { bufferToObjectUrl } from '../library/canvas';
 import { DrawPad } from '../library/DrawPad';
 import { TypePad } from '../library/TypePad';
+import { uploadSignatureFile } from '../library/uploadSignatureFile';
 import { Button, Modal } from '../ui';
 
 type SignatureDockProps = {
@@ -31,11 +32,26 @@ export function SignatureDock({ assets, selected, onSelect, onRefresh, onToast }
   const [chooseOpen, setChooseOpen] = useState(false);
   const [drawOpen, setDrawOpen] = useState(false);
   const [typeOpen, setTypeOpen] = useState(false);
+  const uploadRef = useRef<HTMLInputElement>(null);
 
   const choose = async (assetId: string) => {
     onSelect(assetId);
     setChooseOpen(false);
     await touchAsset(assetId);
+  };
+
+  const upload = async (file: File | null) => {
+    if (!file) return;
+    const result = await uploadSignatureFile(file);
+    if (!result.ok) {
+      onToast(result.message);
+      if (uploadRef.current) uploadRef.current.value = '';
+      return;
+    }
+    onSelect(result.asset.id);
+    await onRefresh();
+    onToast(STRINGS.library.imageSaved);
+    if (uploadRef.current) uploadRef.current.value = '';
   };
 
   return (
@@ -56,6 +72,9 @@ export function SignatureDock({ assets, selected, onSelect, onRefresh, onToast }
               </Button>
               <Button className="mt-1 w-full justify-start" variant="ghost" onClick={() => { setTypeOpen(true); setMenuOpen(false); }}>
                 {STRINGS.queue.type}
+              </Button>
+              <Button className="mt-1 w-full justify-start" variant="ghost" onClick={() => { uploadRef.current?.click(); setMenuOpen(false); }}>
+                {STRINGS.queue.upload}
               </Button>
             </div>
           )}
@@ -87,6 +106,13 @@ export function SignatureDock({ assets, selected, onSelect, onRefresh, onToast }
         ) : null}
       </div>
       <p className="mt-3 text-caption text-quiet">{STRINGS.queue.signatureStored}</p>
+      <input
+        ref={uploadRef}
+        hidden
+        type="file"
+        accept="image/png,image/jpeg"
+        onChange={(event) => void upload(event.target.files?.[0] ?? null)}
+      />
 
       <Modal open={chooseOpen} title={STRINGS.queue.chooseSignature} onClose={() => setChooseOpen(false)}>
         <div className="grid gap-2 sm:grid-cols-2">

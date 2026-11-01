@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { SessionDocument } from '../../db/schema';
 import { STRINGS } from '../../lib/strings';
 import { useSessionStore } from '../../stores/session';
@@ -18,6 +18,15 @@ const STATUS_LABELS: Record<SessionDocument['status'], string> = {
   error: STRINGS.status.error
 };
 
+const STATUS_SHORT_LABELS: Record<SessionDocument['status'], string> = {
+  pending: STRINGS.queue.readyToSign,
+  placed: STRINGS.queue.readyToSign,
+  signing: STRINGS.status.signing,
+  signed: STRINGS.status.signed,
+  'needs-review': STRINGS.queue.review,
+  error: STRINGS.status.error
+};
+
 const STATUS_TONES: Record<SessionDocument['status'], string> = {
   pending: 'text-quiet',
   placed: 'text-ink',
@@ -31,14 +40,6 @@ function needsReview(document: SessionDocument) {
   return document.status === 'needs-review' || Boolean(document.needsReviewReason);
 }
 
-function hasSignature(document: SessionDocument) {
-  return document.placements.some((placement) => placement.type === 'signature' || placement.type === 'initials');
-}
-
-function canTakeSignature(document: SessionDocument) {
-  return !needsReview(document) && !hasSignature(document) && document.pageSizes.length > 0;
-}
-
 function canDownload(document: SessionDocument) {
   return document.placements.length > 0 && !needsReview(document);
 }
@@ -48,6 +49,8 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
   const openDocument = useSessionStore((state) => state.openDocument);
   const openDropzone = useSessionStore((state) => state.openDropzone);
   const applySignatureToDocuments = useSessionStore((state) => state.applySignatureToDocuments);
+  const previewSavedSignatureApply = useSessionStore((state) => state.previewSavedSignatureApply);
+  const reorderDocuments = useSessionStore((state) => state.reorderDocuments);
   const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
   const { assets, selected: signature, select: selectSignature, refresh: refreshSignatures } = useSignatureAssets();
   const batch = useBatchDownload(onToast);
@@ -57,11 +60,25 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [applyOpen, setApplyOpen] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [draggedDocId, setDraggedDocId] = useState<string | null>(null);
+  const reorderRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const reviewCount = useMemo(() => documents.filter(needsReview).length, [documents]);
   const downloadableCount = useMemo(() => documents.filter(canDownload).length, [documents]);
   const selectedDocuments = useMemo(() => documents.filter((document) => selected.has(document.docId)), [documents, selected]);
-  const signatureTargets = useMemo(() => selectedDocuments.filter(canTakeSignature), [selectedDocuments]);
+  const applyPreview = useMemo(
+    () => signature
+      ? previewSavedSignatureApply(selectedDocuments.map((document) => document.docId), signature.kind, {
+          replaceExisting: true,
+          includeNeedsReview: true
+        })
+      : null,
+    [previewSavedSignatureApply, selectedDocuments, signature]
+  );
+  const signatureTargets = applyPreview?.targets ?? [];
+  const replacementCount = signatureTargets.filter((target) => target.replacesExisting).length;
+  const reviewCountForApply = signatureTargets.filter((target) => target.needsReview).length;
+  const signedEndCount = signatureTargets.filter((target) => target.endsSignedState).length;
   const downloadTargets = useMemo(() => selectedDocuments.filter(canDownload), [selectedDocuments]);
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -104,11 +121,28 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
     return { label: STRINGS.queue.open, arm: false };
   };
 
+  const moveDocument = (docId: string, offset: number) => {
+    if (mutationLocked) return;
+    const index = documents.findIndex((document) => document.docId === docId);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= documents.length) return;
+    const ids = documents.map((document) => document.docId);
+    const [moved] = ids.splice(index, 1);
+    if (!moved) return;
+    ids.splice(target, 0, moved);
+    reorderDocuments(ids);
+    window.requestAnimationFrame(() => reorderRefs.current[docId]?.focus());
+  };
+
   const runApply = async () => {
     if (!signature || signatureTargets.length === 0 || applying) return;
     setApplying(true);
     try {
-      const outcome = await applySignatureToDocuments(signature, signatureTargets.map((document) => document.docId));
+      const outcome = await applySignatureToDocuments(
+        signature,
+        signatureTargets.map((target) => target.docId),
+        { replaceExisting: true, includeNeedsReview: true }
+      );
       if (!outcome.ok) {
         onToast(STRINGS.queue.nothingApplied);
         return;
@@ -183,10 +217,10 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] border-collapse text-left">
+            <table className="w-full table-fixed border-collapse text-left">
               <thead>
                 <tr className="border-b border-line bg-mist/60 text-caption text-quiet">
-                  <th className="w-10 py-2 pl-5 pr-2">
+                  <th className="w-9 py-2 pl-3 pr-1 sm:w-10 sm:pl-5 sm:pr-2">
                     <input
                       type="checkbox"
                       aria-label={STRINGS.queue.selectAll}
@@ -195,10 +229,11 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
                       className="size-[15px] accent-[#1a1a18]"
                     />
                   </th>
-                  <th className="py-2 pr-4 font-medium">{STRINGS.queue.columnDocument}</th>
-                  <th className="w-20 py-2 pr-4 font-medium">{STRINGS.queue.columnPages}</th>
-                  <th className="w-40 py-2 pr-4 font-medium">{STRINGS.queue.columnStatus}</th>
-                  <th className="w-20 py-2 pr-5 font-medium">{STRINGS.queue.columnAction}</th>
+                  <th className="w-7 py-2 pr-1 sm:w-8 sm:pr-2"><span className="sr-only">Reorder</span></th>
+                  <th className="py-2 pr-2 font-medium sm:pr-4">{STRINGS.queue.columnDocument}</th>
+                  <th className="hidden w-20 py-2 pr-4 font-medium sm:table-cell">{STRINGS.queue.columnPages}</th>
+                  <th className="w-24 py-2 pr-2 font-medium sm:w-40 sm:pr-4">{STRINGS.queue.columnStatus}</th>
+                  <th className="w-16 py-2 pr-2 font-medium sm:w-20 sm:pr-5">{STRINGS.queue.columnAction}</th>
                 </tr>
               </thead>
               <tbody>
@@ -209,9 +244,24 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
                     <tr
                       key={document.docId}
                       data-testid="queue-row"
-                      className={`border-b border-line transition-colors last:border-b-0 ${selected.has(document.docId) ? 'bg-accent-subtle' : 'hover:bg-mist/70'}`}
+                      className={`border-b border-line transition-colors last:border-b-0 ${selected.has(document.docId) ? 'bg-accent-subtle' : 'hover:bg-mist/70'} ${draggedDocId === document.docId ? 'opacity-50' : ''}`}
+                      onDragOver={(event) => {
+                        if (!mutationLocked && draggedDocId && draggedDocId !== document.docId) {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = 'move';
+                        }
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        if (!draggedDocId || draggedDocId === document.docId) return;
+                        const ids = documents.map((candidate) => candidate.docId).filter((docId) => docId !== draggedDocId);
+                        const targetIndex = documents.findIndex((candidate) => candidate.docId === document.docId);
+                        ids.splice(targetIndex, 0, draggedDocId);
+                        reorderDocuments(ids);
+                        setDraggedDocId(null);
+                      }}
                     >
-                      <td className="py-3 pl-5 pr-2">
+                      <td className="py-3 pl-3 pr-1 sm:pl-5 sm:pr-2">
                         <input
                           type="checkbox"
                           aria-label={STRINGS.queue.selectDocument(document.fileName)}
@@ -220,11 +270,50 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
                           className="size-[15px] accent-[#1a1a18]"
                         />
                       </td>
-                      <td className="py-3 pr-4">
+                      <td className="py-3 pr-1 sm:pr-2">
+                        <button
+                          ref={(element) => {
+                            reorderRefs.current[document.docId] = element;
+                          }}
+                          type="button"
+                          draggable={!mutationLocked}
+                          aria-label={`Reorder ${document.fileName}. Press Alt plus Arrow Up or Down to move.`}
+                          title="Drag to reorder"
+                          onDragStart={(event) => {
+                            if (mutationLocked) {
+                              event.preventDefault();
+                              return;
+                            }
+                            setDraggedDocId(document.docId);
+                            event.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragEnd={() => setDraggedDocId(null)}
+                          onKeyDown={(event) => {
+                            if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+                              event.preventDefault();
+                              moveDocument(document.docId, event.key === 'ArrowUp' ? -1 : 1);
+                              return;
+                            }
+                            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                            event.preventDefault();
+                            const index = filtered.findIndex((candidate) => candidate.docId === document.docId);
+                            const next = filtered[index + (event.key === 'ArrowUp' ? -1 : 1)];
+                            if (next) reorderRefs.current[next.docId]?.focus();
+                          }}
+                          className="focus-ring flex h-7 w-6 cursor-grab items-center justify-center text-quiet hover:text-ink active:cursor-grabbing"
+                        >
+                          <svg viewBox="0 0 10 16" className="h-4 w-2.5" fill="currentColor" aria-hidden="true">
+                            <circle cx="2" cy="3" r="1" /><circle cx="8" cy="3" r="1" />
+                            <circle cx="2" cy="8" r="1" /><circle cx="8" cy="8" r="1" />
+                            <circle cx="2" cy="13" r="1" /><circle cx="8" cy="13" r="1" />
+                          </svg>
+                        </button>
+                      </td>
+                      <td className="min-w-0 py-3 pr-2 sm:pr-4">
                         <button
                           type="button"
                           onClick={() => openDocument(document.docId)}
-                          className="focus-ring block max-w-full truncate text-left text-body font-medium text-ink"
+                          className="focus-ring block w-full truncate text-left text-body font-medium text-ink"
                           title={document.fileName}
                         >
                           {document.fileName}
@@ -232,14 +321,15 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
                         {document.batchError ? <p className="mt-0.5 text-caption text-danger">{document.batchError}</p> : null}
                         {document.needsReviewReason ? <p className="mt-0.5 text-caption text-warning">{document.needsReviewReason}</p> : null}
                       </td>
-                      <td className="py-3 pr-4 text-caption text-quiet">{document.pageCount}</td>
-                      <td className="py-3 pr-4">
-                        <span className={`inline-flex items-center gap-1.5 text-caption ${STATUS_TONES[status]}`}>
+                      <td className="hidden py-3 pr-4 text-caption text-quiet sm:table-cell">{document.pageCount}</td>
+                      <td className="py-3 pr-2 sm:pr-4">
+                        <span className={`inline-flex items-center gap-1.5 whitespace-nowrap text-caption ${STATUS_TONES[status]}`}>
                           <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />
-                          {STATUS_LABELS[status]}
+                          <span className="sm:hidden">{STATUS_SHORT_LABELS[status]}</span>
+                          <span className="hidden sm:inline">{STATUS_LABELS[status]}</span>
                         </span>
                       </td>
-                      <td className="py-3 pr-5">
+                      <td className="py-3 pr-2 sm:pr-5">
                         <Button
                           variant="ghost"
                           className="px-2 text-caption font-medium text-ink"
@@ -305,7 +395,15 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
 
       <Modal open={applyOpen} title={STRINGS.queue.applyTitle(signatureTargets.length)} onClose={() => setApplyOpen(false)}>
         <div className="space-y-4">
-          <p className="text-body leading-6 text-quiet">{STRINGS.queue.applyBody(signatureTargets.length, selectedDocuments.length - signatureTargets.length)}</p>
+          <p className="text-body leading-6 text-quiet">
+            {STRINGS.queue.applyBody(
+              signatureTargets.length,
+              replacementCount,
+              reviewCountForApply,
+              signedEndCount,
+              selectedDocuments.length - signatureTargets.length
+            )}
+          </p>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setApplyOpen(false)}>{STRINGS.buttons.cancel}</Button>
             <Button disabled={applying || mutationLocked} onClick={() => void runApply()}>

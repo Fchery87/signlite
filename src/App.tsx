@@ -56,7 +56,7 @@ export default function App() {
               ) : null}
             </div>
           </div>
-          <p className="text-caption text-quiet">{STRINGS.queue.localOnly}</p>
+          <p className="shrink-0 whitespace-nowrap text-caption text-quiet">{STRINGS.queue.localOnly}</p>
         </div>
         {resumeSession && view === 'dropzone' && documents.length === 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-3">
