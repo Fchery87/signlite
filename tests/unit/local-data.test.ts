@@ -1,6 +1,6 @@
 import { clearLocalData } from '../../src/db/localData';
 import { commitSession, loadSession, memoryHistorySize, resetHistoryFallbackForTests } from '../../src/db/history';
-import { listAssets, resetMemorySignatureStoreForTests, resetSignaturePrefsCacheForTests, saveAsset } from '../../src/db/signatures';
+import { listAssets, resetMemorySignatureStore, resetSignaturePrefsCache, saveAsset } from '../../src/db/signatures';
 import { openSignliteDb } from '../../src/db/schema';
 import type { WorkSession } from '../../src/db/schema';
 
@@ -18,8 +18,8 @@ function session(id: string): WorkSession {
 describe('clearLocalData', () => {
   beforeEach(async () => {
     resetHistoryFallbackForTests();
-    resetMemorySignatureStoreForTests();
-    resetSignaturePrefsCacheForTests();
+    resetMemorySignatureStore();
+    resetSignaturePrefsCache();
     const db = await openSignliteDb();
     await db.clear('sessions');
     await db.clear('signatures');

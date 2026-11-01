@@ -1,5 +1,5 @@
 import { openSignliteDb } from './schema';
-import { resetMemorySignatureStoreForTests, resetSignaturePrefsCacheForTests } from './signatures';
+import { resetMemorySignatureStore, resetSignaturePrefsCache } from './signatures';
 import { clearMemorySessions } from './history';
 
 export const HISTORY_RETENTION_DAYS = 7;
@@ -38,8 +38,8 @@ export async function clearLocalData(kind: LocalDataClearKind): Promise<LocalDat
 
   clearMemorySessions();
   if (kind === 'all') {
-    resetMemorySignatureStoreForTests();
-    resetSignaturePrefsCacheForTests();
+    resetMemorySignatureStore();
+    resetSignaturePrefsCache();
   }
   return result;
 }

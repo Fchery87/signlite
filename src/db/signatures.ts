@@ -189,10 +189,14 @@ function validateImportEnvelope(payload: unknown): ValidatedImport {
 
     const previous = byId.get(asset.id);
     if (previous) {
-      if (previous.label !== asset.label || previous.kind !== asset.kind || previous.width !== asset.width ||
-        previous.height !== asset.height || previous.pngBytes.byteLength !== asset.pngBytes.byteLength) {
-        throw new Error(STRINGS.errors['import-conflict']);
-      }
+      const leftBytes = new Uint8Array(previous.pngBytes);
+      const rightBytes = new Uint8Array(asset.pngBytes);
+      const sameBytes = leftBytes.length === rightBytes.length && leftBytes.every((value, index) => value === rightBytes[index]);
+      const sameMetadata = previous.kind === asset.kind && previous.source === asset.source &&
+        previous.width === asset.width && previous.height === asset.height && previous.label === asset.label &&
+        previous.createdAt === asset.createdAt && previous.lastUsedAt === asset.lastUsedAt &&
+        previous.strokeData === asset.strokeData && previous.typedText === asset.typedText && previous.typedFont === asset.typedFont;
+      if (!sameBytes || !sameMetadata) throw new Error(STRINGS.errors['import-conflict']);
       identicalDuplicates += 1;
       continue;
     }
@@ -367,12 +371,12 @@ export async function markLibraryExportOffered(now = Date.now()) {
 
 /** Test-only reset for the cached backup watermark. */
 /** Test and local-data-reset access to the in-memory mirror. */
-export function resetMemorySignatureStoreForTests() {
+export function resetMemorySignatureStore() {
   memoryStore.signatures.clear();
   memoryStore.prefs = { dateFormat: 'MMM d, yyyy' };
 }
 
-export function resetSignaturePrefsCacheForTests() {
+export function resetSignaturePrefsCache() {
   lastExportAtCache = null;
 }
 
