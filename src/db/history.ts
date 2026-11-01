@@ -173,9 +173,11 @@ export async function deleteIfUnchanged(id: string, expectedRevision: number): P
   return 'deleted';
 }
 
+export const MAX_RETENTION_CANDIDATES = 256;
+
 /** Discovers only immutable deletion candidates. Callers acquire locks after
  * discovery, then use deleteIfExpired in a fresh transaction. */
-export async function listSessionCandidates(cutoff: number): Promise<SessionCandidate[]> {
+export async function listSessionCandidates(cutoff: number, limit = MAX_RETENTION_CANDIDATES): Promise<SessionCandidate[]> {
   const db = await getDb();
   if (!db) {
     if (historyStorageProblem() === 'upgrade-blocked') return [];
@@ -186,7 +188,7 @@ export async function listSessionCandidates(cutoff: number): Promise<SessionCand
   const records: SessionCandidate[] = [];
   const tx = db.transaction('sessions', 'readonly');
   let cursor = await tx.store.openCursor();
-  while (cursor) {
+  while (cursor && records.length < limit) {
     if (cursor.value.updatedAt < cutoff) records.push({ id: cursor.value.id, storageRevision: recordRevision(cursor.value), updatedAt: cursor.value.updatedAt });
     cursor = await cursor.continue();
   }

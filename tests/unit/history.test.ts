@@ -1,4 +1,4 @@
-import { clearSession, commitSession, deleteIfUnchanged, isUsingMemoryHistory, loadLatestSession, loadSession, resetHistoryFallbackForTests, saveSession } from '../../src/db/history';
+import { clearSession, commitSession, deleteIfUnchanged, deleteIfExpired, listSessionCandidates, isUsingMemoryHistory, loadLatestSession, loadSession, resetHistoryFallbackForTests, saveSession } from '../../src/db/history';
 import { openSignliteDb, type WorkSession } from '../../src/db/schema';
 
 function serializeSession(session: WorkSession | null) {
@@ -168,6 +168,15 @@ const guardSession = (id: string, value: string): WorkSession => ({
 });
 
 describe('guarded session repository', () => {
+  it('retains records updated after retention discovery', async () => {
+    await commitSession({ ...guardSession('retention-race', 'old'), updatedAt: 1 }, { mode: 'create' });
+    const candidates = await listSessionCandidates(10);
+    const candidate = candidates.find((entry) => entry.id === 'retention-race');
+    expect(candidate).toBeDefined();
+    await commitSession({ ...guardSession('retention-race', 'fresh'), updatedAt: 20 }, { mode: 'update', storageRevision: 1 });
+    expect(await deleteIfExpired('retention-race', candidate!.storageRevision, 10)).toBe('changed');
+    expect((await loadSession('retention-race')).status).toBe('found');
+  });
   beforeEach(async () => {
     resetHistoryFallbackForTests();
     const db = await openSignliteDb();

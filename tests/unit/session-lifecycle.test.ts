@@ -6,10 +6,12 @@ const dbMocks = vi.hoisted(() => ({
 }));
 const sigMocks = vi.hoisted(() => ({ hydrateSignaturePrefs: vi.fn(), isUsingMemoryStore: vi.fn() }));
 const normalizeMock = vi.hoisted(() => ({ normalizeSession: vi.fn() }));
+const maintenanceMock = vi.hoisted(() => ({ pruneExpiredSessions: vi.fn(), maintenanceWarning: vi.fn(() => 'Cleanup skipped safely.') }));
 
 vi.mock('../../src/db/history', () => dbMocks);
 vi.mock('../../src/db/signatures', () => sigMocks);
 vi.mock('../../src/lib/normalizeSession', () => normalizeMock);
+vi.mock('../../src/lib/localDataMaintenance', () => maintenanceMock);
 
 import { ActiveSessionLifecycle, DurabilityCoordinator, startupAndDiscover } from '../../src/lib/sessionLifecycle';
 import type { WorkSession } from '../../src/db/schema';
@@ -83,6 +85,7 @@ function harness(options: HarnessOptions = {}) {
 
 describe('sessionLifecycle startupAndDiscover', () => {
   beforeEach(() => {
+    maintenanceMock.pruneExpiredSessions.mockReset().mockImplementation(async () => undefined);
     dbMocks.pruneOldSessions.mockReset().mockResolvedValue(undefined);
     dbMocks.loadLatestSession.mockReset().mockResolvedValue({ status: 'missing' });
     dbMocks.isUsingMemoryHistory.mockReset().mockReturnValue(false);
@@ -93,10 +96,15 @@ describe('sessionLifecycle startupAndDiscover', () => {
 
   it('prunes expired records before discovering a candidate', async () => {
     const order: string[] = [];
-    dbMocks.pruneOldSessions.mockImplementation(async () => { order.push('prune'); });
+    maintenanceMock.pruneExpiredSessions.mockImplementation(async () => { order.push('prune'); });
     dbMocks.loadLatestSession.mockImplementation(async () => { order.push('load'); return { status: 'missing' }; });
     await startupAndDiscover();
     expect(order).toEqual(['prune', 'load']);
+  });
+
+  it('surfaces a skipped cleanup warning without blocking discovery', async () => {
+    maintenanceMock.pruneExpiredSessions.mockResolvedValue({ status: 'blocked', reason: 'locks-unavailable' });
+    expect((await startupAndDiscover()).maintenanceWarning).toBe('Cleanup skipped safely.');
   });
 
   it('reports history fallback after discovery opens unavailable storage', async () => {

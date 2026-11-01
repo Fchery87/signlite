@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { clearLocalData, type LocalDataClearKind } from '../db/localData';
+import { type LocalDataClearKind } from '../db/localData';
+import { clearAllLocalDataSafely, clearHistorySafely } from '../lib/localDataMaintenance';
 import { exportLibrary } from '../db/signatures';
-import { withSessionLock } from '../lib/sessionOwnership';
 import type { useSessionLifecycle } from '../lib/useSessionLifecycle';
 import { useSessionStore } from '../stores/session';
 import type { PublicSessionState } from '../stores/session';
@@ -39,9 +39,12 @@ export function LocalDataControls({ lifecycle, onToast }: LocalDataControlsProps
     setConfirmKind(kind);
   };
 
-  const erase = (kind: LocalDataClearKind) => {
-    lifecycle.prepareForLocalDataClear();
-    return clearLocalData(kind);
+  const erase = async (_kind: LocalDataClearKind) => {
+    await lifecycle.prepareForLocalDataClear();
+    const result = _kind === 'all' ? await clearAllLocalDataSafely() : await clearHistorySafely(sessionId);
+    if (result.status === 'blocked') throw new Error(STRINGS.localData.locksUnavailable);
+    if (result.status === 'failed') throw result.cause;
+    return result;
   };
 
   const runClear = async () => {
@@ -49,25 +52,13 @@ export function LocalDataControls({ lifecycle, onToast }: LocalDataControlsProps
     const kind = confirmKind;
     setBusy(true);
     try {
-      if (lifecycle.authority === 'owner') {
-        await erase(kind);
-      } else {
-        // Without an owned lock, a brief lock is the only way to know another
-        // tab is not writing. An unavailable lock refuses the clear.
-        const outcome = await withSessionLock(sessionId, () => erase(kind));
-        if (outcome.status === 'contended') {
-          onToast(STRINGS.localData.anotherTab);
-          return;
-        }
-        if (outcome.status === 'unavailable') {
-          onToast(STRINGS.localData.locksUnavailable);
-          return;
-        }
-      }
+      await erase(kind);
       resetSession();
+      await lifecycle.resumeAfterLocalDataClear();
       setConfirmKind(null);
       onToast(kind === 'history' ? STRINGS.localData.clearedHistory : STRINGS.localData.clearedAll);
     } catch {
+      await lifecycle.resumeAfterLocalDataClear();
       onToast('Local data could not be cleared. Your current work has not been reset.');
     } finally {
       setBusy(false);

@@ -26,14 +26,17 @@ export async function clearLocalData(kind: LocalDataClearKind): Promise<LocalDat
   };
   const db = await openSignliteDb();
   if (db) {
-    await db.clear('sessions');
+    const stores = kind === 'all' ? ['sessions', 'signatures', 'prefs'] as const : ['sessions'] as const;
+    const tx = db.transaction(stores, 'readwrite');
+    await tx.objectStore('sessions').clear();
     result.sessionsCleared = true;
     if (kind === 'all') {
-      await db.clear('signatures');
-      await db.clear('prefs');
+      await tx.objectStore('signatures').clear();
+      await tx.objectStore('prefs').clear();
       result.signaturesCleared = true;
       result.preferencesCleared = true;
     }
+    await tx.done;
   }
 
   clearMemorySessions();

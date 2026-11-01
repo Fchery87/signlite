@@ -2,8 +2,8 @@ import { commitSession, deleteIfUnchanged, historyStorageProblem, isUsingMemoryH
 import type { CommitExpectation, CommitResult, DeleteResult } from '../db/history';
 import { hydrateSignaturePrefs, isUsingMemoryStore } from '../db/signatures';
 import { normalizeSession } from './normalizeSession';
-import { acquireSessionOwnership, withSessionLock, type OwnershipResult } from './sessionOwnership';
-import { pruneExpiredSessions } from './localDataMaintenance';
+import { acquireOriginParticipation, acquireSessionOwnership, type OwnershipResult } from './sessionOwnership';
+import { pruneExpiredSessions, maintenanceWarning as describeMaintenanceWarning } from './localDataMaintenance';
 import type { WorkSession } from '../db/schema';
 
 export interface StartupResult {
@@ -12,18 +12,21 @@ export interface StartupResult {
   storageProblem?: 'unavailable' | 'upgrade-blocked' | null;
   /** Storage revision of the loaded candidate record, when found. */
   baseRevision?: number;
+  maintenanceWarning?: string;
 }
 
 export async function startupAndDiscover(): Promise<StartupResult> {
   const storageAvailable = !isUsingMemoryStore() && !isUsingMemoryHistory();
+  let maintenanceWarning: string | undefined;
   // Pruning and preference discovery are cleanup and convenience work. Their
   // failure must not abort autosave initialization.
   try {
     // Hold each victim's session lock while deleting it, so a live owner in
     // another tab never loses its record. Without Web Locks, skip deletion.
-    await pruneExpiredSessions(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const cleanup = await pruneExpiredSessions();
+    if (cleanup) maintenanceWarning = describeMaintenanceWarning(cleanup) ?? undefined;
   } catch {
-    // Cleanup failure: discovery still proceeds.
+    maintenanceWarning = 'Automatic history cleanup failed. Some older Work Sessions remain in browser storage.';
   }
   try {
     await hydrateSignaturePrefs();
@@ -32,9 +35,9 @@ export async function startupAndDiscover(): Promise<StartupResult> {
   }
   const storageProblem = historyStorageProblem();
   const latest = await loadLatestSession();
-  if (latest.status !== 'found') return { candidate: null, storageAvailable, storageProblem };
+  if (latest.status !== 'found') return { candidate: null, storageAvailable, storageProblem, maintenanceWarning };
   try {
-    return { candidate: await normalizeSession(latest.session), storageAvailable, storageProblem, baseRevision: latest.storageRevision };
+    return { candidate: await normalizeSession(latest.session), storageAvailable, storageProblem, baseRevision: latest.storageRevision, maintenanceWarning };
   } catch {
     return { candidate: null, storageAvailable, storageProblem };
   }
@@ -73,6 +76,8 @@ export class DurabilityCoordinator {
     this.tail = this.tail.catch(() => undefined).then(operation);
     return this.tail;
   }
+
+  drain() { return this.tail; }
 }
 
 type LifecycleDependencies = {
@@ -126,6 +131,7 @@ export class ActiveSessionLifecycle {
   private baseRevisionFor: string | null = null;
   private suppressed = false;
   private ownershipRelease: (() => Promise<void>) | null = null;
+  private originParticipationRelease: (() => Promise<void>) | null = null;
   private authorityFor: string | null = null;
   private ownershipAssumed = false;
 
@@ -158,7 +164,7 @@ export class ActiveSessionLifecycle {
     if (this.disposed) return;
     const mode: DurabilityState['mode'] = result.storageAvailable ? 'persistent' : 'memory';
     let status: DurabilityStatus = 'saved';
-    let warning: string | null = null;
+    let warning: string | null = result.maintenanceWarning ?? null;
     if (!result.storageAvailable) {
       status = 'memory-only';
       warning = STORAGE_UNAVAILABLE_WARNING;
@@ -191,6 +197,14 @@ export class ActiveSessionLifecycle {
       this.ownershipRelease = null;
       await release();
     }
+    if (!this.originParticipationRelease) {
+      const participation = await acquireOriginParticipation();
+      if (participation.status === 'owned') this.originParticipationRelease = participation.release;
+      else if (participation.status === 'contended') {
+        this.update({ authority: 'read-only' });
+        return;
+      }
+    }
     const result = await this.deps.acquireOwnership(id);
     if (this.disposed) {
       if (result.status === 'owned') await result.release();
@@ -220,7 +234,7 @@ export class ActiveSessionLifecycle {
 
   /** Cancels queued saves and invalidates in-flight generations ahead of a
    *  local-data wipe: a queued autosave must not resurrect cleared records. */
-  prepareForLocalDataClear() {
+  async prepareForLocalDataClear() {
     if (this.disposed) return;
     if (this.pendingSave !== null) {
       this.deps.cancel(this.pendingSave);
@@ -228,6 +242,29 @@ export class ActiveSessionLifecycle {
     }
     this.generation += 1;
     this.lastRevision = null;
+    this.suppressed = true;
+    await this.coordinator.drain();
+    if (this.ownershipRelease) {
+      const release = this.ownershipRelease;
+      this.ownershipRelease = null;
+      await release();
+    }
+    if (this.originParticipationRelease) {
+      const release = this.originParticipationRelease;
+      this.originParticipationRelease = null;
+      await release();
+    }
+  }
+
+  async resumeAfterLocalDataClear() {
+    if (!this.originParticipationRelease) {
+      const participation = await acquireOriginParticipation();
+      if (participation.status === 'owned') this.originParticipationRelease = participation.release;
+    }
+    this.suppressed = false;
+    this.lastRevision = null;
+    if (this.authorityFor) await this.assumeSession(this.authorityFor);
+    this.processLatestRevision();
   }
 
   startFresh(_predecessorId: string, reset: () => void) {
@@ -377,6 +414,11 @@ export class ActiveSessionLifecycle {
     if (this.ownershipRelease) {
       const release = this.ownershipRelease;
       this.ownershipRelease = null;
+      void release();
+    }
+    if (this.originParticipationRelease) {
+      const release = this.originParticipationRelease;
+      this.originParticipationRelease = null;
       void release();
     }
     this.listeners.clear();

@@ -60,6 +60,23 @@ export async function withSessionLock<T>(id: string, operation: () => Promise<T>
 
 export const ORIGIN_MAINTENANCE_LOCK_NAME = 'signlite:maintenance:v1';
 
+export async function acquireOriginParticipation(): Promise<OwnershipResult> {
+  const locks = lockManager();
+  if (!locks) return { status: 'unavailable' };
+  return new Promise<OwnershipResult>((resolve) => {
+    let releaseLock: (() => void) | null = null;
+    const untilReleased = new Promise<void>((release) => { releaseLock = release; });
+    void locks.request(ORIGIN_MAINTENANCE_LOCK_NAME, { ifAvailable: true, mode: 'shared' }, (lock) => {
+      if (!lock) {
+        resolve({ status: 'contended' });
+        return;
+      }
+      resolve({ status: 'owned', release: async () => { releaseLock?.(); } });
+      return untilReleased;
+    }).catch(() => resolve({ status: 'unavailable' }));
+  });
+}
+
 export function withOriginMaintenance<T>(operation: () => Promise<T>): Promise<LockOutcome<T>> {
   return withNamedLock(ORIGIN_MAINTENANCE_LOCK_NAME, 'shared', operation);
 }
