@@ -18,17 +18,10 @@ async function seedAsset() {
 async function seedPngImport(id: string) {
   // saveAsset stamps new ids; use import to place an asset with a stable id.
   const { importLibrary } = await import('../../src/db/signatures');
-  const bytes = new Uint8Array(45);
-  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
-  bytes.set([0, 0, 0, 0x0d], 8);
-  bytes.set([0x49, 0x48, 0x44, 0x52], 12);
-  new DataView(bytes.buffer).setUint32(16, 10);
-  new DataView(bytes.buffer).setUint32(20, 10);
-  // Import validation requires a complete PNG, which ends with IEND.
-  bytes.set([0x49, 0x45, 0x4e, 0x44], 37);
+  const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
   const file = new File([JSON.stringify({
     version: 1,
-    signatures: [{ id, kind: 'signature', source: 'drawn', label: 'S', pngBytes: btoa(String.fromCharCode(...bytes)), width: 10, height: 10, createdAt: 1, lastUsedAt: 1 }]
+    signatures: [{ id, kind: 'signature', source: 'drawn', label: 'S', pngBytes: btoa(String.fromCharCode(...bytes)), width: 1, height: 1, createdAt: 1, lastUsedAt: 1 }]
   })], 'seed.json', { type: 'application/json' });
   await importLibrary(file);
 }

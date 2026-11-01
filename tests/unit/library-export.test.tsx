@@ -28,23 +28,13 @@ describe('library export envelope', () => {
   // 30 s budget fails intermittently under suite contention rather than on a
   // real regression.
   it('round-trips a valid PNG above 250 KB without the spread encoder overflowing', { timeout: 120000 }, async () => {
-    const bigBytes = new Uint8Array(300 * KB);
-    bigBytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
-    bigBytes.set([0, 0, 0, 0x0d], 8);
-    bigBytes.set([0x49, 0x48, 0x44, 0x52], 12);
-    new DataView(bigBytes.buffer).setUint32(16, 10);
-    new DataView(bigBytes.buffer).setUint32(20, 10);
-    bigBytes[24] = 8;
-    bigBytes[25] = 6;
-    for (let i = 33; i < bigBytes.length - 12; i += 1) bigBytes[i] = i & 0xff;
-    // Import validation requires a complete PNG, which ends with IEND.
-    bigBytes.set([0x49, 0x45, 0x4e, 0x44], bigBytes.length - 8);
+    const bigBytes = paddedPng(300 * KB);
     await importLibrary(new File([JSON.stringify({
       version: 1,
       signatures: [{
         id: 'big-png', kind: 'signature', source: 'drawn', label: 'Big',
         pngBytes: bigChunks(bigBytes, 32766),
-        width: 10, height: 10, createdAt: 1, lastUsedAt: 1
+        width: 1, height: 1, createdAt: 1, lastUsedAt: 1
       }]
     })], 'seed.json', { type: 'application/json' }));
 
@@ -75,6 +65,26 @@ function bigChunks(bytes: Uint8Array, chunk: number) {
   for (let i = 0; i < bytes.length; i += chunk) {
     out += btoa(String.fromCharCode(...bytes.subarray(i, i + chunk)));
   }
+  return out;
+}
+
+function paddedPng(target: number) {
+  const base = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
+  const prefixLength = base.length - 12;
+  const dataLength = target - prefixLength - 24;
+  const data = new Uint8Array(dataLength);
+  const out = new Uint8Array(target);
+  out.set(base.subarray(0, prefixLength));
+  new DataView(out.buffer).setUint32(prefixLength, dataLength);
+  out.set([116, 69, 88, 116], prefixLength + 4);
+  out.set(data, prefixLength + 8);
+  let crc = 0xffffffff;
+  for (const byte of out.subarray(prefixLength + 4, prefixLength + 8 + dataLength)) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  new DataView(out.buffer).setUint32(prefixLength + 8 + dataLength, (crc ^ 0xffffffff) >>> 0);
+  out.set(base.subarray(base.length - 12), target - 12);
   return out;
 }
 
