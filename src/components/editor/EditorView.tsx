@@ -564,7 +564,7 @@ export function EditorView({ onToast }: EditorViewProps) {
             {libraryOpen ? STRINGS.editor.hideLibrary : STRINGS.editor.showLibrary}
           </button>
           <ApplyToAll onToast={onToast} />
-          <div className="surface-card min-h-0 p-4 shadow-panel">
+          <div className="surface-card shrink-0 p-4 shadow-panel">
             <LibraryTray
               onToast={onToast}
               onAddDate={() => placeSpecialElement('date')}

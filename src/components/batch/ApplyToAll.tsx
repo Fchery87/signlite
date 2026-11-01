@@ -166,7 +166,7 @@ export function ApplyToAll({ onToast }: ApplyToAllProps) {
 
   return (
     <>
-      <div className="surface-card p-4 shadow-panel">
+      <div className="surface-card shrink-0 p-4 shadow-panel">
         <div>
           <h2 className="text-h2 text-ink">{STRINGS.batch.applyTitle}</h2>
           <p className="mt-1 text-caption leading-5 text-quiet">

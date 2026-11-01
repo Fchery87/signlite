@@ -15,4 +15,19 @@ test('full clear succeeds in a single tab and removes sessions and signatures', 
   await page.getByTestId('clear-all-data').click();
   await page.getByTestId('confirm-clear').click();
   await expect(page.getByText('All local data cleared.')).toBeVisible();
+  const counts = () => page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('signlite', 1); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+    try {
+      return await Promise.all(['sessions', 'signatures', 'prefs'].map((store) => new Promise<number>((resolve, reject) => {
+        const request = db.transaction(store).objectStore(store).count();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      })));
+    } finally { db.close(); }
+  });
+  await expect.poll(counts).toEqual([0, 0, 0]);
+  await page.reload();
+  await waitForRuntimeReady(page);
+  await expect.poll(counts).toEqual([0, 0, 0]);
+  await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeHidden();
 });

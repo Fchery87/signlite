@@ -34,6 +34,23 @@ async function storedAssets(page: Page): Promise<StoredAsset[]> {
   });
 }
 
+async function storedAssetCount(page: Page): Promise<number> {
+  return page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('signlite');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      return await new Promise<number>((resolve, reject) => {
+        const request = db.transaction('signatures').objectStore('signatures').count();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    } finally { db.close(); }
+  });
+}
+
 async function clearSiteStorage(page: Page) {
   // CDP clears without waiting on the app's open connections.
   const session = await page.context().newCDPSession(page);
@@ -122,7 +139,8 @@ test.describe('library backup reliability', () => {
       name: 'big.json', mimeType: 'application/json',
       buffer: Buffer.from(JSON.stringify({ version: 1, signatures: [envelopeEntry('big-png', bigPng)] }))
     });
-    await expect(page.getByText('Added 1. Skipped 0 duplicates.')).toBeVisible();
+    await expect(page.getByText('Added 1. Skipped 0 duplicates.')).toBeVisible({ timeout: 30000 });
+    await expect(page.locator('input[accept="application/json"]')).toHaveValue('');
 
     const rejections: Array<[string, Buffer]> = [
       ['invalid-image.json', Buffer.from(JSON.stringify({ version: 1, signatures: [envelopeEntry('bad-bytes', Buffer.alloc(64, 7))] }))],
@@ -136,12 +154,14 @@ test.describe('library backup reliability', () => {
     for (const [name, buffer] of rejections) {
       await page.setInputFiles('input[accept="application/json"]', { name, mimeType: 'application/json', buffer });
       await expect(page.getByText("This isn't a SignLite library file.").first()).toBeVisible();
+      await expect(page.locator('input[accept="application/json"]')).toHaveValue('');
     }
     await page.setInputFiles('input[accept="application/json"]', {
       name: 'conflict.json', mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify({ version: 1, signatures: [envelopeEntry('big-png', bigPng), envelopeEntry('big-png', pngFile(100, 50, 32))] }))
+      buffer: Buffer.from(JSON.stringify({ version: 1, signatures: [envelopeEntry('conflicting', pngFile(100, 50, 32)), envelopeEntry('conflicting', pngFile(50, 100, 32))] }))
     });
-    await expect(page.getByText(/same ID|conflict/i).first()).toBeVisible();
+    await expect(page.getByText('This file has two different signatures with the same ID.')).toBeVisible();
+    await expect(page.locator('input[accept="application/json"]')).toHaveValue('');
     // Identical duplicates are counted, not written twice.
     const same = envelopeEntry('dup', pngFile(100, 50, 32));
     await page.setInputFiles('input[accept="application/json"]', {
@@ -150,12 +170,19 @@ test.describe('library backup reliability', () => {
     });
     await expect(page.getByText('Added 1. Skipped 1 duplicates.')).toBeVisible();
 
-    // A file above the JSON byte limit is refused on size alone.
+    expect(await storedAssetCount(page)).toBe(2);
+  });
+
+  test('rejects a native file above the JSON byte limit before parsing', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.goto('/');
+    await waitForRuntimeReady(page);
+    await intakeAndOpenEditor(page);
+    // Native file transfer is deliberately separate from PNG decoding tests.
     const hugePath = await writeTempFixture('huge.json', Buffer.alloc(64 * 1024 * 1024 + 1));
     await page.setInputFiles('input[accept="application/json"]', hugePath);
     await expect(page.getByText('This library file is too large (limit 64 MB).')).toBeVisible();
-
-    expect((await storedAssets(page)).length).toBe(2);
+    expect(await storedAssetCount(page)).toBe(0);
   });
 
   test('delayed font loading blocks typed saves until fonts verify', async ({ page }) => {
@@ -177,7 +204,7 @@ test.describe('library backup reliability', () => {
 
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText(FONT_NOT_READY).first()).toBeVisible();
-    expect((await storedAssets(page)).length).toBe(0);
+    expect(await storedAssetCount(page)).toBe(0);
 
     fontsBlocked = false;
     await page.getByRole('button', { name: 'Retry font load' }).click();
