@@ -34,6 +34,17 @@ Editor-only warm-neutral redesign: document hierarchy, toolbar, compact thumbnai
 - A new multi-action navigation unit test exceeded the default five-second timeout under concurrent local build/browser load. Its explicit 15-second budget matches other editor interaction tests, with unchanged assertions. The final complete suite passed.
 - The first complete-suite attempt hit the ten-minute command deadline. A later run with sufficient time completed, and the final run passed all 402 tests. Earlier interrupted or failing runs are not counted as passes.
 
+## Whole-result revalidation
+
+After all implementation and test corrections, the complete feedback loop was run again on unchanged commit `1b73ff06501bfb52564605c949a11d0cc8816d55`:
+
+- Complete unit suite: **402 tests across 48 files passed** in one run.
+- Typecheck, ESLint, and a fresh production build passed.
+- All seven scoped browser specs ran in **one clean invocation: 23 passed**. This includes editor UX, desktop signing/native drag, accessibility, backup, PDF geometry, text output, and all Chromium/WebKit touch cases.
+- The 214-file production artifact was verified against a local receipt for that commit. The tracked source remained unchanged throughout validation, confirmed with `git diff --exit-code` and `git diff --check`.
+
+The initial combined shell command reached the environment's ten-minute execution deadline during its browser phase, after units/types/lint/build had passed. The browser phase was restarted in full as a standalone command against the same unchanged source and fresh artifact, and all 23 cases passed. The interrupted browser attempt is not counted as a pass. This supersedes the need to combine the earlier 19-of-20 browser run with a separate text rerun. It is still scoped editor acceptance, not the complete repository browser suite or live-deployment acceptance.
+
 ## Acceptance boundaries
 
 This evidence covers local production-server behavior and browser emulation. It does not establish physical phone/tablet, real stylus, palm rejection, OS-level installation, assistive-technology user testing, or live-deployment acceptance. No production deployment was performed. Existing jsdom canvas and React act warnings remain visible in unit logs and did not prevent the final suite from passing.
