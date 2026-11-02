@@ -57,6 +57,10 @@ After those test-only migrations:
 
 Offline failure tests intentionally log blocked-resource errors. Chromium also warns that `frame-ancestors` in a meta CSP is ignored; the served framing-header contract is checked separately by the passing headers tests. These logs are not being represented as a clean console assertion.
 
+## Additional editor boundaries
+
+Two additional production-browser tests passed after the 59-case full-suite run. These verify text and date control reachability at 320px, editing and date-format cycling, 150% PDF zoom without document overflow, keyboard focus trapped in a dialog above the portal toolbar, focus restoration, page-two insertion, and cancelling an armed preview without changing existing content or undo history. The 320px text-controls screenshot was reviewed. Typecheck, lint and whitespace checks passed again. These are two targeted additions, not a claim that a new 61-case full-suite invocation was run. Application source remained unchanged.
+
 ## Acceptance boundaries
 
 This evidence covers local production-server behavior and browser emulation. It does not establish physical phone/tablet, real stylus, palm rejection, OS-level installation, assistive-technology user testing, or live-deployment acceptance. No production deployment was performed. Existing jsdom canvas and React act warnings remain visible in unit logs and did not prevent the final suite from passing.
