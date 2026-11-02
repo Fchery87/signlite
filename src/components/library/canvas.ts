@@ -2,9 +2,19 @@ import { normalizedUploadDimensions } from '../../lib/imagePolicy';
 
 const PNG_TYPE = 'image/png';
 
-export type DrawStroke = Array<{ x: number; y: number }>;
+export type DrawStroke = Array<{ x: number; y: number; pressure?: number }>;
 
-export async function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<ArrayBuffer> {
+function pointWidth(point: DrawStroke[number], base: number) {
+  return typeof point.pressure === 'number' &&
+    Number.isFinite(point.pressure) &&
+    point.pressure > 0
+    ? base * (0.35 + Math.min(1, point.pressure) * 1.3)
+    : base;
+}
+
+export async function canvasToPngBytes(
+  canvas: HTMLCanvasElement
+): Promise<ArrayBuffer> {
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((value) => {
       if (value) resolve(value);
@@ -14,7 +24,9 @@ export async function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Array
   return blob.arrayBuffer();
 }
 
-export function trimCanvas(source: HTMLCanvasElement): HTMLCanvasElement | null {
+export function trimCanvas(
+  source: HTMLCanvasElement
+): HTMLCanvasElement | null {
   const context = source.getContext('2d');
   if (!context) return null;
   const { width, height } = source;
@@ -51,7 +63,11 @@ export function trimCanvas(source: HTMLCanvasElement): HTMLCanvasElement | null 
   canvas.height = cropHeight;
   const nextContext = canvas.getContext('2d');
   if (!nextContext) return null;
-  nextContext.putImageData(context.getImageData(cropLeft, cropTop, cropWidth, cropHeight), 0, 0);
+  nextContext.putImageData(
+    context.getImageData(cropLeft, cropTop, cropWidth, cropHeight),
+    0,
+    0
+  );
   return canvas;
 }
 
@@ -71,16 +87,25 @@ export function renderStrokes(
   for (const stroke of strokes) {
     // A malformed stroke must never take the whole app down with it.
     if (!Array.isArray(stroke) || stroke.length === 0) continue;
-    context.beginPath();
-    context.moveTo(stroke[0].x, stroke[0].y);
-    if (stroke.length === 1) {
-      context.lineTo(stroke[0].x + 0.1, stroke[0].y + 0.1);
-    } else {
-      for (const point of stroke.slice(1)) {
-        context.lineTo(point.x, point.y);
-      }
+    const points = stroke.filter(
+      (point) => point && Number.isFinite(point.x) && Number.isFinite(point.y)
+    );
+    for (let index = 0; index < Math.max(1, points.length - 1); index += 1) {
+      const from = points[index];
+      if (!from) continue;
+      const to = points[index + 1] ?? from;
+      context.lineWidth =
+        (pointWidth(from, options.lineWidth ?? 6) +
+          pointWidth(to, options.lineWidth ?? 6)) /
+        2;
+      context.beginPath();
+      context.moveTo(from.x, from.y);
+      context.lineTo(
+        to.x + (to === from ? 0.1 : 0),
+        to.y + (to === from ? 0.1 : 0)
+      );
+      context.stroke();
     }
-    context.stroke();
   }
 }
 
@@ -116,7 +141,9 @@ export function renderTypedTextToCanvas(
   return trimCanvas(canvas) ?? canvas;
 }
 
-export async function imageFileToCanvas(file: File): Promise<HTMLCanvasElement> {
+export async function imageFileToCanvas(
+  file: File
+): Promise<HTMLCanvasElement> {
   const url = URL.createObjectURL(file);
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -170,7 +197,8 @@ function firstBundledFamily(fontFamily: string) {
   return BUNDLED_FONTS.find((font) => font.family === name) ?? null;
 }
 
-const unquote = (value: string) => value.replace(/^["']|["']$/g, '').toLowerCase();
+const unquote = (value: string) =>
+  value.replace(/^["']|["']$/g, '').toLowerCase();
 
 /** Whether a face for this family has finished loading.
  *
@@ -181,16 +209,22 @@ const unquote = (value: string) => value.replace(/^["']|["']$/g, '').toLowerCase
  *  quoted when they contain spaces. */
 function familyIsLoaded(family: string): boolean {
   const target = unquote(family);
-  return [...document.fonts].some((face) => unquote(face.family) === target && face.status === 'loaded');
+  return [...document.fonts].some(
+    (face) => unquote(face.family) === target && face.status === 'loaded'
+  );
 }
 
 /** Waits for the requested bundled font and verifies it actually loaded, so a
  *  generated PNG never captures fallback typography. Returns false when the
  *  font cannot be confirmed; callers surface a retryable failure. */
-export async function ensureFontReady(fontFamily: string, sampleText: string): Promise<boolean> {
+export async function ensureFontReady(
+  fontFamily: string,
+  sampleText: string
+): Promise<boolean> {
   if (typeof document === 'undefined' || !document.fonts) return true;
   const bundled = firstBundledFamily(fontFamily);
-  const primary = bundled?.family ?? unquote(fontFamily.split(',')[0] ?? fontFamily);
+  const primary =
+    bundled?.family ?? unquote(fontFamily.split(',')[0] ?? fontFamily);
   try {
     await document.fonts.load(`68px ${fontFamily}`, sampleText);
   } catch {
@@ -220,6 +254,7 @@ export async function ensureFontReady(fontFamily: string, sampleText: string): P
   try {
     return await attempt;
   } finally {
-    if (fontRecovery.get(bundled.family) === attempt) fontRecovery.delete(bundled.family);
+    if (fontRecovery.get(bundled.family) === attempt)
+      fontRecovery.delete(bundled.family);
   }
 }
