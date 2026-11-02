@@ -49,7 +49,7 @@ components:
     minHeight: 92px
     maxImageHeight: 56px
   editor:
-    desktopColumns: "280px minmax(0,1fr) 320px"
+    desktopColumns: "184px minmax(0,1fr) 288px"
     desktopBreakpoint: 1280px
   modal:
     maxWidth: 480px
@@ -101,7 +101,7 @@ The interface uses warm-neutral chrome, near-black actions, and white document p
 
 The chosen colorway is black, cream, and quiet neutrals. A blue signature image is user content, not a blue button or status system. The current queue uses green for Signed, amber for Needs review, and red for Error, always with a text label. Blue status styling from an earlier prototype is not part of the canonical palette.
 
-Light mode is implemented. The old dark counterparts and stronger-border token were proposals, not shipped theme controls, and are not current tokens. Some local styling still sits outside the shared palette, including the editor's pale-blue selected-placement halo and the drawing raster's `#111827` ink. These are implementation exceptions, not permission to introduce a cobalt brand accent. Uploaded signature pixels retain their original colors.
+Light mode is implemented. The old dark counterparts and stronger-border token were proposals, not shipped theme controls, and are not current tokens. Selected placements use the warm `accent-subtle` halo. The drawing raster's `#111827` ink remains a local implementation exception, not permission to introduce a cobalt brand accent. Uploaded signature pixels retain their original colors.
 
 ## Typography, spacing, and shape
 
@@ -152,7 +152,11 @@ Armed mode shows a placement instruction and a cancel action. Clicking or tappin
 
 Selected placements support movement, corner resizing, duplication, copying, deletion, and undo or redo. Text has an explicit **Edit** control for touch use. Dates and text have their own insertion and every-page actions. Placement outlines and controls do not become part of the exported PDF.
 
-At 1280px and above, the editor uses 280px pages/elements, a flexible PDF viewer, and a 320px library. Below that breakpoint, **Pages** and **Library** open focused dialogs instead of persistent sidebars. Choosing a page or inserting an element returns attention to the PDF. Fit mode sizes pages to the available width. The viewer has bounded scrolling, and the selected-element toolbar moves to the bottom on narrow screens.
+The document header separates **All documents**, the filename, **Add PDFs**, and **Download** from a named navigation toolbar. That toolbar groups previous/next page controls, the active-page count, undo/redo, fit/zoom, shortcuts, and narrow-screen panel controls. A quiet status strip explains how to start, where an armed signature will go, when to review, and whether a download has completed. Download failures remain visible without discarding placements. Document and page rendering failures offer retry.
+
+At 1280px and above, the editor uses a 184px pages/elements rail, a flexible PDF viewer, and a 288px library. Thumbnails use a compact paper preview, warm selection, and `aria-current="page"`. Below that breakpoint, **Pages** and **Tools** open focused dialogs instead of persistent sidebars. The Tools dialog retains its accessible **Library** name. Choosing a page, arming a signature preview, or inserting an element returns attention to the PDF. Fit mode sizes pages to the available width. The viewer has bounded scrolling.
+
+The library groups saved signatures and initials, date/text insertion, and signature creation. Repeat-on-every-page, asset maintenance, and backup controls use disclosures so they do not compete with ordinary placement. **Place** still inserts immediately on the active page. Choosing the preview arms click/tap-to-place instead. A viewport-level selected-element toolbar identifies the type, groups editing/copy/duplicate actions, and separates **Deselect** and **Delete**. It wraps within the viewport and remains above page layers on desktop and mobile. Signature/export policy remains available in a disclosure below the editor.
 
 ## Controls, dialogs, depth, and motion
 

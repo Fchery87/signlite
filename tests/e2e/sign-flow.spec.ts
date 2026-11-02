@@ -163,9 +163,15 @@ test('accepts a native mouse drag from the library onto the page', async ({ page
   if (!layerBox) {
     throw new Error('Expected placement layer bounds');
   }
-  await handle.dragTo(layer, {
-    targetPosition: { x: Math.round(layerBox.width * 0.4), y: Math.round(layerBox.height * 0.4) }
-  });
+  const source = await handle.boundingBox();
+  if (!source) throw new Error('Expected signature drag handle');
+  // Start the native drag before traversing the viewer. dragTo scrolls the
+  // oversized page after mousedown, which can move the source before dragstart.
+  await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(source.x + source.width / 2 - 30, source.y + source.height / 2, { steps: 5 });
+  await page.mouse.move(layerBox.x + 180, layerBox.y + 180, { steps: 12 });
+  await page.mouse.up();
 
   await expect(page.getByRole('status').filter({ hasText: 'Signature placed on page 1.' })).toBeVisible();
   await expect(page.getByTestId('placement-layer').getByRole('button', { name: 'Signature', exact: true })).toHaveCount(1);

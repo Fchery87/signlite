@@ -82,7 +82,7 @@ test.describe('text output', () => {
       () => 'none'
     );
     await page.getByRole('button', { name: 'Download' }).click();
-    await expect(page.getByText(/These characters can't be written into the PDF/)).toBeVisible();
+    await expect(page.getByRole('alert').filter({ hasText: /These characters can't be written into the PDF/ })).toBeVisible();
     // The placement itself must still be there for the user to fix.
     await expect(page.getByTestId('placement-layer').getByRole('button', { name: 'Text', exact: true })).toBeVisible();
     expect(await downloadPromise).toBe('none');

@@ -1,4 +1,5 @@
 import { format } from 'date-fns';
+import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Placement } from '../../db/schema';
 import { getAsset, getDateFormat, setDateFormat } from '../../db/signatures';
@@ -290,7 +291,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
         // 1px border here made the preview's visible marker smaller than the
         // box the export letterboxes into.
         className={`focus-ring group relative flex h-full w-full touch-none items-center justify-center overflow-visible ${
-          selected ? 'shadow-[0_0_0_2px_#EDF1FC]' : ''
+          selected ? 'shadow-[0_0_0_2px_#EFEEE8]' : ''
         } ${placement.type === 'signature' || placement.type === 'initials' ? 'bg-transparent' : 'bg-surface/85'}`}
         onPointerDown={(event) => startPointer(event, 'move')}
         onClick={(event) => {
@@ -343,18 +344,20 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
           />
         )}
 
-        {selected ? (
+        {selected ? createPortal(
           <div
             role="toolbar"
             aria-label="Selected element"
-            className="placement-toolbar absolute -top-10 left-0 flex items-center gap-2 border border-line bg-surface px-2 py-1 text-caption shadow-panel"
+            className="placement-toolbar editor-placement-toolbar flex items-center gap-1 whitespace-nowrap rounded-lg border border-line bg-surface p-1.5 text-caption shadow-panel"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
+            <strong className="rounded-md bg-accent-subtle px-2 py-1 font-medium text-ink">{placementLabel(placement.type)}</strong>
+            <div role="group" aria-label="Element actions" className="flex items-center gap-1 border-l border-line pl-1">
             {placement.type === 'text' ? (
               <button
                 type="button"
-                className="focus-ring rounded-sm px-2 py-1 hover:bg-mist"
+                className="focus-ring rounded-md px-2 py-1.5 hover:bg-mist disabled:opacity-50"
                 disabled={mutationLocked}
                 onClick={() => setIsEditingText(true)}
               >
@@ -363,7 +366,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
             ) : placement.type === 'date' ? (
               <button
                 type="button"
-                className="focus-ring rounded-sm px-2 py-1 hover:bg-mist"
+                className="focus-ring rounded-md px-2 py-1.5 hover:bg-mist disabled:opacity-50"
                 disabled={mutationLocked}
                 onClick={() => void cycleDateFormat()}
               >
@@ -371,7 +374,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
               </button>
             ) : null}
             {placement.type === 'text' || placement.type === 'date' ? (
-              <label className="flex items-center gap-1">
+              <label className="flex items-center gap-1 px-1 text-quiet">
                 <span>Size</span>
                 <input
                   type="number"
@@ -382,13 +385,13 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
                   onChange={(event) => {
                     updatePlacement(documentId, placement.id, { fontSize: Number(event.target.value) || 12 }, `fontSize:${placement.id}`);
                   }}
-                  className="focus-ring w-14 border border-line px-1 py-0.5"
+                  className="focus-ring w-14 rounded-md border border-line bg-mist px-1.5 py-1 text-ink disabled:opacity-50"
                 />
               </label>
             ) : null}
             <button
               type="button"
-              className="focus-ring rounded-sm px-2 py-1 hover:bg-mist"
+              className="focus-ring rounded-md px-2 py-1.5 hover:bg-mist disabled:opacity-50"
               disabled={mutationLocked}
               onClick={() => duplicatePlacement(documentId, placement.id)}
             >
@@ -396,7 +399,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
             </button>
             <button
               type="button"
-              className="focus-ring rounded-sm px-2 py-1 hover:bg-mist"
+              className="focus-ring rounded-md px-2 py-1.5 hover:bg-mist"
               onClick={() => {
                 copyPlacement(documentId, placement.id);
                 onToast?.(STRINGS.editor.copiedHint);
@@ -404,15 +407,27 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
             >
               {STRINGS.buttons.copy}
             </button>
+            </div>
+            <div role="group" aria-label="Selection actions" className="flex items-center gap-1 border-l border-line pl-1">
+              <button
+                type="button"
+                className="focus-ring rounded-md px-2 py-1.5 text-quiet hover:bg-mist"
+                onClick={() => setSelection(documentId, null)}
+              >
+                Deselect
+              </button>
+            </div>
+            <div role="group" aria-label="Delete element" className="ml-1 border-l border-line pl-2">
             <button
               type="button"
-              className="focus-ring rounded-sm px-2 py-1 text-danger hover:bg-mist"
+              className="focus-ring rounded-md border border-danger/20 bg-danger/5 px-2 py-1.5 text-danger hover:bg-danger/10 disabled:opacity-50"
               disabled={mutationLocked}
               onClick={() => removePlacement(documentId, placement.id)}
             >
               {STRINGS.buttons.delete}
             </button>
-          </div>
+            </div>
+          </div>, document.body
         ) : null}
 
         {selected && (

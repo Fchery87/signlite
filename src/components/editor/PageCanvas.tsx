@@ -4,6 +4,7 @@ import type { LoadedPdf } from '../../pdf/render';
 import { startPageRender, type PageRender } from '../../pdf/render';
 import { PlacementLayer } from './PlacementLayer';
 import { STRINGS } from '../../lib/strings';
+import { Button } from '../ui';
 
 type PageCanvasProps = {
   pdf: LoadedPdf | null;
@@ -45,6 +46,8 @@ export function PageCanvas({
   const activeRenderRef = useRef<PageRender | null>(null);
   const [isNearViewport, setIsNearViewport] = useState(false);
   const [isRendering, setIsRendering] = useState(true);
+  const [renderFailed, setRenderFailed] = useState(false);
+  const [renderAttempt, setRenderAttempt] = useState(0);
 
   const frameStyle = useMemo(
     () => ({ width: `${pageSize.w * scale}px`, minHeight: `${pageSize.h * scale}px` }),
@@ -109,6 +112,7 @@ export function PageCanvas({
     const runDraw = () => {
       if (superseded) return;
       setIsRendering(true);
+      setRenderFailed(false);
       const render = startPageRender(pdf, pageIndex, scale, canvas);
       activeRenderRef.current = render;
       const settle = () => {
@@ -117,7 +121,10 @@ export function PageCanvas({
         // the newer render is already writing into it.
         if (!superseded && activeRenderRef.current === render) setIsRendering(false);
       };
-      void render.finished.then(settle, settle);
+      void render.finished.then(settle, () => {
+        if (!superseded && activeRenderRef.current === render) setRenderFailed(true);
+        settle();
+      });
     };
 
     if (typeof window.requestIdleCallback === 'function') {
@@ -140,11 +147,11 @@ export function PageCanvas({
       // the cancelled one still owns.
       void render?.cancel();
     };
-  }, [isNearViewport, loading, pageIndex, pdf, scale]);
+  }, [isNearViewport, loading, pageIndex, pdf, scale, renderAttempt]);
 
   return (
     <div ref={wrapperRef} className="mx-auto w-full">
-      <div className="mb-2 text-caption font-medium uppercase text-quiet">{STRINGS.editor.pageLabel(pageIndex + 1)}</div>
+      <div className="mb-2 text-caption font-medium text-quiet">{STRINGS.editor.pageLabel(pageIndex + 1)}</div>
       <div className="relative flex items-center justify-center overflow-visible border border-line bg-surface shadow-page" style={frameStyle}>
         <canvas ref={canvasRef} className="block max-w-full" aria-hidden="true" />
         {(loading || isRendering) && (
@@ -154,6 +161,13 @@ export function PageCanvas({
               <div className="skeleton-block h-8 w-5/6" />
               <p className="text-center text-caption text-quiet">{STRINGS.loading.page}</p>
             </div>
+          </div>
+        )}
+        {renderFailed && !loading && (
+          <div role="alert" className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-surface p-4 text-center text-body">
+            <p className="font-medium text-ink">Page {pageIndex + 1} could not be displayed.</p>
+            <p className="max-w-xs text-caption text-quiet">Your placements are still saved. Try loading this page again before continuing.</p>
+            <Button variant="secondary" onClick={() => setRenderAttempt((attempt) => attempt + 1)}>Retry page</Button>
           </div>
         )}
         <PlacementLayer

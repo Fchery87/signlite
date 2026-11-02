@@ -64,21 +64,25 @@ function ThumbnailItem({ pdf, documentId, pageIndex, isActive, priority, onSelec
 
   return (
     <button
-      className={`focus-ring w-full border p-2 text-left transition ${isActive ? 'border-accent bg-accent-subtle' : 'border-line bg-surface hover:bg-mist'}`}
+      className={`focus-ring w-full rounded-md border p-2 text-left transition-colors ${isActive ? 'border-ink bg-accent-subtle' : 'border-transparent bg-mist/50 hover:border-line hover:bg-mist'}`}
+      aria-current={isActive ? 'page' : undefined}
       onClick={() => onSelectPage(pageIndex)}
       type="button"
     >
-      <div className="text-caption font-medium uppercase text-quiet">{STRINGS.editor.pageLabel(pageIndex + 1)}</div>
-      <div className="relative mt-2 overflow-hidden border border-line bg-mist">
+      <div className="flex items-center justify-between text-caption font-medium text-ink">
+        <span>{STRINGS.editor.pageLabel(pageIndex + 1)}</span>
+        {isActive ? <span aria-hidden="true" className="size-1.5 rounded-full bg-ink" /> : null}
+      </div>
+      <div className="relative mx-auto mt-2 min-h-28 max-w-[120px] overflow-hidden rounded-sm border border-line bg-surface shadow-page">
         {error ? (
-          <div className="flex h-36 items-center justify-center text-caption text-quiet">{STRINGS.editor.pagePreviewUnavailable}</div>
+          <div className="flex h-28 items-center justify-center px-2 text-center text-caption text-quiet">{STRINGS.editor.pagePreviewUnavailable}</div>
         ) : (
           <>
             {/* The canvas stays mounted so the draw effect can reach it; the
                 skeleton covers it until the first paint lands. */}
             <canvas ref={canvasRef} className="block h-auto w-full" />
             {isLoading && (
-              <div className="absolute inset-0 flex h-36 flex-col items-center justify-center gap-2 bg-mist px-3">
+              <div className="absolute inset-0 flex min-h-28 flex-col items-center justify-center gap-2 bg-mist px-3">
                 <div className="skeleton-block h-24 w-full" />
                 <span className="text-caption text-quiet">{STRINGS.loading.thumbnail}</span>
               </div>

@@ -12,6 +12,7 @@ async function intakeAndOpenEditor(page: Page) {
     buffer: await createSamplePdf()
   });
   await openQueuedDocument(page, 'library-fixture.pdf');
+  await page.getByText('Advanced tools and backup', { exact: true }).click();
 }
 
 type StoredAsset = { id: string; pngBytes: number[]; label: string; width: number; height: number };

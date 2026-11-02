@@ -17,6 +17,11 @@ function stubCanvas() {
 }
 
 describe('PageThumbnails', () => {
+  it('identifies the current page for assistive technology', () => {
+    render(<PageThumbnails pdf={null} documentId="d0" pageCount={2} activePage={1} onSelectPage={() => {}} />);
+    expect(screen.getByRole('button', { name: /Page 2/i })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: /Page 1/i })).not.toHaveAttribute('aria-current');
+  });
   it('paints the thumbnail and clears the loading skeleton', async () => {
     const drawn = stubCanvas();
 

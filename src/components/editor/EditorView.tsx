@@ -94,6 +94,7 @@ export function EditorView({ onToast }: EditorViewProps) {
   const removeDocument = useSessionStore((state) => state.removeDocument);
   const addDocuments = useSessionStore((state) => state.addDocuments);
   const openQueue = useSessionStore((state) => state.openQueue);
+  const openDocument = useSessionStore((state) => state.openDocument);
   const armedSignature = useSessionStore((state) => state.armedSignature);
   const disarmSignature = useSessionStore((state) => state.disarmSignature);
   const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
@@ -101,7 +102,9 @@ export function EditorView({ onToast }: EditorViewProps) {
   const selectedDocument = documents.find((document) => document.docId === selectedDocumentId) ?? documents[0] ?? null;
 
   const [pdfState, setPdfState] = useState<PdfState>({ status: 'loading' });
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [zoom, setZoom] = useState<ZoomOption>('fit');
   const [viewerWidth, setViewerWidth] = useState(0);
   const [dateFormat, setDateFormat] = useState(() => getDateFormat());
@@ -128,6 +131,7 @@ export function EditorView({ onToast }: EditorViewProps) {
     let cancelled = false;
     let loadedPdf: LoadedPdf | null = null;
     setPdfState({ status: 'loading' });
+    setDownloadError(null);
 
     async function load() {
       try {
@@ -152,7 +156,7 @@ export function EditorView({ onToast }: EditorViewProps) {
       cancelled = true;
       void loadedPdf?.destroy();
     };
-  }, [selectedDocId, selectedPdfBytes, setSelection]);
+  }, [selectedDocId, selectedPdfBytes, setSelection, loadAttempt]);
 
   useEffect(() => {
     void hydrateSignaturePrefs().then(() => setDateFormat(getDateFormat()));
@@ -303,6 +307,7 @@ export function EditorView({ onToast }: EditorViewProps) {
 
   const handleDownload = useCallback(async () => {
     if (!selectedDocument || isDownloading || mutationLocked) return;
+    setDownloadError(null);
     setIsDownloading(true);
     try {
       const { assertTextExportable, flattenDocument } = await import('../../pdf/flatten');
@@ -315,7 +320,9 @@ export function EditorView({ onToast }: EditorViewProps) {
       transitionDocumentOutput(selectedDocument.docId, 'signed');
       onToast(STRINGS.editor.downloadSuccess(fileName));
     } catch (error) {
-      onToast(error instanceof Error ? error.message : STRINGS.editor.downloadFailed);
+      const message = error instanceof Error ? error.message : STRINGS.editor.downloadFailed;
+      setDownloadError(message);
+      onToast(message);
     } finally {
       setIsDownloading(false);
     }
@@ -372,14 +379,44 @@ export function EditorView({ onToast }: EditorViewProps) {
     return null;
   }
 
+  const editorHint = armedSignature
+    ? `Click or tap a page to place your ${placementLabel(armedSignature.kind).toLowerCase()}.`
+    : isDownloading
+      ? 'Preparing your signed PDF…'
+      : selectedDocument.status === 'signed'
+        ? 'Downloaded. Any new changes will need a fresh download.'
+        : !hasPlacements
+          ? 'Choose a signature, initials, date or text to begin.'
+          : 'Review your placements, then download your PDF.';
+
   return (
-    <section className="p-2 pb-24 sm:p-4 xl:pb-4">
+    <section className="editor-workspace p-2 pb-32 sm:p-4 xl:pb-4" aria-label="Document editor">
       <div aria-live="polite" aria-label={STRINGS.liveRegionLabel} className="sr-only-live">
         {announcement}
       </div>
-      <div className="grid min-h-[70dvh] grid-cols-1 gap-4 xl:h-[calc(100dvh-150px)] xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
+        <div className="min-w-0 flex-1 basis-48">
+          <Button variant="ghost" className="mb-1 -ml-2 px-2 text-caption" onClick={openQueue}>
+            <span aria-hidden="true" className="mr-2">←</span>{STRINGS.queue.allDocuments}
+          </Button>
+          <h1 className="truncate text-h1 text-ink sm:text-display" title={selectedDocument.fileName}>{selectedDocument.fileName}</h1>
+          <p className="mt-1 text-caption text-quiet">Document editor · {selectedDocument.pageCount} {selectedDocument.pageCount === 1 ? 'page' : 'pages'}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input ref={addPdfsRef} hidden type="file" accept="application/pdf" multiple onChange={(event) => { void handleAddPdfs(event.target.files); }} />
+          <Button variant="secondary" disabled={mutationLocked} onClick={() => addPdfsRef.current?.click()}>{STRINGS.buttons.addPdfs}</Button>
+          <Button
+            onClick={() => void handleDownload()}
+            disabled={isDownloading || !hasPlacements || mutationLocked || pdfState.status !== 'ready'}
+            title={!hasPlacements ? STRINGS.tooltips.nothingPlacedYet : undefined}
+          >
+            {isDownloading ? STRINGS.editor.downloading : STRINGS.buttons.download}
+          </Button>
+        </div>
+      </header>
+      <div className="grid min-h-[70dvh] grid-cols-1 gap-4 xl:h-[calc(100dvh-245px)] xl:min-h-[480px] xl:grid-cols-[184px_minmax(0,1fr)_288px]">
         <EditorPanel open={pagesOpen} title={STRINGS.editor.pagesTitle} onClose={() => setPagesOpen(false)}>
-          <div className="surface-card min-h-0 overflow-auto p-4 shadow-panel">
+          <div className="min-h-0 overflow-auto rounded-lg border border-line bg-surface p-3">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-h2 text-ink">{STRINGS.editor.pagesTitle}</h2>
@@ -407,123 +444,56 @@ export function EditorView({ onToast }: EditorViewProps) {
           />
         </EditorPanel>
 
-        <main className="surface-card flex min-h-0 min-w-0 flex-col shadow-panel">
-          {armedSignature ? (
-            <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b border-accent/30 bg-accent-subtle px-6 py-2 text-body text-ink">
-              <span>{STRINGS.editor.placeArmed(placementLabel(armedSignature.kind))}</span>
-              <Button variant="ghost" className="px-2 py-1 text-caption" onClick={disarmSignature}>
-                {STRINGS.buttons.cancel}
-              </Button>
-            </div>
-          ) : null}
-          <details className="border-b border-line px-3 py-2 text-caption text-quiet sm:px-6">
-            <summary className="focus-ring cursor-pointer py-1">Signature and export policy</summary>
-            <p className="mt-2">{VISUAL_SIGNATURE_DISCLOSURE}</p>
-            <p className="mt-1">{EXPORT_POLICY_DISCLOSURE}</p>
-          </details>
-          {/* Document identity leads and truncates; the control cluster never shrinks
-              and wraps to its own line rather than spilling past the card edge. */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-3 py-3 sm:px-6 sm:py-4">
-            <Button variant="secondary" onClick={openQueue}>{STRINGS.queue.allDocuments}</Button>
-            <div className="min-w-[9rem] flex-1 basis-0">
-              <h1 className="truncate text-h1 text-ink" title={selectedDocument.fileName}>
-                {selectedDocument.fileName}
-              </h1>
-              <p className="mt-1 text-body text-quiet">{STRINGS.editor.pageOf(activePage + 1, selectedDocument.pageCount)}</p>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-              <button
-                type="button"
-                className="focus-ring rounded-md border border-line bg-surface px-3 py-1 text-caption text-ink xl:hidden"
+        <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-line bg-surface">
+          <div role="toolbar" aria-label="Document navigation" className="flex flex-wrap items-center justify-between gap-2 border-b border-line p-2 sm:px-3">
+            <div className="flex flex-wrap items-center gap-1">
+              <Button variant="ghost" className="px-2 xl:hidden"
                 aria-expanded={pagesOpen}
                 onClick={() => setPagesOpen((open) => !open)}
               >
-                {pagesOpen ? STRINGS.editor.hidePages : STRINGS.editor.showPages}
-              </button>
-              <button
-                type="button"
-                className="focus-ring rounded-md border border-line bg-surface px-3 py-1 text-caption text-ink xl:hidden"
+                <span aria-hidden="true">▤</span><span className="ml-1" aria-hidden="true">Pages</span><span className="sr-only">{pagesOpen ? STRINGS.editor.hidePages : STRINGS.editor.showPages}</span>
+              </Button>
+              <Button variant="ghost" className="px-2" aria-label="Previous page" disabled={activePage === 0} onClick={() => selectPage(activePage - 1)}>‹</Button>
+              <span className="whitespace-nowrap text-caption text-quiet" aria-live="polite">{STRINGS.editor.pageOf(activePage + 1, selectedDocument.pageCount)}</span>
+              <Button variant="ghost" className="px-2" aria-label="Next page" disabled={activePage >= selectedDocument.pageCount - 1} onClick={() => selectPage(activePage + 1)}>›</Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              <div className="mr-1 flex items-center gap-0.5 border-r border-line pr-2">
+                <Button variant="ghost" className="size-8 shrink-0 px-0" aria-label={STRINGS.buttons.undo} title={STRINGS.buttons.undo} onClick={undo} disabled={!canUndo || mutationLocked}><HistoryIcon /></Button>
+                <Button variant="ghost" className="size-8 shrink-0 px-0" aria-label={STRINGS.buttons.redo} title={STRINGS.buttons.redo} onClick={redo} disabled={!canRedo || mutationLocked}><HistoryIcon mirrored /></Button>
+              </div>
+              <div role="group" aria-label={STRINGS.editor.zoomLabel} className="flex items-center rounded-md bg-mist p-0.5">
+                {zoomOptions.map((option) => (
+                  <button key={option.label} type="button" aria-pressed={zoom === option.value} onClick={() => setZoom(option.value)}
+                    className={`focus-ring inline-flex h-8 items-center justify-center rounded-sm px-2 text-caption font-medium transition-colors ${zoom === option.value ? 'bg-ink text-white' : 'text-quiet hover:bg-sunken hover:text-ink'}`}
+                  >{option.label}</button>
+                ))}
+              </div>
+              <Button variant="ghost" className="size-8 shrink-0 px-0" aria-label={STRINGS.shortcuts.open} onClick={() => setShortcutOpen(true)}>?</Button>
+              <Button variant="secondary" className="ml-1 px-2 xl:hidden"
                 aria-expanded={libraryOpen}
                 onClick={() => setLibraryOpen((open) => !open)}
               >
-                {libraryOpen ? STRINGS.editor.hideLibrary : STRINGS.editor.showLibrary}
-              </button>
-              <Button
-                variant="ghost"
-                className="size-8 shrink-0 px-0"
-                aria-label={STRINGS.shortcuts.open}
-                onClick={() => setShortcutOpen(true)}
-              >
-                ?
-              </Button>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  className="size-8 shrink-0 px-0"
-                  aria-label={STRINGS.buttons.undo}
-                  title={STRINGS.buttons.undo}
-                  onClick={undo}
-                  disabled={!canUndo || mutationLocked}
-                >
-                  <HistoryIcon />
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="size-8 shrink-0 px-0"
-                  aria-label={STRINGS.buttons.redo}
-                  title={STRINGS.buttons.redo}
-                  onClick={redo}
-                  disabled={!canRedo || mutationLocked}
-                >
-                  <HistoryIcon mirrored />
-                </Button>
-              </div>
-              {/* One setting, three options — a segmented group says that better than
-                  three peer buttons, and costs far less horizontal room. */}
-              <div role="group" aria-label={STRINGS.editor.zoomLabel} className="flex items-center rounded-md border border-line p-[2px]">
-                {zoomOptions.map((option) => (
-                  <button
-                    key={option.label}
-                    type="button"
-                    aria-pressed={zoom === option.value}
-                    onClick={() => setZoom(option.value)}
-                    className={`focus-ring inline-flex h-7 items-center justify-center rounded-sm px-2.5 text-body font-medium leading-none transition-colors duration-100 ease-out ${
-                      zoom === option.value ? 'bg-accent text-white' : 'text-quiet hover:bg-sunken hover:text-ink'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              <input
-                ref={addPdfsRef}
-                hidden
-                type="file"
-                accept="application/pdf"
-                multiple
-                onChange={(event) => {
-                  void handleAddPdfs(event.target.files);
-                }}
-              />
-              <Button variant="secondary" disabled={mutationLocked} onClick={() => addPdfsRef.current?.click()}>
-                {STRINGS.buttons.addPdfs}
-              </Button>
-              <Button
-                onClick={() => void handleDownload()}
-                disabled={isDownloading || !hasPlacements || mutationLocked}
-                title={!hasPlacements ? STRINGS.tooltips.nothingPlacedYet : undefined}
-              >
-                {isDownloading ? STRINGS.editor.downloading : STRINGS.buttons.download}
+                <span aria-hidden="true">Tools</span><span className="sr-only">{libraryOpen ? STRINGS.editor.hideLibrary : STRINGS.editor.showLibrary}</span>
               </Button>
             </div>
           </div>
-
-          <div ref={scrollRootRef} data-testid="editor-scroll" className="max-h-[70dvh] min-h-[40dvh] overflow-auto bg-sunken px-3 py-4 xl:max-h-none xl:min-h-0 xl:flex-1 xl:px-6 xl:py-6">
+          <div role="status" className={`flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2 text-caption ${armedSignature ? 'bg-accent-subtle text-ink' : 'bg-mist/50 text-quiet'}`}>
+            <p>{editorHint}</p>
+            {armedSignature ? <Button variant="ghost" className="px-2 py-0 text-caption" onClick={disarmSignature}>{STRINGS.buttons.cancel}</Button> : null}
+          </div>
+          {downloadError ? <div role="alert" className="border-b border-danger/20 bg-danger/5 px-3 py-2 text-body text-danger"><p>{downloadError}</p><p className="mt-1 text-caption">Your work is still here. Review the document and try Download again.</p></div> : null}
+          <div ref={scrollRootRef} data-testid="editor-scroll" tabIndex={0} aria-label="PDF pages" className="focus-ring max-h-[65dvh] min-h-[40dvh] overflow-auto bg-sunken px-3 py-5 xl:max-h-none xl:min-h-0 xl:flex-1 xl:px-6 xl:py-6">
             <div ref={viewerRef} className="mx-auto max-w-full space-y-6">
+              {pdfState.status === 'loading' && <p role="status" className="text-center text-body text-quiet">Opening your PDF…</p>}
               {pdfState.status === 'error' && (
-                <div className="border border-danger/30 bg-danger/10 p-4 text-body text-danger">
-                  <p>{pdfState.message}</p>
-                  <div className="mt-3">
+                <div role="alert" className="mx-auto max-w-md rounded-lg border border-line bg-surface p-6 text-body">
+                  <h2 className="text-h2 text-ink">This PDF could not be opened</h2>
+                  <p className="mt-2 text-quiet">{pdfState.message}</p>
+                  <p className="mt-2 text-quiet">Try opening it again, or return to your documents to replace the file.</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button onClick={() => setLoadAttempt((attempt) => attempt + 1)}>Try again</Button>
+                    <Button variant="secondary" onClick={openQueue}>{STRINGS.queue.allDocuments}</Button>
                     <Button variant="secondary" disabled={mutationLocked} onClick={() => removeDocument(selectedDocument.docId)}>
                       {STRINGS.editor.removeFromSession}
                     </Button>
@@ -556,7 +526,7 @@ export function EditorView({ onToast }: EditorViewProps) {
         </main>
 
         <EditorPanel open={libraryOpen} title={STRINGS.library.title} onClose={() => setLibraryOpen(false)}>
-          <div className="surface-card shrink-0 p-4 shadow-panel">
+          <div className="rounded-lg border border-line bg-surface p-4">
             <LibraryTray
               onToast={onToast}
               onAddDate={() => placeSpecialElement('date')}
@@ -564,6 +534,7 @@ export function EditorView({ onToast }: EditorViewProps) {
               onStampDate={() => placeSpecialElement('date', true)}
               onStampText={() => placeSpecialElement('text', true)}
               onPlaceAsset={handlePlaceAsset}
+              onArmAsset={(asset) => { openDocument(selectedDocument.docId, asset); setLibraryOpen(false); }}
               onStampEveryPage={handleStampAsset}
               activePage={activePage}
               placementDisabled={mutationLocked}
@@ -571,6 +542,11 @@ export function EditorView({ onToast }: EditorViewProps) {
           </div>
         </EditorPanel>
       </div>
+      <details className="mt-3 px-1 text-caption text-quiet">
+        <summary className="focus-ring w-fit cursor-pointer rounded py-1">Signature and export policy</summary>
+        <p className="mt-2 max-w-3xl">{VISUAL_SIGNATURE_DISCLOSURE}</p>
+        <p className="mt-1 max-w-3xl">{EXPORT_POLICY_DISCLOSURE}</p>
+      </details>
       <Modal open={shortcutOpen} title={STRINGS.shortcuts.open} onClose={() => setShortcutOpen(false)}>
         <div className="space-y-3">
           <p className="text-body text-quiet">{STRINGS.shortcuts.hint}</p>

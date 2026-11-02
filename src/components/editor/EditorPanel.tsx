@@ -17,6 +17,6 @@ export function EditorPanel({ open, title, onClose, children }: {
     return () => query.removeEventListener('change', update);
   }, []);
 
-  if (wide) return <aside className="flex min-h-0 flex-col gap-4 overflow-auto">{children}</aside>;
+  if (wide) return <aside aria-label={title} className="flex min-h-0 flex-col gap-3 overflow-auto">{children}</aside>;
   return <Modal open={open} title={title} onClose={onClose} mobileFullscreen>{children}</Modal>;
 }

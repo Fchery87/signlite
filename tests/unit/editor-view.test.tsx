@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { act } from 'react';
 import { EditorView } from '../../src/components/editor/EditorView';
 import { sessionStoreTestHarness } from '../../src/stores/session';
 import { STRINGS } from '../../src/lib/strings';
+import { loadDocument } from '../../src/pdf/render';
 
 vi.mock('../../src/pdf/render', () => ({
   loadDocument: vi.fn(async () => ({ destroy: vi.fn() })),
@@ -29,6 +30,7 @@ vi.mock('../../src/pdf/textLayout', async (importOriginal) => ({
 }));
 
 vi.mock('../../src/pdf/flatten', () => ({
+  assertTextExportable: vi.fn(async () => undefined),
   flattenDocument: vi.fn()
 }));
 
@@ -98,6 +100,45 @@ function resetStore() {
 }
 
 describe('editor view', () => {
+  it('provides bounded previous and next page navigation in a named toolbar', { timeout: 15000 }, async () => {
+    render(<EditorView onToast={vi.fn()} />);
+    expect(screen.getByRole('toolbar', { name: 'Document navigation' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous page' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(screen.getByText(STRINGS.editor.pageOf(2, 2))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Previous page' }));
+    expect(screen.getByText(STRINGS.editor.pageOf(1, 2))).toBeInTheDocument();
+  });
+
+  it('explains how to start without covering the PDF canvas', () => {
+    render(<EditorView onToast={vi.fn()} />);
+    expect(screen.getByText('Choose a signature, initials, date or text to begin.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: STRINGS.buttons.download })).toBeDisabled();
+  });
+
+  it('retries a failed document load without removing the document', async () => {
+    vi.mocked(loadDocument).mockRejectedValueOnce(new Error('Cannot read this PDF'));
+    render(<EditorView onToast={vi.fn()} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Cannot read this PDF');
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(sessionStoreTestHarness.getState().session.documents).toHaveLength(1);
+  });
+
+  it('keeps download failures visible and preserves the signing work', async () => {
+    const { flattenDocument } = await import('../../src/pdf/flatten');
+    vi.mocked(flattenDocument).mockRejectedValueOnce(new Error('Unable to prepare the PDF'));
+    render(<EditorView onToast={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: STRINGS.library.text }));
+    const download = screen.getByRole('button', { name: STRINGS.buttons.download });
+    await waitFor(() => expect(download).toBeEnabled());
+    fireEvent.click(download);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to prepare the PDF');
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(1);
+    expect(download).toBeEnabled();
+  });
+
   it('opens phone tools as a dialog and returns to the page after adding text', { timeout: 15000 }, async () => {
     vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
     render(<EditorView onToast={vi.fn()} />);
@@ -210,8 +251,7 @@ describe('editor view', () => {
     fireEvent.click(screen.getByRole('button', { name: STRINGS.library.text }));
     sessionStoreTestHarness.setState({ history: { past: [], future: [] } });
 
-    const placed = await screen.findByText('Text', { selector: 'span' });
-    const placedButton = placed.closest('[role="button"]')!;
+    const placedButton = await within(screen.getAllByTestId('placement-layer')[0]!).findByRole('button', { name: 'Text' });
     fireEvent.click(placedButton);
     fireEvent.doubleClick(placedButton);
 
@@ -231,6 +271,7 @@ describe('editor view', () => {
 
   it('offers place on every page when the library tray renders', async () => {
     render(<EditorView onToast={() => {}} />);
+    fireEvent.click(screen.getByText('Repeat on every page', { exact: true }));
     expect(screen.getByRole('button', { name: STRINGS.buttons.placeDateOnEveryPage })).toBeEnabled();
     expect(screen.getByRole('button', { name: STRINGS.buttons.placeTextOnEveryPage })).toBeEnabled();
   });
