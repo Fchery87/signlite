@@ -22,7 +22,7 @@ export function PwaControls() {
   const [installed, setInstalled] = useState(() => window.matchMedia?.('(display-mode: standalone)').matches ?? false);
   const [installError, setInstallError] = useState(false);
   const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  useEffect(() => prepareOffline(setStatus), [attempt]);
+  useEffect(() => prepareOffline(setStatus, attempt > 0), [attempt]);
   useEffect(() => {
     const offered = (event: Event) => { event.preventDefault(); setPrompt(event as InstallPrompt); };
     const completed = () => { setInstalled(true); setPrompt(null); };

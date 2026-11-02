@@ -56,3 +56,32 @@ it('serves the public shell from its own version cache without a runtime write',
   expect(sw.match).toHaveBeenCalledWith('/index.html');
   expect(sw.fetch).not.toHaveBeenCalled();
 });
+it('repairs only missing allowlisted resources and acknowledges completion', async () => {
+  const sw = worker();
+  sw.match.mockImplementation(async (url: string) => url === '/index.html' ? undefined : new Response('app'));
+  const postMessage = vi.fn();
+  let done: Promise<unknown> = Promise.resolve();
+  sw.handlers.get('message')!({data: 'APP_CACHE_REPAIR', ports: [{postMessage}], waitUntil: (promise: Promise<unknown>) => {done = promise;}});
+  await done;
+  expect(sw.addAll).toHaveBeenCalledExactlyOnceWith(['/index.html']);
+  expect(postMessage).toHaveBeenCalledWith({ready: true, version: 'new'});
+});
+it.each(['APP_CACHE_STATUS', 'APP_CACHE_REPAIR'])('responds false instead of rejecting on storage errors for %s', async (message) => {
+  const sw = worker();
+  sw.match.mockRejectedValueOnce(new Error('storage unavailable'));
+  const postMessage = vi.fn();
+  let done: Promise<unknown> = Promise.resolve();
+  sw.handlers.get('message')!({data: message, ports: [{postMessage}], waitUntil: (promise: Promise<unknown>) => {done = promise;}});
+  await expect(done).resolves.toBeUndefined();
+  expect(postMessage).toHaveBeenCalledWith({ready: false, version: 'new'});
+});
+it('responds false when repair fetching fails without rejecting its event lifetime', async () => {
+  const sw = worker();
+  sw.match.mockResolvedValue(undefined);
+  sw.addAll.mockRejectedValueOnce(new Error('offline'));
+  const postMessage = vi.fn();
+  let done: Promise<unknown> = Promise.resolve();
+  sw.handlers.get('message')!({data: 'APP_CACHE_REPAIR', ports: [{postMessage}], waitUntil: (promise: Promise<unknown>) => {done = promise;}});
+  await expect(done).resolves.toBeUndefined();
+  expect(postMessage).toHaveBeenCalledWith({ready: false, version: 'new'});
+});

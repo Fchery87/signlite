@@ -32,10 +32,16 @@ self.addEventListener('activate', event => {
   })());
 });
 self.addEventListener('message', event => {
-  if (event.data === 'APP_CACHE_STATUS' && event.ports[0]) {
+  if ((event.data === 'APP_CACHE_STATUS' || event.data === 'APP_CACHE_REPAIR') && event.ports[0]) {
     event.waitUntil((async () => {
-      const cache = await caches.open(CACHE);
-      const complete = (await Promise.all(URLS.map(url => cache.match(url)))).every(Boolean);
+      let complete = false;
+      try {
+        const cache = await caches.open(CACHE);
+        const found = await Promise.all(URLS.map(url => cache.match(url)));
+        const missing = URLS.filter((url, index) => !found[index]);
+        if (event.data === 'APP_CACHE_REPAIR' && missing.length) await cache.addAll(missing);
+        complete = missing.length === 0 || event.data === 'APP_CACHE_REPAIR';
+      } catch { /* Report storage/network failures without rejecting the event. */ }
       event.ports[0].postMessage({ready: complete, version: ${JSON.stringify(version)}});
     })());
   }

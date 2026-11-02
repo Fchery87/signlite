@@ -3,6 +3,24 @@ import { createSamplePdf, openQueuedDocument } from './helpers/fixtures';
 
 const offlineReady = (page: import('@playwright/test').Page) => page.getByRole('status').filter({hasText: 'Ready to launch offline'});
 
+test('online retry repairs an evicted public app cache entry', async ({page}) => {
+  test.setTimeout(120000);
+  await page.goto('/');
+  await expect(offlineReady(page)).toBeVisible({timeout: 90000});
+  await page.evaluate(async () => {
+    const key = (await caches.keys()).find(name => name.startsWith('signlite-app-'))!;
+    await (await caches.open(key)).delete('/icons/icon-192.png');
+  });
+  await page.reload();
+  await expect(page.getByRole('status').filter({hasText: 'Offline launch preparation failed'})).toBeVisible();
+  await page.getByRole('button', {name: 'Retry offline setup'}).click();
+  await expect(offlineReady(page)).toBeVisible({timeout: 30000});
+  expect(await page.evaluate(async () => {
+    const key = (await caches.keys()).find(name => name.startsWith('signlite-app-'))!;
+    return Boolean(await (await caches.open(key)).match('/icons/icon-192.png'));
+  })).toBe(true);
+});
+
 test('public app precache supports offline relaunch and a fresh PDF without caching user data', async ({ page, context, request }) => {
   test.setTimeout(180000);
   const headers = await request.get('/sw.js');
