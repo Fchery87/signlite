@@ -7,6 +7,58 @@ test.use({
   isMobile: true
 });
 
+test('cancelled touch strokes can be undone and cleared without saving an empty asset', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP touch cancellation is Chromium-only');
+  test.setTimeout(90000);
+  await page.goto('/');
+  await waitForRuntimeReady(page);
+  await page.locator('input[accept="application/pdf"]').setInputFiles({ name: 'cancel.pdf', mimeType: 'application/pdf', buffer: await createBatchPdf('Cancel', 1) });
+  await page.getByLabel('Create signature').tap();
+  await page.getByRole('button', { name: 'Draw', exact: true }).tap();
+  const canvas = page.getByLabel('Signature drawing canvas');
+  await page.setViewportSize({ width: 360, height: 740 });
+  await expect.poll(() => canvas.evaluate((node) => {
+    if (!(node instanceof HTMLCanvasElement)) throw new Error('Expected drawing canvas');
+    const box = node.getBoundingClientRect();
+    return Math.abs(node.width / box.width - node.height / box.height);
+  })).toBeLessThan(0.05);
+  const hasInk = () => canvas.evaluate((node) => {
+    if (!(node instanceof HTMLCanvasElement)) throw new Error('Expected drawing canvas');
+    const context = node.getContext('2d');
+    if (!context) throw new Error('Missing raster context');
+    return context.getImageData(0, 0, node.width, node.height).data.some((value, index) => index % 4 === 3 && value > 0);
+  });
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('Missing canvas');
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + 40, y: box.y + 40 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: box.x + 100, y: box.y + 70 }] });
+  const activeRaster = await canvas.evaluate((node) => {
+    if (!(node instanceof HTMLCanvasElement)) throw new Error('Expected drawing canvas');
+    return { width: node.width, height: node.height, pixels: node.toDataURL() };
+  });
+  await page.setViewportSize({ width: 740, height: 360 });
+  await expect.poll(() => canvas.evaluate((node) => {
+    if (!(node instanceof HTMLCanvasElement)) throw new Error('Expected drawing canvas');
+    return { width: node.width, height: node.height, pixels: node.toDataURL() };
+  })).toEqual(activeRaster);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+  await cdp.detach();
+  await page.waitForTimeout(2000);
+  await expect.poll(hasInk).toBe(true);
+  await page.getByRole('button', { name: 'Undo', exact: true }).tap();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await expect.poll(hasInk).toBe(false);
+  await canvas.tap();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Clear', exact: true }).tap();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await expect.poll(hasInk).toBe(false);
+  await page.getByRole('button', { name: 'Cancel', exact: true }).tap();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(page.getByText('No saved signature yet.', { exact: true })).toBeVisible();
+});
+
 test('real CDP pen produces pressure-sensitive pixels and saves', async ({
   page,
   browserName
@@ -115,4 +167,32 @@ test('real CDP pen produces pressure-sensitive pixels and saves', async ({
     .getByRole('button', { name: 'Save', exact: true })
     .tap();
   await expect(page.getByRole('dialog')).toBeHidden();
+  const savedDrawing = () => page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('signlite');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const rows: unknown = await new Promise((resolve, reject) => {
+        const request = db.transaction('signatures').objectStore('signatures').getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      if (!Array.isArray(rows)) throw new Error('Expected stored signatures');
+      const row: unknown = rows[0];
+      if (typeof row !== 'object' || row === null || !('strokeData' in row) || typeof row.strokeData !== 'string' ||
+          !('pngBytes' in row) || !(row.pngBytes instanceof ArrayBuffer)) throw new Error('Expected persisted drawing');
+      return { strokes: row.strokeData, png: Array.from(new Uint8Array(row.pngBytes)) };
+    } finally { db.close(); }
+  });
+  const stored = await savedDrawing();
+  const storedStrokes: unknown = JSON.parse(stored.strokes);
+  expect(storedStrokes).toEqual([
+    expect.arrayContaining([expect.objectContaining({ pressure: expect.closeTo(0.15, 2) })]),
+    expect.arrayContaining([expect.objectContaining({ pressure: expect.closeTo(0.95, 2) })])
+  ]);
+  expect(stored.png.slice(0, 8)).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+  await page.reload();
+  await expect.poll(savedDrawing).toEqual(stored);
 });
