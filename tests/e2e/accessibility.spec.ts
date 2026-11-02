@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { createSamplePdf, openQueuedDocument, waitForRuntimeReady } from './helpers/fixtures';
 
-test('keyboard signing reaches download, and narrow screens open the pages sidebar', async ({ page }) => {
+test('keyboard users open and dismiss narrow tool dialogs and retain desktop panels', async ({ page }) => {
   test.setTimeout(90000);
   await page.setViewportSize({ width: 360, height: 740 });
   await page.goto('/');
@@ -17,11 +17,15 @@ test('keyboard signing reaches download, and narrow screens open the pages sideb
   await expect(pages).toBeVisible();
   await pages.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('button', { name: 'Hide pages' }).first()).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Pages' })).toBeVisible();
+  const pagesDialog = page.getByRole('dialog', { name: 'Pages', exact: true });
+  await expect(pagesDialog).toBeVisible();
+  await expect(pagesDialog.getByRole('heading', { name: 'Pages' }).first()).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(pagesDialog).toBeHidden();
+  await expect(pages).toBeFocused();
 
   await page.getByRole('button', { name: 'Show library' }).click();
-  await expect(page.getByRole('heading', { name: 'Library' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Library', exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(page.getByRole('heading', { name: 'Pages' })).toBeVisible();

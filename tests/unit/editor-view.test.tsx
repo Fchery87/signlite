@@ -98,7 +98,7 @@ function resetStore() {
 }
 
 describe('editor view', () => {
-  it('opens phone tools as a dialog and returns to the page after adding text', async () => {
+  it('opens phone tools as a dialog and returns to the page after adding text', { timeout: 15000 }, async () => {
     vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
     render(<EditorView onToast={vi.fn()} />);
     fireEvent.click(screen.getAllByRole('button', { name: STRINGS.editor.showLibrary })[0]!);

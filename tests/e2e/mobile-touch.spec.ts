@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createBatchPdf, waitForRuntimeReady } from './helpers/fixtures';
+import { SAMPLE_UPLOAD_PNG, createBatchPdf, waitForRuntimeReady } from './helpers/fixtures';
 
 async function noOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
@@ -39,9 +39,13 @@ async function touchDrag(page: Page, from: { x: number; y: number }, to: { x: nu
   }
 }
 
-test('touch draw, place, move, resize, edit, navigate and download', async ({ page }) => {
+test('touch draw, place, move, resize, edit, navigate and download after offline relaunch', async ({ page, context }) => {
   test.setTimeout(180000);
   await page.goto('/');
+  await waitForRuntimeReady(page);
+  await expect(page.getByRole('status').filter({ hasText: 'Ready to launch offline' })).toBeVisible({ timeout: 90000 });
+  await context.setOffline(true);
+  await page.reload();
   await waitForRuntimeReady(page);
   await page.locator('input[accept="application/pdf"]').setInputFiles({
     name: 'touch-contract.pdf', mimeType: 'application/pdf', buffer: await createBatchPdf('Touch signing', 2)
@@ -51,6 +55,7 @@ test('touch draw, place, move, resize, edit, navigate and download', async ({ pa
   const pad = page.getByRole('dialog');
   const canvas = pad.locator('canvas');
   await expect(canvas).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('mobile-drawing.png') });
   const bounds = await canvas.boundingBox();
   if (!bounds) throw new Error('Missing drawing canvas');
   const from = { x: bounds.x + bounds.width * 0.15, y: bounds.y + bounds.height * 0.5 };
@@ -81,6 +86,7 @@ test('touch draw, place, move, resize, edit, navigate and download', async ({ pa
   await touchDrag(page, { x: resize.x + resize.width / 2, y: resize.y + resize.height / 2 }, { x: resize.x + resize.width / 2 + 20, y: resize.y + resize.height / 2 + 10 });
   expect((await signature.boundingBox())?.width).toBeGreaterThan(before.width + 10);
   await noOverflow(page);
+  await page.screenshot({ path: test.info().outputPath('mobile-placed.png') });
 
   await page.getByRole('button', { name: 'Show library', exact: true }).tap();
   const library = page.getByRole('dialog');
@@ -120,5 +126,31 @@ test('drawing actions remain reachable in short landscape windows', async ({ pag
   await expect(save).toBeInViewport();
   await save.tap();
   await expect(dialog).toBeHidden();
+  await noOverflow(page);
+});
+
+test('phone queue supports touch selection, reorder, batch signing and ZIP download', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.goto('/');
+  await waitForRuntimeReady(page);
+  await page.locator('input[accept="application/pdf"]').setInputFiles([
+    { name: 'phone-one.pdf', mimeType: 'application/pdf', buffer: await createBatchPdf('One', 1) },
+    { name: 'phone-two.pdf', mimeType: 'application/pdf', buffer: await createBatchPdf('Two', 1) }
+  ]);
+  await page.getByLabel('Create signature').tap();
+  await page.getByRole('button', { name: 'Upload', exact: true }).tap();
+  await page.locator('input[accept="image/png,image/jpeg"]').setInputFiles({ name: 'phone.png', mimeType: 'image/png', buffer: SAMPLE_UPLOAD_PNG });
+  await expect(page.getByAltText('phone')).toBeVisible();
+  await page.getByRole('button', { name: 'More actions for phone-one.pdf' }).tap();
+  await page.getByRole('button', { name: 'Move down', exact: true }).tap();
+  await expect(page.getByTestId('queue-row').first()).toContainText('phone-two.pdf');
+  await page.getByRole('checkbox', { name: 'Select phone-one.pdf', exact: true }).tap();
+  await page.getByRole('checkbox', { name: 'Select phone-two.pdf', exact: true }).tap();
+  await page.getByRole('button', { name: 'Apply signature', exact: true }).tap();
+  await page.getByRole('button', { name: 'Apply to 2 documents', exact: true }).tap();
+  await expect(page.getByText('Signature added to 2 documents.', { exact: true })).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download', exact: true }).tap();
+  expect((await download).suggestedFilename()).toMatch(/^signlite-batch-.*\.zip$/);
   await noOverflow(page);
 });
