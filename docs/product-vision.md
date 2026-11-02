@@ -29,7 +29,7 @@ The architecture is the second half of the why. Incumbents structurally cannot b
 ### Strategic Pillars
 1. **Client-side or not at all.** All processing via pdf.js + pdf-lib in the browser; static hosting; no backend, no accounts, no telemetry. Resolves every "should we add a server for X?" debate: no.
 2. **The founder's real workflow wins ties.** When two designs compete, the one that makes the founder's actual next batch session faster wins — not the one that's more general, more impressive, or more public-ready.
-3. **Speed over surface area.** A fast, reliable core flow beats a broad feature set. DOCX support and audit trails remain deferred. Mobile touch signing, pen-pressure capture, and installable offline use now extend the same local-first queue/editor workflow under the [2026-11-02 mobile design](plans/2026-11-02-mobile-pwa-design.md), pending verification.
+3. **Speed over surface area.** A fast, reliable core flow beats a broad feature set. DOCX support and audit trails remain deferred. Mobile touch signing, pen-pressure capture, and installable offline use now extend the same local-first queue/editor workflow under the [2026-11-02 mobile design](plans/2026-11-02-mobile-pwa-design.md). [Release acceptance](release-acceptance.md) distinguishes browser emulation from physical-device qualification.
 4. **Durability of the library.** IndexedDB is fragile (one "clear browsing data" wipes it), so export/import ships in v1, not as polish. Losing a saved signature once is forgivable; twice means the product failed its own core value.
 
 ### Success Looks Like

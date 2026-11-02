@@ -8,7 +8,7 @@
 
 ## Mobile and installable offline extension, 2026-11-02
 
-The [mobile design](plans/2026-11-02-mobile-pwa-design.md) adds touch editor sheets, fit-to-width pages and safe-area controls, full-screen signature drawing with pen-pressure/fallback strokes and pointer cancellation, and a production-only versioned offline app shell with install guidance. Status: implementation in progress, integrated verification pending. This extension is not counted as completed by the original 41-task checklist.
+The [mobile design](plans/2026-11-02-mobile-pwa-design.md) adds touch editor sheets, fit-to-width pages and safe-area controls, full-screen signature drawing with pen-pressure/fallback strokes and pointer cancellation, and a production-only versioned offline app shell with install guidance. Status: implemented, with Chromium/WebKit phone-emulation evidence in [release acceptance](release-acceptance.md). This extension is separate from the original 41-task checklist. Physical-device and OS-install qualification remain independent acceptance tasks.
 
 TASK-041's PWA-free/no-manifest decision below is preserved as historical completion context and is superseded by this extension. Current batch UI is the [document queue](../src/components/queue/DocumentQueue.tsx), [template row-action dialog](../src/components/queue/TemplateApplyDialog.tsx), and [editor](../src/components/editor/EditorView.tsx), not separate batch panels. See [release acceptance](release-acceptance.md) for required evidence. Emulation does not qualify real devices/styluses, OS install UI, or broader browsers.
 

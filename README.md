@@ -13,8 +13,8 @@ Visible signatures are not certificate-backed digital signatures. SignLite does 
 
 ## Current status
 
-- Current work: mobile touch editing, pen-pressure capture, and an installable offline browser app, pending implementation verification. See [the mobile design](docs/plans/2026-11-02-mobile-pwa-design.md).
-- Existing qualification covers a controlled desktop-Chromium browser beta, not physical phones/tablets, real styluses, OS install UI, or broader browser acceptance. Emulation is not real-hardware acceptance.
+- Implemented: mobile touch editing, pressure-aware pen capture, and an installable offline browser app. Phone flows are tested in Chromium and WebKit emulation. See [the mobile design](docs/plans/2026-11-02-mobile-pwa-design.md) and [acceptance evidence](docs/release-acceptance.md).
+- Browser emulation and synthetic pen input do not qualify physical phones/tablets, real styluses, or OS install UI. Browser storage can be evicted. Keep signature backups and downloaded documents.
 - Release verification and owner acceptance: `docs/release-acceptance.md`
 - Tech stack: **React + Vite + TypeScript + Tailwind + pdf.js + pdf-lib + IndexedDB + Playwright + Vitest**
 
@@ -48,6 +48,12 @@ See the product docs for the full plan:
 - Batch worker-based flattening and ZIP download
 - Keyboard shortcuts and accessibility improvements
 - End-to-end zero-network, sign-flow, and batch-flow tests
+
+## Install and use offline
+
+Serve a production build over HTTPS (or localhost), then wait for **Ready to launch offline**. This caches only public app resources. PDFs and signatures remain in the existing local Work Session/library storage, not the app cache. You can then reopen the app offline and open or restore documents.
+
+Use **Install app** when your browser offers it. On iPhone/iPad, open the app in Safari and use Share > Add to Home Screen. Updates wait until all SignLite tabs are closed, so an active signing session is never forcibly reloaded. If app resources are evicted, reconnect and use **Retry offline setup**. Browser storage is not a backup.
 
 ## Project structure
 
