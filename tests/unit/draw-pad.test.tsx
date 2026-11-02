@@ -214,6 +214,24 @@ describe('DrawPad', () => {
 });
 
 describe('renderStrokes', () => {
+  it('renders a visible dot for a stationary down/up pair', () => {
+    const canvas = document.createElement('canvas');
+    const lineTo = vi.fn();
+    canvas.getContext = (() => ({
+      clearRect() {},
+      beginPath() {},
+      moveTo() {},
+      lineTo,
+      stroke() {}
+    })) as unknown as HTMLCanvasElement['getContext'];
+    renderStrokes(canvas, [
+      [
+        { x: 20, y: 30 },
+        { x: 20, y: 30 }
+      ]
+    ]);
+    expect(lineTo).toHaveBeenCalledWith(20.1, 30.1);
+  });
   it('varies pen width but keeps legacy points at the default width', () => {
     const canvas = document.createElement('canvas');
     const widths: number[] = [];

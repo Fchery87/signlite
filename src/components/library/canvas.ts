@@ -94,6 +94,7 @@ export function renderStrokes(
       const from = points[index];
       if (!from) continue;
       const to = points[index + 1] ?? from;
+      const stationary = to.x === from.x && to.y === from.y;
       context.lineWidth =
         (pointWidth(from, options.lineWidth ?? 6) +
           pointWidth(to, options.lineWidth ?? 6)) /
@@ -101,8 +102,8 @@ export function renderStrokes(
       context.beginPath();
       context.moveTo(from.x, from.y);
       context.lineTo(
-        to.x + (to === from ? 0.1 : 0),
-        to.y + (to === from ? 0.1 : 0)
+        to.x + (stationary ? 0.1 : 0),
+        to.y + (stationary ? 0.1 : 0)
       );
       context.stroke();
     }

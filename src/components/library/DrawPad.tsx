@@ -30,6 +30,7 @@ export function DrawPad({ open, onClose, onSaved, onToast }: DrawPadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [kind, setKind] = useState<'signature' | 'initials'>('signature');
   const [strokes, setStrokes] = useState<DrawStroke[]>([]);
+  const [canvasHeight, setCanvasHeight] = useState(CANVAS_HEIGHT);
   const draftStrokeRef = useRef<DrawStroke | null>(null);
   const activePointerRef = useRef<number | null>(null);
   const guidanceId = useId();
@@ -56,7 +57,30 @@ export function DrawPad({ open, onClose, onSaved, onToast }: DrawPadProps) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     renderStrokes(canvas, strokes);
-  }, [strokes]);
+  }, [strokes, canvasHeight]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (
+      !open ||
+      !canvas ||
+      strokes.length > 0 ||
+      typeof ResizeObserver === 'undefined'
+    )
+      return;
+    const resize = () => {
+      const bounds = canvas.getBoundingClientRect();
+      if (bounds.width > 0 && bounds.height > 0) {
+        setCanvasHeight(
+          Math.round((CANVAS_WIDTH * bounds.height) / bounds.width)
+        );
+      }
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [open, strokes.length]);
 
   useEffect(() => {
     if (!open) {
@@ -217,10 +241,18 @@ export function DrawPad({ open, onClose, onSaved, onToast }: DrawPadProps) {
           <canvas
             ref={canvasRef}
             width={CANVAS_WIDTH}
-            height={CANVAS_HEIGHT}
+            height={canvasHeight}
             aria-label={`${label} drawing canvas`}
             aria-describedby={guidanceId}
-            className="aspect-[12/5] h-auto w-full touch-none rounded-xl bg-white"
+            style={
+              strokes.length > 0
+                ? {
+                    height: 'auto',
+                    aspectRatio: `${CANVAS_WIDTH} / ${canvasHeight}`
+                  }
+                : undefined
+            }
+            className="aspect-[12/5] h-[clamp(240px,45dvh,440px)] w-full touch-none rounded-xl bg-white sm:h-auto"
             onPointerDown={startStroke}
             onPointerMove={extendStroke}
             onPointerUp={finishPointer}
