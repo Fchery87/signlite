@@ -4,6 +4,7 @@ import { DocumentQueue } from '../../src/components/queue/DocumentQueue';
 import type { SessionDocument } from '../../src/db/schema';
 import { saveAsset } from '../../src/db/signatures';
 import { sessionStoreTestHarness } from '../../src/stores/session';
+import { Modal } from '../../src/components/ui';
 
 function makeDocument(docId: string, status: SessionDocument['status'] = 'pending', needsReviewReason?: string): SessionDocument {
   return {
@@ -51,6 +52,13 @@ async function chooseSignature(label: string) {
 }
 
 describe('DocumentQueue', () => {
+  it('does not consume the batch-download shortcut while a dialog owns the keyboard', async () => {
+    render(<><DocumentQueue onToast={vi.fn()} /><Modal open title="Install help" onClose={() => {}}>Instructions</Modal></>);
+    await screen.findByText('doc-1.pdf');
+    const shortcut = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true });
+    fireEvent(document.body, shortcut);
+    expect(shortcut.defaultPrevented).toBe(false);
+  });
   beforeEach(() => {
     reset([
       makeDocument('doc-1'),

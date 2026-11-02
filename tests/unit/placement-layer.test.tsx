@@ -152,6 +152,30 @@ describe('placement layer', () => {
     expect(disarmed).toBe(true);
   });
 
+  it('does not place an armed signature when a touch gesture scrolls the page', async () => {
+    const asset = await saveAsset({
+      kind: 'signature', source: 'uploaded', pngBytes: new Uint8Array([1]).buffer,
+      width: 200, height: 80, label: 'Touch scroll asset'
+    });
+    render(<PlacementLayer documentId="doc-1" pageIndex={0} pageSize={{ w: 200, h: 100 }}
+      placements={[]} scale={1} selectedPlacementId={null} armedSignature={asset} />);
+    const layer = screen.getByTestId('placement-layer');
+    layer.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
+    const touch = (type: string, x: number, y: number) => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+      Object.defineProperties(event, { pointerId: { value: 5 }, pointerType: { value: 'touch' } });
+      fireEvent(layer, event);
+    };
+    touch('pointerdown', 100, 50);
+    touch('pointermove', 100, 80);
+    touch('pointerup', 100, 80);
+    await act(async () => { await Promise.resolve(); });
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(0);
+    touch('pointerdown', 100, 50);
+    touch('pointerup', 102, 51);
+    await waitFor(() => expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(1));
+  });
+
   it('nudges, deselects, and deletes selected placements from the keyboard', () => {
     sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
       id: 'placement-1',

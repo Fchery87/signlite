@@ -518,7 +518,7 @@ export function EditorView({ onToast }: EditorViewProps) {
             </div>
           </div>
 
-          <div ref={scrollRootRef} data-testid="editor-scroll" className="min-h-[40dvh] overflow-auto bg-sunken px-3 py-4 xl:min-h-0 xl:flex-1 xl:px-6 xl:py-6">
+          <div ref={scrollRootRef} data-testid="editor-scroll" className="max-h-[70dvh] min-h-[40dvh] overflow-auto bg-sunken px-3 py-4 xl:max-h-none xl:min-h-0 xl:flex-1 xl:px-6 xl:py-6">
             <div ref={viewerRef} className="mx-auto max-w-full space-y-6">
               {pdfState.status === 'error' && (
                 <div className="border border-danger/30 bg-danger/10 p-4 text-body text-danger">

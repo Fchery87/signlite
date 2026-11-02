@@ -4,7 +4,7 @@ import { STRINGS } from '../../lib/strings';
 import { EXPORT_POLICY_DISCLOSURE } from '../../lib/productPolicy';
 import { useSessionStore } from '../../stores/session';
 import { useBatchDownload } from '../batch/useBatchDownload';
-import { Button, Modal } from '../ui';
+import { Button, Modal, isAnyModalOpen } from '../ui';
 import { SignatureDock } from './SignatureDock';
 import { TemplateApplyDialog } from './TemplateApplyDialog';
 import { useSignatureAssets } from './useSignatureAssets';
@@ -170,8 +170,9 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      if (isAnyModalOpen()) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || target.matches('input, textarea, select'))) return;
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 's') {
         event.preventDefault();
         if (mutationLocked || batch.isRunning || downloadableCount === 0) return;

@@ -22,13 +22,19 @@ async function touchDrag(page: Page, from: { x: number; y: number }, to: { x: nu
     await page.evaluate(({ from, to }) => {
       const target = document.elementFromPoint(from.x, from.y);
       if (!target) throw new Error('Missing gesture target');
+      const capture = Element.prototype.setPointerCapture;
+      Element.prototype.setPointerCapture = () => {};
       const emit = (type: string, x: number, y: number) => target.dispatchEvent(new PointerEvent(type, {
         bubbles: true, pointerId: 21, pointerType: 'touch', isPrimary: true,
         clientX: x, clientY: y, pressure: 0.5, buttons: type === 'pointerup' ? 0 : 1
       }));
-      emit('pointerdown', from.x, from.y);
-      for (let step = 1; step <= 8; step += 1) emit('pointermove', from.x + (to.x - from.x) * step / 8, from.y + (to.y - from.y) * step / 8);
-      emit('pointerup', to.x, to.y);
+      try {
+        emit('pointerdown', from.x, from.y);
+        for (let step = 1; step <= 8; step += 1) emit('pointermove', from.x + (to.x - from.x) * step / 8, from.y + (to.y - from.y) * step / 8);
+        emit('pointerup', to.x, to.y);
+      } finally {
+        Element.prototype.setPointerCapture = capture;
+      }
     }, { from, to });
   }
 }

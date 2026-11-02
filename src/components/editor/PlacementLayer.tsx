@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { DragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { Placement, SignatureAsset } from '../../db/schema';
 import { getAsset, touchAsset } from '../../db/signatures';
@@ -79,6 +79,7 @@ export function PlacementLayer({
   const copyPlacement = useSessionStore((state) => state.copyPlacement);
   const setSelection = useSessionStore((state) => state.setSelection);
   const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
+  const touchTapRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
 
   useEffect(() => {
     const selectedPlacement = placements.find((placement) => placement.id === selectedPlacementId);
@@ -244,12 +245,30 @@ export function PlacementLayer({
       className={`absolute inset-0 z-10 ${armedSignature ? 'cursor-crosshair ring-2 ring-inset ring-accent/50' : ''}`}
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) {
+          if (event.pointerType === 'touch') {
+            if (touchTapRef.current) { touchTapRef.current = null; return; }
+            touchTapRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+            return;
+          }
           if (armedSignature) {
             void placeArmedAt(event);
             return;
           }
           setSelection(documentId, null);
         }
+      }}
+      onPointerMove={(event) => {
+        const tap = touchTapRef.current;
+        if (tap && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 8) touchTapRef.current = null;
+      }}
+      onPointerCancel={() => { touchTapRef.current = null; }}
+      onPointerUp={(event) => {
+        const tap = touchTapRef.current;
+        touchTapRef.current = null;
+        if (!tap || tap.pointerId !== event.pointerId || event.target !== event.currentTarget) return;
+        if (Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 8) return;
+        if (armedSignature) void placeArmedAt(event);
+        else setSelection(documentId, null);
       }}
       onDragOver={(event) => {
         // Native drag payloads are protected outside dragstart/drop, so
