@@ -42,6 +42,14 @@ Initial runs exposed two test-transport mistakes, not application fixes. A redun
 
 Evidence under `$JCODE_SCRATCH_DIR`: `concurrent-touch.log` (initial cleanup failure), `concurrent-touch-qualified.log` (six existing passes and three new-case failures), `concurrent-touch-instrumented.log` (Undo delivery), `concurrent-touch-identity.log` (pointer identity root cause), `concurrent-touch-final.log` (nine final passes), `concurrent-touch-final-results/`, and `concurrent-touch-static.log` (final static checks).
 
+### Served PWA security and privacy re-audit
+
+The production security/privacy/offline group passed **9 browser cases**, including one new response-level contract: the worker URL with a query string receives only the worker CSP, no-cache, `Service-Worker-Allowed: /`, JavaScript MIME and nosniff. Root, explicit index and extensionless fallback documents retain `connect-src 'none'`, no-cache and no worker-scope header. The served manifest retains standalone scope/start URL and its two icon entries. Both served PNGs have valid signatures and the declared 192/512 pixel dimensions. Existing native tests also passed offline single/batch signing, preparation retry, cache eviction repair, public-only app caches and zero document-network requests after runtime readiness. This is local production-server response evidence, not a deployed-host check or OS install acceptance.
+
+Typecheck, lint and the read-only 213-file artifact receipt check passed. The first complete unit run, performed concurrently with browser/static jobs, reported **385 passed and one 5-second timeout** in the touch-cancellation test (7,262 ms), not a failed behavior assertion. Running the identical complete command, `npm test -- --maxWorkers=2`, without overlapping validation jobs then passed **386 tests across 46 files** with no code, timeout or assertion changes. This supports scheduling contention as the explanation but does not establish a timing guarantee. Both outputs are retained. Existing React act warnings and deliberately injected error-boundary diagnostics remain visible in the logs, not represented as new product failures.
+
+Evidence under `$JCODE_SCRATCH_DIR`: `security-reaudit-browser.log`, `security-reaudit-results/`, `security-reaudit-unit.log` (initial timeout), `security-reaudit-unit-serial-gates.log` (complete pass), and `security-reaudit-static.log`. No production source or artifact changed during this re-audit.
+
 ## Browser hardening qualification, 2026-11-01
 
 ### Additional failure-boundary qualification
