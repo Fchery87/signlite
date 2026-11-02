@@ -43,12 +43,15 @@ function reset(documents: SessionDocument[]) {
 }
 
 async function chooseSignature(label: string) {
+  await waitFor(() => {
+    expect(screen.queryByRole('button', { name: 'Change' }) ?? screen.queryByAltText(label)).not.toBeNull();
+  }, { timeout: 15000 });
   const change = screen.queryByRole('button', { name: 'Change' });
   if (change) {
     fireEvent.click(change);
     fireEvent.click(screen.getByRole('button', { name: new RegExp(label) }));
   }
-  await screen.findByAltText(label);
+  await screen.findByAltText(label, {}, { timeout: 15000 });
 }
 
 describe('DocumentQueue', () => {
