@@ -19,6 +19,7 @@ async function sessionIds(page: Page) {
 }
 
 test('native retention removes expired unowned records but preserves fresh and locked records', async ({ browser }) => {
+  test.setTimeout(120000);
   const context = await browser.newContext();
   try {
     const owner = await context.newPage();

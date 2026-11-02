@@ -16,6 +16,11 @@ async function touchDrag(page: Page, from: { x: number; y: number }, to: { x: nu
     }
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await cdp.detach();
+    // CDP's rapid injected drag can leave Chromium's compositor suppressing
+    // the next tap's click even after pointerup. Instrumentation confirmed
+    // pointer/touch events arrive but click does not. Let that native gesture
+    // window end before a separate action, not before asserting app state.
+    await page.waitForTimeout(2000);
   } else {
     // Playwright exposes touch taps, but no WebKit touch-drag transport.
     // Exercise the Pointer Events path while taps still use the real touchscreen API.
@@ -78,13 +83,12 @@ test('touch draw, place, move, resize, edit, navigate and download after offline
   const before = await signature.boundingBox();
   if (!before) throw new Error('Missing signature');
   await touchDrag(page, { x: before.x + before.width / 2, y: before.y + before.height / 2 }, { x: before.x + before.width / 2 + 25, y: before.y + before.height / 2 + 35 });
-  const moved = await signature.boundingBox();
-  expect(moved?.x).toBeGreaterThan(before.x + 15);
+  await expect.poll(async () => (await signature.boundingBox())?.x).toBeGreaterThan(before.x + 15);
   const handle = layer.getByRole('button', { name: 'Resize se' });
   const resize = await handle.boundingBox();
   if (!resize) throw new Error('Missing resize handle');
   await touchDrag(page, { x: resize.x + resize.width / 2, y: resize.y + resize.height / 2 }, { x: resize.x + resize.width / 2 + 20, y: resize.y + resize.height / 2 + 10 });
-  expect((await signature.boundingBox())?.width).toBeGreaterThan(before.width + 10);
+  await expect.poll(async () => (await signature.boundingBox())?.width).toBeGreaterThan(before.width + 10);
   await noOverflow(page);
   await page.screenshot({ path: test.info().outputPath('mobile-placed.png') });
 
