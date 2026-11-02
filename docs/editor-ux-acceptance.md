@@ -61,6 +61,8 @@ Offline failure tests intentionally log blocked-resource errors. Chromium also w
 
 Two additional production-browser tests passed after the 59-case full-suite run. These verify text and date control reachability at 320px, editing and date-format cycling, 150% PDF zoom without document overflow, keyboard focus trapped in a dialog above the portal toolbar, focus restoration, page-two insertion, and cancelling an armed preview without changing existing content or undo history. The 320px text-controls screenshot was reviewed. Typecheck, lint and whitespace checks passed again. These are two targeted additions, not a claim that a new 61-case full-suite invocation was run. Application source remained unchanged.
 
+The same two boundary cases were also run with `hasTouch: true` in Chromium and WebKit through a temporary supplemental configuration: **4 of 4 passed**. This checks coarse-pointer layout and cross-engine dialog/arming behavior. Interactions in these cases still use Playwright click and keyboard APIs, so they do not replace the separate native touch-flow coverage or establish physical touch-device acceptance. No project configuration or application source changed for this supplemental run.
+
 ## Acceptance boundaries
 
 This evidence covers local production-server behavior and browser emulation. It does not establish physical phone/tablet, real stylus, palm rejection, OS-level installation, assistive-technology user testing, or live-deployment acceptance. No production deployment was performed. Existing jsdom canvas and React act warnings remain visible in unit logs and did not prevent the final suite from passing.
