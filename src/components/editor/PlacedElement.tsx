@@ -111,9 +111,15 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
   const [dateFormatValue, setDateFormatValue] = useState(() => getDateFormat());
   const [isEditingText, setIsEditingText] = useState(false);
   const pointerStateRef = useRef<PointerState | null>(null);
+  const stopGestureRef = useRef<(() => void) | null>(null);
   // One coalesce key per gesture so WorkSessionEditor creates one undo entry.
   const gestureKeyRef = useRef('');
   const textInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => () => stopGestureRef.current?.(), []);
+  useEffect(() => {
+    if (mutationLocked) stopGestureRef.current?.();
+  }, [mutationLocked]);
 
   const screenRect = useMemo(() => normalizedToScreen(placement, pageSize, scale), [pageSize, placement, scale]);
 
@@ -230,12 +236,12 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
 
   const handlePointerUp = (event: PointerEvent) => {
     if (!pointerStateRef.current || event.pointerId !== pointerStateRef.current.pointerId) return;
-    pointerStateRef.current = null;
-    window.removeEventListener('pointermove', handlePointerMove);
-    window.removeEventListener('pointerup', handlePointerUp);
+    stopGestureRef.current?.();
   };
 
   const startPointer = (event: ReactPointerEvent, mode: PointerState['mode'], handle?: ResizeHandle) => {
+    if (pointerStateRef.current || event.button > 0) return;
+    if (mode === 'move' && event.target instanceof HTMLElement && event.target.closest('input, button')) return;
     event.preventDefault();
     event.stopPropagation();
     setSelection(documentId, placement.id);
@@ -247,6 +253,20 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
         : { mode, handle: handle ?? 'se', pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, rect: screenRect };
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+    const target = event.currentTarget;
+    const lostCapture = () => stopGestureRef.current?.();
+    target.setPointerCapture?.(event.pointerId);
+    target.addEventListener('lostpointercapture', lostCapture);
+    stopGestureRef.current = () => {
+      pointerStateRef.current = null;
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      target.removeEventListener('lostpointercapture', lostCapture);
+      if (target.hasPointerCapture?.(event.pointerId)) target.releasePointerCapture(event.pointerId);
+      stopGestureRef.current = null;
+    };
   };
 
   const cycleDateFormat = async () => {
@@ -269,7 +289,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
         // The placement border is chrome and must not inset the content: a
         // 1px border here made the preview's visible marker smaller than the
         // box the export letterboxes into.
-        className={`focus-ring group relative flex h-full w-full items-center justify-center overflow-visible ${
+        className={`focus-ring group relative flex h-full w-full touch-none items-center justify-center overflow-visible ${
           selected ? 'shadow-[0_0_0_2px_#EDF1FC]' : ''
         } ${placement.type === 'signature' || placement.type === 'initials' ? 'bg-transparent' : 'bg-surface/85'}`}
         onPointerDown={(event) => startPointer(event, 'move')}
@@ -298,6 +318,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
         ) : placement.type === 'text' && selected && isEditingText ? (
           <input
             ref={textInputRef}
+            aria-label="Element text"
             value={placement.value ?? ''}
             disabled={mutationLocked}
             onChange={(event) => {
@@ -324,7 +345,9 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
 
         {selected ? (
           <div
-            className="absolute -top-10 left-0 flex items-center gap-2 border border-line bg-surface px-2 py-1 text-caption shadow-panel"
+            role="toolbar"
+            aria-label="Selected element"
+            className="placement-toolbar absolute -top-10 left-0 flex items-center gap-2 border border-line bg-surface px-2 py-1 text-caption shadow-panel"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
@@ -400,7 +423,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
                 type="button"
                 aria-label={`Resize ${handle}`}
                 disabled={mutationLocked}
-                className={`absolute h-2 w-2 border border-accent bg-surface ${handle.includes('n') ? '-top-1' : '-bottom-1'} ${handle.includes('w') ? '-left-1' : '-right-1'}`}
+                className={`placement-resize absolute h-2 w-2 touch-none border border-accent bg-surface ${handle.includes('n') ? '-top-1' : '-bottom-1'} ${handle.includes('w') ? '-left-1' : '-right-1'}`}
                 onPointerDown={(event) => startPointer(event, 'resize', handle)}
               />
             ))}

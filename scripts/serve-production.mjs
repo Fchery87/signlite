@@ -48,6 +48,10 @@ export function headersFor(pathname, rulesText) {
       continue;
     }
     if (!current) continue;
+    if (line.startsWith('! ')) {
+      delete headers[line.slice(2).trim()];
+      continue;
+    }
     const split = line.indexOf(':');
     if (split === -1) continue;
     headers[line.slice(0, split).trim()] = line.slice(split + 1).trim();

@@ -98,6 +98,15 @@ function resetStore() {
 }
 
 describe('editor view', () => {
+  it('opens phone tools as a dialog and returns to the page after adding text', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    render(<EditorView onToast={vi.fn()} />);
+    fireEvent.click(screen.getAllByRole('button', { name: STRINGS.editor.showLibrary })[0]!);
+    expect(screen.getByRole('dialog', { name: STRINGS.library.title })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: STRINGS.library.text }));
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
   it('explains the visual signature and restricted export policy before download', () => {
     resetStore();
     render(<EditorView onToast={vi.fn()} />);

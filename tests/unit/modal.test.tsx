@@ -4,6 +4,17 @@ import { useState } from 'react';
 import { Modal } from '../../src/components/ui';
 
 describe('modal', () => {
+  it('locks page scrolling while dialogs are open and restores it after the last closes', () => {
+    document.body.style.overflow = 'auto';
+    const outer = render(<Modal open title="Outer scroll" onClose={() => {}}>Outer</Modal>);
+    const inner = render(<Modal open title="Inner scroll" onClose={() => {}}>Inner</Modal>);
+    expect(document.body.style.overflow).toBe('hidden');
+    outer.unmount();
+    expect(document.body.style.overflow).toBe('hidden');
+    inner.unmount();
+    expect(document.body.style.overflow).toBe('auto');
+    document.body.style.overflow = '';
+  });
   it('traps focus in both Tab directions, skips a disabled control, and restores the opener', { timeout: 10000 }, async () => {
     const user = userEvent.setup();
     function Harness() {

@@ -46,6 +46,38 @@ describe('placement layer', () => {
     await setDateFormat('MMM d, yyyy');
   });
 
+  it('ends a touch move on pointer cancellation and ignores later movement', () => {
+    sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
+      id: 'touch-text', type: 'text', value: 'Signer', fontSize: 12,
+      pageIndex: 0, x: 0.1, y: 0.3, w: 0.3, h: 0.1
+    });
+    const placement = sessionStoreTestHarness.getState().session.documents[0]?.placements[0];
+    if (!placement) throw new Error('Expected placement');
+    render(<PlacedElement documentId="doc-1" pageSize={{ w: 200, h: 100 }} placement={placement} scale={1} selected />);
+    const target = screen.getByRole('button', { name: /^Text$/ });
+    act(() => {
+      dispatchPointer(target, 'pointerdown', 7, 20, 30);
+      dispatchPointer(window, 'pointermove', 7, 30, 40);
+      dispatchPointer(window, 'pointercancel', 7, 30, 40);
+    });
+    const cancelled = sessionStoreTestHarness.getState().session;
+    act(() => dispatchPointer(window, 'pointermove', 7, 80, 70));
+    expect(sessionStoreTestHarness.getState().session).toBe(cancelled);
+  });
+
+  it('provides a labelled selected-element toolbar and text input for touch editing', () => {
+    sessionStoreTestHarness.getState().addTextPlacement('doc-1', {
+      id: 'touch-edit', type: 'text', value: 'Signer', fontSize: 12,
+      pageIndex: 0, x: 0.1, y: 0.3, w: 0.3, h: 0.1
+    });
+    const placement = sessionStoreTestHarness.getState().session.documents[0]?.placements[0];
+    if (!placement) throw new Error('Expected placement');
+    render(<PlacedElement documentId="doc-1" pageSize={{ w: 200, h: 100 }} placement={placement} scale={1} selected />);
+    expect(screen.getByRole('toolbar', { name: 'Selected element' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByRole('textbox', { name: 'Element text' })).toHaveFocus();
+  });
+
   it('creates placements from library drops only after the snapshot is available', async () => {
     const savedAsset = await saveAsset({
       kind: 'signature', source: 'uploaded', pngBytes: new Uint8Array([1, 2, 3]).buffer,

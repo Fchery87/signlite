@@ -1,12 +1,17 @@
 let openModalCount = 0;
 const panels = new Map<symbol, HTMLElement>();
 const stack: symbol[] = [];
+let previousBodyOverflow = '';
 
 /** Registers an open Modal and returns the token the dialog must use to
  *  decide whether it is on top, plus the matching release. The same token
  *  has to serve both. A second token minted by the caller can never match
  *  `isTopModal`, which would leave Escape and Tab as no-ops. */
 export function registerOpenModal(panel: HTMLElement | null): { token: symbol; release: () => void } {
+  if (openModalCount === 0) {
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+  }
   const token = Symbol('modal');
   stack.push(token);
   if (panel) panels.set(token, panel);
@@ -18,6 +23,7 @@ export function registerOpenModal(panel: HTMLElement | null): { token: symbol; r
       if (index !== -1) stack.splice(index, 1);
       panels.delete(token);
       openModalCount -= 1;
+      if (openModalCount === 0) document.body.style.overflow = previousBodyOverflow;
     }
   };
 }

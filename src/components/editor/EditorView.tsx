@@ -7,6 +7,7 @@ import { loadDocument, type LoadedPdf } from '../../pdf/render';
 import { PageCanvas } from './PageCanvas';
 import { PageThumbnails } from './PageThumbnails';
 import { ElementsPanel } from './ElementsPanel';
+import { EditorPanel } from './EditorPanel';
 import { useActivePage } from './useActivePage';
 import { placementLabel } from '../../lib/placements';
 import { LibraryTray } from '../library/LibraryTray';
@@ -176,7 +177,7 @@ export function EditorView({ onToast }: EditorViewProps) {
   const fitScale = useMemo(() => {
     if (!selectedDocument || viewerWidth === 0) return 1;
     const widestPage = Math.max(...selectedDocument.pageSizes.map((page) => page.w));
-    return Math.max(0.4, (viewerWidth - 32) / widestPage);
+    return Math.max(0.05, (viewerWidth - 2) / widestPage);
   }, [selectedDocument, viewerWidth]);
 
   const scale = zoom === 'fit' ? fitScale : zoom;
@@ -212,6 +213,7 @@ export function EditorView({ onToast }: EditorViewProps) {
       });
       announcePlacement(type, activePage);
       onToast(type === 'date' ? STRINGS.editor.dateAdded : STRINGS.editor.textAdded);
+      setLibraryOpen(false);
       if (stamp) {
         reportStamp(placementLabel(type), stampPlacementOnEveryPage(selectedDocument.docId, id));
       }
@@ -242,6 +244,7 @@ export function EditorView({ onToast }: EditorViewProps) {
         return;
       }
       announcePlacement(asset.kind, activePage);
+      setLibraryOpen(false);
       onToast(STRINGS.announcements.placedOnPage(placementLabel(asset.kind), activePage + 1));
       if (stamp) reportStamp(placementLabel(asset.kind), stampPlacementOnEveryPage(selectedDocument.docId, inserted.id));
     },
@@ -370,20 +373,12 @@ export function EditorView({ onToast }: EditorViewProps) {
   }
 
   return (
-    <section className="min-h-[calc(100vh-73px)] p-4">
+    <section className="p-2 pb-24 sm:p-4 xl:pb-4">
       <div aria-live="polite" aria-label={STRINGS.liveRegionLabel} className="sr-only-live">
         {announcement}
       </div>
-      <div className="grid h-[calc(100vh-105px)] grid-cols-1 gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-        <aside className={`${pagesOpen ? 'flex' : 'hidden'} min-h-0 flex-col gap-4 overflow-hidden xl:flex`}>
-          <button
-            type="button"
-            className="focus-ring rounded-md border border-line bg-surface px-3 py-2 text-caption text-ink xl:hidden"
-            aria-expanded={pagesOpen}
-            onClick={() => setPagesOpen(false)}
-          >
-            {STRINGS.editor.hidePages}
-          </button>
+      <div className="grid min-h-[70dvh] grid-cols-1 gap-4 xl:h-[calc(100dvh-150px)] xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+        <EditorPanel open={pagesOpen} title={STRINGS.editor.pagesTitle} onClose={() => setPagesOpen(false)}>
           <div className="surface-card min-h-0 overflow-auto p-4 shadow-panel">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -397,7 +392,7 @@ export function EditorView({ onToast }: EditorViewProps) {
                 documentId={selectedDocument.docId}
                 pageCount={selectedDocument.pageCount}
                 pdf={pdfState.status === 'ready' ? pdfState.pdf : null}
-                onSelectPage={selectPage}
+                onSelectPage={(pageIndex) => { selectPage(pageIndex); setPagesOpen(false); }}
               />
             </div>
           </div>
@@ -407,9 +402,10 @@ export function EditorView({ onToast }: EditorViewProps) {
             onSelect={(placement) => {
               setSelection(selectedDocument.docId, placement.id);
               selectPage(placement.pageIndex);
+              setPagesOpen(false);
             }}
           />
-        </aside>
+        </EditorPanel>
 
         <main className="surface-card flex min-h-0 min-w-0 flex-col shadow-panel">
           {armedSignature ? (
@@ -420,13 +416,14 @@ export function EditorView({ onToast }: EditorViewProps) {
               </Button>
             </div>
           ) : null}
-          <div className="border-b border-line px-6 py-3 text-caption text-quiet">
-            <p>{VISUAL_SIGNATURE_DISCLOSURE}</p>
+          <details className="border-b border-line px-3 py-2 text-caption text-quiet sm:px-6">
+            <summary className="focus-ring cursor-pointer py-1">Signature and export policy</summary>
+            <p className="mt-2">{VISUAL_SIGNATURE_DISCLOSURE}</p>
             <p className="mt-1">{EXPORT_POLICY_DISCLOSURE}</p>
-          </div>
+          </details>
           {/* Document identity leads and truncates; the control cluster never shrinks
               and wraps to its own line rather than spilling past the card edge. */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-line px-6 py-4">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-3 py-3 sm:px-6 sm:py-4">
             <Button variant="secondary" onClick={openQueue}>{STRINGS.queue.allDocuments}</Button>
             <div className="min-w-[9rem] flex-1 basis-0">
               <h1 className="truncate text-h1 text-ink" title={selectedDocument.fileName}>
@@ -521,7 +518,7 @@ export function EditorView({ onToast }: EditorViewProps) {
             </div>
           </div>
 
-          <div ref={scrollRootRef} className="min-h-0 overflow-auto bg-sunken px-6 py-6">
+          <div ref={scrollRootRef} data-testid="editor-scroll" className="min-h-[40dvh] overflow-auto bg-sunken px-3 py-4 xl:min-h-0 xl:flex-1 xl:px-6 xl:py-6">
             <div ref={viewerRef} className="mx-auto max-w-full space-y-6">
               {pdfState.status === 'error' && (
                 <div className="border border-danger/30 bg-danger/10 p-4 text-body text-danger">
@@ -558,15 +555,7 @@ export function EditorView({ onToast }: EditorViewProps) {
           </div>
         </main>
 
-        <aside className={`${libraryOpen ? 'flex' : 'hidden'} min-h-0 flex-col gap-4 overflow-auto xl:flex`}>
-          <button
-            type="button"
-            className="focus-ring rounded-md border border-line bg-surface px-3 py-2 text-caption text-ink xl:hidden"
-            aria-expanded={libraryOpen}
-            onClick={() => setLibraryOpen((open) => !open)}
-          >
-            {libraryOpen ? STRINGS.editor.hideLibrary : STRINGS.editor.showLibrary}
-          </button>
+        <EditorPanel open={libraryOpen} title={STRINGS.library.title} onClose={() => setLibraryOpen(false)}>
           <div className="surface-card shrink-0 p-4 shadow-panel">
             <LibraryTray
               onToast={onToast}
@@ -580,7 +569,7 @@ export function EditorView({ onToast }: EditorViewProps) {
               placementDisabled={mutationLocked}
             />
           </div>
-        </aside>
+        </EditorPanel>
       </div>
       <Modal open={shortcutOpen} title={STRINGS.shortcuts.open} onClose={() => setShortcutOpen(false)}>
         <div className="space-y-3">

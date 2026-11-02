@@ -1,12 +1,16 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/e2e',
   workers: 1,
+  projects: [
+    { name: 'desktop-chromium', testIgnore: '**/mobile-touch.spec.ts' },
+    { name: 'touch-chromium', testMatch: '**/mobile-touch.spec.ts', use: { ...devices['Pixel 7'] } },
+    { name: 'touch-webkit', testMatch: '**/mobile-touch.spec.ts', use: { ...devices['iPhone 13'] } }
+  ],
   use: {
     baseURL: 'http://127.0.0.1:4173',
-    // The editor keeps the page, the library, and the batch list side by side
-    // only at the xl breakpoint. Below that the side panels cover the page.
+    // Dedicated touch projects exercise the mobile tool dialogs separately.
     viewport: { width: 1440, height: 900 }
   },
   webServer: {

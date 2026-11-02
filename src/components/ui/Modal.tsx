@@ -8,6 +8,7 @@ type ModalProps = {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  mobileFullscreen?: boolean;
 };
 
 const FOCUSABLE = 'button:not([disabled]), [href]:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])';
@@ -26,7 +27,7 @@ function visibleFocusableIn(panel: HTMLElement | null): HTMLElement[] {
   });
 }
 
-export function Modal({ open, title, onClose, children }: ModalProps) {
+export function Modal({ open, title, onClose, children, mobileFullscreen = false }: ModalProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -83,14 +84,14 @@ export function Modal({ open, title, onClose, children }: ModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#161615]/50 p-4" role="presentation">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-[#161615]/50 ${mobileFullscreen ? 'p-0 sm:p-4' : 'p-3 sm:p-4'}`} role="presentation">
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="surface-card w-full max-w-[480px] rounded-lg p-6 shadow-modal"
+        className={`surface-card modal-panel w-full overflow-y-auto p-4 shadow-modal sm:p-6 ${mobileFullscreen ? 'mobile-fullscreen-modal sm:max-w-[480px] sm:rounded-lg' : 'max-h-[calc(100dvh-24px)] max-w-[480px] rounded-lg'}`}
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <h2 id={titleId} className="text-h1 text-ink">

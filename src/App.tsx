@@ -7,6 +7,7 @@ import { DocumentQueue } from './components/queue/DocumentQueue';
 import { LocalDataControls } from './components/LocalDataControls';
 import { useRuntimeReadiness } from './lib/useRuntimeReadiness';
 import { ensureRuntimeReady } from './pdf/runtime';
+import { PwaControls } from './pwa/PwaControls';
 
 const EditorView = lazy(() => import('./components/editor/EditorView').then((module) => ({ default: module.EditorView })));
 import { useSessionLifecycle } from './lib/useSessionLifecycle';
@@ -42,7 +43,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-mist text-ink">
       <header className="border-b border-line bg-surface">
-        <div className="flex items-center justify-between px-6 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex flex-wrap items-center gap-3">
             <span className="grid size-7 place-items-center rounded-[7px] bg-ink text-caption font-bold text-white" aria-hidden="true">S</span>
             <p className="text-[15px] font-semibold tracking-[-0.025em] text-ink">{STRINGS.appName}</p>
@@ -58,6 +59,7 @@ export default function App() {
           </div>
           <p className="shrink-0 whitespace-nowrap text-caption text-quiet">{STRINGS.queue.localOnly}</p>
         </div>
+        <div className="border-t border-line px-4 py-1 sm:px-6"><PwaControls /></div>
         {resumeSession && view === 'dropzone' && documents.length === 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-3">
             <p className="text-body text-ink">{STRINGS.resumePrompt}</p>
@@ -124,7 +126,7 @@ export default function App() {
         </Suspense>
       )}
       <LocalDataControls lifecycle={lifecycle} onToast={pushToast} />
-      <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 space-y-3">
+      <div className="pointer-events-none fixed bottom-24 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 space-y-3 [&>*]:pointer-events-auto">
         {toasts.map((toast) => (
           <Toast
             key={toast.id}
