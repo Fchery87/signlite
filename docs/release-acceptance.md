@@ -50,6 +50,10 @@ Typecheck, lint and the read-only 213-file artifact receipt check passed. The fi
 
 Evidence under `$JCODE_SCRATCH_DIR`: `security-reaudit-browser.log`, `security-reaudit-results/`, `security-reaudit-unit.log` (initial timeout), `security-reaudit-unit-serial-gates.log` (complete pass), and `security-reaudit-static.log`. No production source or artifact changed during this re-audit.
 
+### Install-control lifecycle edges
+
+Three new UI unit cases verify standalone launch suppresses iOS installation guidance, a rejected native prompt is consumed with an honest error and a fresh browser offer can recover, and `appinstalled` removes a pending offer without invoking it. The existing dismissal case now also verifies the consumed prompt disappears without a false error. The focused drawing/PWA group passed **27 tests across five files**, followed sequentially by passing typecheck, lint and whitespace checks. These are synthetic browser-event/UI-state tests, not actual OS installation or standalone-window acceptance. The preceding complete 386-test run predates these three additions, so it is not described as a complete 389-test run. No production changes were needed. Evidence: `$JCODE_SCRATCH_DIR/install-control-edges.log`.
+
 ## Browser hardening qualification, 2026-11-01
 
 ### Additional failure-boundary qualification
