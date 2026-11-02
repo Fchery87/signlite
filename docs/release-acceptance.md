@@ -1,5 +1,13 @@
 # Release acceptance
 
+## Mobile and installable offline extension, 2026-11-02
+
+Implementation and integrated verification are pending for the [mobile design](plans/2026-11-02-mobile-pwa-design.md). The desktop-Chromium receipts below remain evidence for their recorded revisions only, not qualification of the new extension. No production promotion is authorized here.
+
+Before marking this extension verified, record the tested commit/artifact, commands, browser versions, available emulation engines, and results for portrait/landscape draw/save/place/move/resize/text-edit/download, overflow, synthetic pen pressure and pointer cancellation, and desktop regressions. Separately verify first visit, offline-ready status, offline reload with fresh-document signing, public-resource-only Cache Storage, versioned update/failure/cleanup behavior, and install instructions. Keep persistent offline-launch readiness distinct from loaded-tab PDF readiness and preserve the document CSP and no-upload policy.
+
+Emulation is not physical-device or real-stylus acceptance. Synthetic pressure does not qualify hardware pressure or palm rejection. OS-level installation, real phones/tablets/styluses, Firefox, Safari/WebKit, screen readers, target-hardware performance, real documents, and live-origin behavior require independently recorded evidence. Do not infer broader browser support from a Chromium receipt or call an unavailable engine a pass. Owner gates below remain open.
+
 ## Browser hardening qualification, 2026-11-01
 
 ### Additional failure-boundary qualification

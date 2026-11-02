@@ -2,6 +2,8 @@
 
 _Generated: 2026-07-06 (re-run: reframed from market product to personal-use tool, possibly public later)_
 
+> Supersession note, 2026-11-02: the desktop-only prioritization and deferred touch/PWA/pressure decisions below describe this historical validation, not current exclusions. The [mobile design](plans/2026-11-02-mobile-pwa-design.md) now scopes that work, pending verification, within the shared [document queue](../src/components/queue/DocumentQueue.tsx) and [editor](../src/components/editor/EditorView.tsx). DOCX and audit-trail exclusions are unchanged. Emulation does not establish physical-device/stylus, OS-install, or broader browser acceptance.
+
 ## Verdict
 **Strong**
 

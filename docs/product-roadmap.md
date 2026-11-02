@@ -6,6 +6,12 @@
 **Status:** 35/41 tasks complete
 **Current Phase:** Phase 3 — Polish, Hardening & Daily-Driver Readiness
 
+## Mobile and installable offline extension, 2026-11-02
+
+The [mobile design](plans/2026-11-02-mobile-pwa-design.md) adds touch editor sheets, fit-to-width pages and safe-area controls, full-screen signature drawing with pen-pressure/fallback strokes and pointer cancellation, and a production-only versioned offline app shell with install guidance. Status: implementation in progress, integrated verification pending. This extension is not counted as completed by the original 41-task checklist.
+
+TASK-041's PWA-free/no-manifest decision below is preserved as historical completion context and is superseded by this extension. Current batch UI is the [document queue](../src/components/queue/DocumentQueue.tsx), [template row-action dialog](../src/components/queue/TemplateApplyDialog.tsx), and [editor](../src/components/editor/EditorView.tsx), not separate batch panels. See [release acceptance](release-acceptance.md) for required evidence. Emulation does not qualify real devices/styluses, OS install UI, or broader browsers.
+
 ## Browser hardening qualification, 2026-11-01
 
 The approved plan is `docs/plans/2026-11-01-browser-app-hardening-implementation.md`. SignLite remains a hosted browser app, with a controlled desktop-Chromium beta as the initial qualification scope. Exact artifact deployment, bundled PDF-resource adapters, restricted action removal, PNG import validation, and coordinated retention/clearing are tracked separately from the original feature checklist. See `docs/release-acceptance.md` for actual current results, not historical checkmarks.

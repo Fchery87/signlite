@@ -1,5 +1,7 @@
 # Vision — SignLite
 
+> Supersession note, 2026-11-02: this is the original planning snapshot, not the current scope authority. Its desktop-first persona remains historical context. Mobile touch/pen-pressure and installable offline use are now in scope under the [mobile design](plans/2026-11-02-mobile-pwa-design.md), pending verification. Current batch UI is the [document queue](../src/components/queue/DocumentQueue.tsx) and [editor](../src/components/editor/EditorView.tsx), with template copying through queue row actions, not separate batch panels. See [current PRD](prd.md) before regenerating downstream docs.
+
 > Captured by the Product Planner skill. This file is the source of truth for
 > generating product-vision.md, prd.md, and product-roadmap.md. Edit it directly
 > and re-run the Product Planner to regenerate downstream documents.

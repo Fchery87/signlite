@@ -13,7 +13,8 @@ Visible signatures are not certificate-backed digital signatures. SignLite does 
 
 ## Current status
 
-- Current work: browser-app hardening for a controlled desktop-Chromium browser beta, not a native desktop application
+- Current work: mobile touch editing, pen-pressure capture, and an installable offline browser app, pending implementation verification. See [the mobile design](docs/plans/2026-11-02-mobile-pwa-design.md).
+- Existing qualification covers a controlled desktop-Chromium browser beta, not physical phones/tablets, real styluses, OS install UI, or broader browser acceptance. Emulation is not real-hardware acceptance.
 - Release verification and owner acceptance: `docs/release-acceptance.md`
 - Tech stack: **React + Vite + TypeScript + Tailwind + pdf.js + pdf-lib + IndexedDB + Playwright + Vitest**
 
@@ -43,7 +44,7 @@ See the product docs for the full plan:
   - text boxes
 - Single-document flatten and download
 - Autosave and session restore
-- Batch document list and apply-to-all flow
+- Document queue with row-menu template copying, editor placement, and batch download (not separate batch/apply-to-all panels)
 - Batch worker-based flattening and ZIP download
 - Keyboard shortcuts and accessibility improvements
 - End-to-end zero-network, sign-flow, and batch-flow tests

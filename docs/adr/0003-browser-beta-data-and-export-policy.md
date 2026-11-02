@@ -43,3 +43,9 @@ Small explicit maintenance and PDF-policy modules keep new behavior out of the a
 Old open bundles do not automatically participate in a new origin lock. The rollout must require closing/reloading all SignLite tabs. Per-session locks provide additional protection for old editors, but are not a substitute for a versioned protocol if mixed-version safety must be guaranteed against every old writer. Do not enable unsupported destructive behavior by assuming cooperation.
 
 Initial qualification targets desktop Chromium browsers, not a desktop application. Mobile layout remains supported as existing behavior but touch, Firefox, WebKit, screen-reader, target-hardware, real-document, and live-origin acceptance must be recorded independently before broader claims.
+
+## Scope extension, 2026-11-02
+
+The [mobile design](../plans/2026-11-02-mobile-pwa-design.md) brings touch editing, pen-pressure capture, and installable offline use into implementation scope, pending verification, without changing the maintenance, retention, and export policies above. A production-only service worker may precache versioned public application resources. User PDFs, signature images, object URLs, and IndexedDB contents must not enter Cache Storage. Persistent offline-launch readiness is distinct from in-memory PDF readiness. Updates must not force reload or interrupt an active Work Session. Keep the document CSP's `connect-src 'none'` and scope any fetch permission to the worker script.
+
+Recorded desktop-Chromium qualification remains bounded to its revision and tests. Emulation is not real hardware. Synthetic pen input does not prove real-stylus pressure or palm rejection. Physical phones/tablets, real styluses, OS-level install UI, other browsers, and owner/live-origin gates require separate evidence in [release acceptance](../release-acceptance.md).

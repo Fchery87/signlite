@@ -1,5 +1,7 @@
 # SignLite browser-app hardening implementation plan
 
+> Scope continuation, 2026-11-02: the [mobile design](2026-11-02-mobile-pwa-design.md) adds touch/pen-pressure and installable offline work, pending verification, without expanding this plan's recorded desktop-Chromium qualification. Current batch interactions use the [queue](../../src/components/queue/DocumentQueue.tsx), [template row-action dialog](../../src/components/queue/TemplateApplyDialog.tsx), and [editor](../../src/components/editor/EditorView.tsx), not separate batch panels. Emulation is not real hardware or OS-install acceptance. Historical tests and paths below retain their original meaning.
+
 > Implementation handoff: use the executing-plans skill to implement this plan task by task. This document approves a direction and defines gates. It does not claim the fixes are implemented or authorize production deployment.
 
 **Goal:** Prepare the existing browser-based SignLite web app for a controlled beta without compromising its session model, user data, or maintainability.

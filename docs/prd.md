@@ -6,7 +6,7 @@
 **SignLite** — SignLite signs PDFs entirely in your browser: saved signatures, batch mode, instant download, nothing ever uploaded. It is a fully client-side web app (React + Vite, pdf.js for rendering, pdf-lib for writing, IndexedDB for persistence) with no backend, no accounts, and no network requests during operation. v1 is a personal tool for the founder; the architecture deliberately leaves the door open to a later public release.
 
 ### Objective
-This PRD covers the MVP defined in `docs/product-vision.md` § Product Strategy: PDF upload and rendering, the signature/initials library with export/import, the placement editor (signature, initials, date, text), bulk mode with template placement and zip download, and reload-safe local work history. Everything in § Explicitly Out of Scope is excluded.
+This PRD covers PDF upload and rendering, the signature/initials library with export/import, the placement editor (signature, initials, date, text), bulk mode with template placement and zip download, and reload-safe local work history. As of 2026-11-02, [mobile touch/pen-pressure editing and installable offline use](plans/2026-11-02-mobile-pwa-design.md) are also in scope, pending implementation verification. Other explicit exclusions remain in force.
 
 ### Market Differentiation
 The technical implementation must deliver three things no alternative combines: **verifiable privacy** (zero network requests from document drop to download — all assets bundled, no CDN, no telemetry), **a persistent signature library** (IndexedDB with export/import durability), and **batch signing** (template placement applied across a document stack, zipped client-side). If any of these three is compromised for implementation convenience, the product loses its reason to exist.
@@ -402,7 +402,7 @@ Acceptance: selecting one restores it. Related: US-007.
 ### Reliability
 - Autosave means a crash/reload loses ≤ 500 ms of work.
 - Partial batch failure never destroys the batch (FR-012).
-- No third-party services exist to fail; the app works fully offline once loaded.
+- No third-party signing services exist to fail. In-memory signing readiness and persistent offline-launch readiness are separate boundaries. Loading the shell alone does not establish either readiness guarantee. See the [mobile design](plans/2026-11-02-mobile-pwa-design.md) and [acceptance record](release-acceptance.md).
 
 ## 8. UI/UX Requirements
 
@@ -552,7 +552,7 @@ None at runtime — this is load-bearing (FR-014). Build/host only: GitHub (repo
 
 Per `docs/product-vision.md` § Explicitly Out of Scope:
 - **DOC/DOCX conversion** — top technical risk (browser Word fidelity); reconsider only after a 3-real-document fidelity test passes. Workaround: print-to-PDF first.
-- **Mobile touch signing / PWA / pressure-aware strokes** — serve a public audience that doesn't exist yet; reconsider on a public release. (The app should not be *broken* on mobile — it just isn't designed for it.)
+- **Mobile touch signing / PWA / pressure-aware strokes:** promoted into current scope on 2026-11-02 by the [mobile design](plans/2026-11-02-mobile-pwa-design.md), pending verification, not an exclusion. Physical-device/stylus and OS-level install acceptance require independent evidence. Browser emulation does not qualify real hardware or broader browsers.
 - **Audit-trail page, guided field navigation, element rotation** — scope creep vs. the batch workflow; reconsider post-v1 if a real session misses them.
 - **Multi-party envelopes, email delivery, notarization, cryptographic certificates (.p12), CRM integrations** — permanently out; different product.
 - **Telemetry of any kind (analytics, error tracking)** — excluded on principle; Sentry is the first add if public.

@@ -2,6 +2,8 @@
 
 Reviewed on October 3, 2026 against the current working tree, including pre-existing uncommitted changes. This report does not change application behavior.
 
+> Supersession note, 2026-11-02: findings, paths, and 2026-11-01 annotations below are historical evidence, not a description of today's implementation. Touch-first deferral is superseded by the [mobile design](plans/2026-11-02-mobile-pwa-design.md), pending verification. Current batch interaction lives in the [document queue](../src/components/queue/DocumentQueue.tsx), template row action, and [editor](../src/components/editor/EditorView.tsx), not removed batch panels. Loaded-tab offline evidence does not prove persistent offline relaunch or installation. See [release acceptance](release-acceptance.md) for qualification bounds.
+
 SignLite is not ready for an unrestricted public release. The main product flows exist. The remaining work is primarily output correctness, durability, browser verification, and release controls. A backend, accounts, payments, and telemetry are unnecessary for the documented local-first product.
 
 Evidence labels distinguish reproduced failures, source findings, and recommendations. Source findings describe a reachable code path but do not establish its frequency in real use.

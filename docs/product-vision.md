@@ -29,7 +29,7 @@ The architecture is the second half of the why. Incumbents structurally cannot b
 ### Strategic Pillars
 1. **Client-side or not at all.** All processing via pdf.js + pdf-lib in the browser; static hosting; no backend, no accounts, no telemetry. Resolves every "should we add a server for X?" debate: no.
 2. **The founder's real workflow wins ties.** When two designs compete, the one that makes the founder's actual next batch session faster wins — not the one that's more general, more impressive, or more public-ready.
-3. **Speed over surface area.** A fast, reliable core flow beats a broad feature set. DOCX support, mobile touch signing, and audit trails all lost to this pillar in validation; they stay lost until the core is a daily habit.
+3. **Speed over surface area.** A fast, reliable core flow beats a broad feature set. DOCX support and audit trails remain deferred. Mobile touch signing, pen-pressure capture, and installable offline use now extend the same local-first queue/editor workflow under the [2026-11-02 mobile design](plans/2026-11-02-mobile-pwa-design.md), pending verification.
 4. **Durability of the library.** IndexedDB is fragile (one "clear browsing data" wipes it), so export/import ships in v1, not as polish. Losing a saved signature once is forgivable; twice means the product failed its own core value.
 
 ### Success Looks Like
@@ -84,7 +84,7 @@ Awareness and consideration are collapsed — the founder is the builder. The jo
 3. **The library is sacred.** Signature data persists, exports, imports, and never silently disappears. Treat library loss as a P0 incident even with one user.
 4. **No accounts, no onboarding, no chrome.** The first screen is the drop zone. The product explains itself by being obvious, not by touring.
 5. **Terse by temperament.** Every string in the UI passes the quiet-utility test: factual, calm, no exclamation marks.
-6. **Cut anything that doesn't serve the next real batch session.** Mobile polish, DOCX conversion, audit trails — all real ideas, all deferred, all listed under Out of Scope with re-entry conditions.
+6. **Keep scope tied to real signing sessions.** DOCX conversion and audit trails remain deferred. Mobile work now serves the same Work Session, signature library, queue, and editor rather than a separate product.
 
 ### Market Differentiation
 Every alternative fails one of four tests: it uploads documents to a server (Smallpdf, iLovePDF, Adobe cloud flows), caps or watermarks usage (the free web tier), demands an account (Adobe, DocuSign-class tools), or forgets your signature between sessions (OS-level annotation). SignLite passes all four simultaneously — and adds the one capability none of them have at any tier: batch signing across a document stack with a single template placement. The differentiation is defensible less by moat than by structural unwillingness: incumbents' revenue models *require* the accounts, storage, and caps that SignLite deletes. For the v1 audience of one, differentiation means something simpler: it must beat macOS Preview on a single document and beat an afternoon of serial signing on a stack. Both are measurable, and both are the acceptance test.
@@ -103,7 +103,7 @@ Buildable in well under the 4–8 week envelope at side-project pace, given the 
 
 ### Explicitly Out of Scope
 - **DOC/DOCX conversion** — tempting because "multi-format" sounds complete; deferred because browser Word rendering fidelity is the top technical risk from validation. Reconsider only after a 3-real-document fidelity test passes; workaround is print-to-PDF first.
-- **Mobile touch signing, PWA, pressure-aware strokes** — tempting because the original idea featured them; deferred because the founder is desktop-first and these serve a public audience that doesn't exist yet. Reconsider if the product goes public.
+- **Scope update, 2026-11-02:** mobile touch signing, PWA, and pressure-aware strokes are no longer excluded. Implementation and verification follow the [mobile design](plans/2026-11-02-mobile-pwa-design.md). Existing desktop-Chromium qualification is not mobile, real-stylus, OS-install, or broader browser acceptance.
 - **Audit-trail page, guided field navigation, rotate** — tempting as competitor-paywalled flex features; deferred as pure scope creep against the batch workflow. Reconsider post-v1 if a real session ever misses them.
 - **Multi-party envelopes, email delivery, notarization, cryptographic certificates, CRM anything** — permanently excluded; they are a different product for a different user.
 - **Analytics, error tracking, any telemetry** — excluded on principle for v1; "zero requests" is literal. Sentry is the first add if the product ever goes public.
@@ -112,7 +112,7 @@ Buildable in well under the 4–8 week envelope at side-project pace, given the 
 - **Must Have:** PDF drop & render; draw/type/upload signature + initials; IndexedDB library with export/import; drag/resize placement of signature, initials, date, text; flattened PDF download; bulk template placement + apply-to-all + zip download; reload-safe work history.
 - **Should Have:** Per-document override within a batch; keyboard nudging for precise placement; multi-page navigation with thumbnails; a settings drawer for library management.
 - **Could Have:** Typed-signature font choices beyond two; recent-documents list; dark mode; drag-reorder of a batch.
-- **Won't Have (this time):** DOCX conversion, mobile touch pad, PWA, audit trail, rotate, guided field navigation, and everything in the permanent-exclusion list.
+- **Won't Have (this time):** DOCX conversion, audit trail, rotate, guided field navigation, and everything in the permanent-exclusion list. Mobile touch/pen-pressure and PWA work are in progress, not accepted merely by inclusion here.
 
 ### Core User Flows
 **Flow 1 — First signature (library seeding).** Trigger: first-ever visit with a document to sign. Steps: drop PDF → empty library tray prompts "Draw a signature" → draw/type/upload → signature saved to library automatically → drag onto page → download. Outcome: signed PDF plus a permanent library. Success: under three minutes including drawing; signature present after browser restart.
@@ -127,7 +127,7 @@ Buildable in well under the 4–8 week envelope at side-project pace, given the 
 **Leading indicators:** the pinned tab exists by week one; the first real batch happens within two weeks of v1; the signature export sits backed up in the founder's home directory.
 
 ### Risks
-1. **Scope creep toward imaginary users** (likelihood: high; impact: medium). The gravitational pull of "maybe public later" drags mobile polish and DOCX into v1. Mitigation: the Out of Scope list is part of the acceptance criteria; anything not serving the next real batch session waits.
+1. **Scope creep toward imaginary users** (likelihood: high; impact: medium). Keep mobile work bounded to the shared signing workflow and its explicit acceptance criteria. DOCX and other excluded features still require a separate decision.
 2. **PDF rendering/writing edge cases** (medium; high). Scanned PDFs, encrypted files, exotic form fields, or unusual page geometries break rendering or flattening. Mitigation: test with the founder's ten most recent real documents in Phase 1, not synthetic samples; handle password-protected files with a terse, clear error.
 3. **Bulk performance on real stacks** (medium; medium). Rendering and re-writing 15 documents client-side could freeze the tab. Mitigation: profile early; move pdf-lib work to a web worker if the main thread stalls; stream the zip.
 4. **IndexedDB data loss** (medium; high — it attacks the core value). Browser data clearing, private windows, or storage eviction wipes the library. Mitigation: export/import in v1, a visible "last backed up" nudge, and `navigator.storage.persist()` requested on first save.

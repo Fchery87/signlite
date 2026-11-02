@@ -4,6 +4,8 @@
 
 SignLite is a static browser web app. The 2026-11-01 hardening work targets a controlled desktop-Chromium browser beta. It does not create a desktop application or authorize production promotion. See `docs/release-acceptance.md` for the current verification record and outstanding owner gates.
 
+The [2026-11-02 mobile design](plans/2026-11-02-mobile-pwa-design.md) adds mobile touch/pen-pressure and an installable offline browser app, pending integrated verification. This is not a native app or a broader acceptance claim. Before promotion, verify the production manifest, worker scope/CSP, public-resource-only precache, offline relaunch with fresh signing, and versioned update lifecycle without interrupting active work. Installation readiness is separate from in-memory signing readiness. Browser emulation cannot establish physical-device/stylus or OS-install acceptance.
+
 ## Supported publishing path
 
 Cloudflare Pages receives the exact artifact verified by GitHub Actions CI. Do not configure a second Git-triggered Cloudflare build that bypasses these checks.

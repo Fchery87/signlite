@@ -1,5 +1,7 @@
 # Product Idea — SignLite (working name)
 
+> Supersession note, 2026-11-02: this idea snapshot preserves both early mobile ambitions and later deferral reasoning, not current acceptance. The [mobile design](plans/2026-11-02-mobile-pwa-design.md) now brings touch, pen-pressure, and installable offline use into implementation scope. Current PDF-only behavior and acceptance bounds are in the [PRD](prd.md) and [release record](release-acceptance.md). The shared [queue](../src/components/queue/DocumentQueue.tsx)/[editor](../src/components/editor/EditorView.tsx) replaces any separate batch-panel interpretation. No mobile hardware or OS-install acceptance is implied.
+
 ## One-liner
 A lightweight, browser-based document signing app where files never leave your device — upload PDFs/DOCs, drag on your saved signature, initials, dates, and text, sign by touch on mobile, batch-complete stacks of documents, and download instantly with no account and no server.
 

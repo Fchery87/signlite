@@ -210,6 +210,10 @@ components:
 
 # SignLite Design System
 
+## Scope update, 2026-11-02
+
+The [mobile design](plans/2026-11-02-mobile-pwa-design.md) supersedes the desktop-only and limited narrow-flow descriptions below. Current work adds touch editor sheets, fit-to-width pages, safe-area controls, explicit text editing, full-screen drawing, pen-pressure/fallback strokes, and installable offline use. Desktop panels and shortcuts remain. Integrated verification is pending. Earlier 390px checks do not establish full touch, physical-device/stylus, OS-install, or broader browser acceptance. Current batch UI is the [queue](../src/components/queue/DocumentQueue.tsx), template row action, and [editor](../src/components/editor/EditorView.tsx), not separate batch panels.
+
 ## Overview
 SignLite is a client-side document signer used by one desktop professional, daily, in a pinned tab. The design must produce the emotional response of a good hand tool: present, precise, and forgettable. Quiet utility is the whole aesthetic — dense but calm, neutral grays with a single ink accent, borders instead of shadows, and copy that states facts and stops. The document page is the star; the chrome recedes. Two anti-patterns govern everything: this must never look like a consumer SaaS marketing product (gradients, mascots, celebration), and it must never accumulate chrome (tours, tips, badges, decoration without function).
 

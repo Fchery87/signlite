@@ -1,5 +1,7 @@
 # Production readiness implementation plan
 
+> Supersession note, 2026-11-02: this historical plan retains the file paths and decisions used at the time. References such as `src/components/batch/ApplyToAll.tsx` are not current implementation guidance. Current UI ownership is the [document queue](../../src/components/queue/DocumentQueue.tsx), [template dialog](../../src/components/queue/TemplateApplyDialog.tsx), and [editor](../../src/components/editor/EditorView.tsx). O03's deferred/optional offline-reload and install scope is superseded by the [mobile design](2026-11-02-mobile-pwa-design.md), pending verification. R09 evidence still covers loaded-tab readiness only, not physical-device/stylus or OS-install acceptance.
+
 > For the implementing agent, use `superpowers:executing-plans` to execute one verified task at a time. This document is the plan, not evidence that the fixes are implemented.
 
 **Goal.** Make SignLite safe to use for local PDF signing and release it through a verified Cloudflare Pages deployment.
