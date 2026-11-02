@@ -34,6 +34,14 @@ The drawing/PWA unit subset passed **24 tests across five files**, including man
 
 Emulation is not physical-device or real-stylus acceptance. Synthetic pressure does not qualify hardware pressure or palm rejection. OS-level installation, physical phones/tablets/styluses, Firefox, full Safari acceptance, screen readers, target-hardware performance, real documents, and live-origin behavior require independently recorded evidence. WebKit emulation is the scope tested here, not every Safari platform. Browser storage can be evicted, installation requires HTTPS or localhost, and offline use requires a completed initial app download. Updates wait for all SignLite tabs to close, never forcing a reload during signing. Owner gates below remain open.
 
+### Concurrent touch ownership re-audit
+
+One further native Chromium CDP case verifies that a simultaneous secondary contact adds no ink, releasing that secondary contact does not stop the primary stroke, and a later independent tap creates a separately undoable stroke. Two Undo actions clear the two intended strokes and disable Save. All three drawing cases (cancellation/geometry, concurrent contacts, and pressure/persistence) then passed three repetitions each: **9 passed**. This adds one distinct case, not nine distinct cases or another full-suite qualification. Typecheck, lint and whitespace checks passed. The unchanged 213-file artifact was checked against its original receipt. Only tests and this evidence changed.
+
+Initial runs exposed two test-transport mistakes, not application fixes. A redundant `touchCancel` after the completed stream was rejected by CDP. After removing it, the new case still retained ink after two Undo actions. Native instrumentation confirmed both Undo clicks arrived, ruling out click suppression. Pointer identity tracing showed the test's partial `touchEnd` listed the remaining primary contact, but CDP treats that list as the contacts to release. The next injected move consequently created a new primary pointer and a third stroke. Listing the secondary contact to release corrected the gesture. No assertion was weakened, no extra Undo or application delay was added, and the complete drawing group passed three repetitions afterward. This is concurrent synthetic touch ownership evidence, not hardware palm rejection.
+
+Evidence under `$JCODE_SCRATCH_DIR`: `concurrent-touch.log` (initial cleanup failure), `concurrent-touch-qualified.log` (six existing passes and three new-case failures), `concurrent-touch-instrumented.log` (Undo delivery), `concurrent-touch-identity.log` (pointer identity root cause), `concurrent-touch-final.log` (nine final passes), `concurrent-touch-final-results/`, and `concurrent-touch-static.log` (final static checks).
+
 ## Browser hardening qualification, 2026-11-01
 
 ### Additional failure-boundary qualification

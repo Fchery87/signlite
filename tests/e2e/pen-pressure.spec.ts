@@ -59,6 +59,63 @@ test('cancelled touch strokes can be undone and cleared without saving an empty 
   await expect(page.getByText('No saved signature yet.', { exact: true })).toBeVisible();
 });
 
+test('native concurrent touches cannot steal the active stroke or leave capture stuck', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP concurrent touch transport is Chromium-only');
+  test.setTimeout(90000);
+  await page.goto('/');
+  await waitForRuntimeReady(page);
+  await page.locator('input[accept="application/pdf"]').setInputFiles({ name: 'multi-touch.pdf', mimeType: 'application/pdf', buffer: await createBatchPdf('Multi-touch', 1) });
+  await page.getByLabel('Create signature').tap();
+  await page.getByRole('button', { name: 'Draw', exact: true }).tap();
+  const canvas = page.getByLabel('Signature drawing canvas');
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('Missing canvas');
+  const first = { id: 1, x: box.x + 30, y: box.y + box.height * 0.25 };
+  const second = { id: 2, x: box.x + 30, y: box.y + box.height * 0.75 };
+  const raster = () => canvas.evaluate((node) => {
+    if (!(node instanceof HTMLCanvasElement)) throw new Error('Expected drawing canvas');
+    const context = node.getContext('2d');
+    if (!context) throw new Error('Missing raster context');
+    const data = context.getImageData(0, 0, node.width, node.height).data;
+    let upper = 0;
+    let lower = 0;
+    for (let index = 3; index < data.length; index += 4) {
+      if (data[index] === 0) continue;
+      if (index < data.length / 2) upper += 1;
+      else lower += 1;
+    }
+    return { upper, lower };
+  });
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [first] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [first, second] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [first, { ...second, x: box.x + box.width - 30 }] });
+    await expect.poll(async () => (await raster()).lower).toBe(0);
+    const middle = { ...first, x: box.x + box.width / 2 };
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [middle, second] });
+    // CDP touchEnd lists the released contacts, not the remaining contacts.
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [second] });
+    const beforeContinuation = await raster();
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ ...first, x: box.x + box.width - 30 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect.poll(async () => (await raster()).upper).toBeGreaterThan(beforeContinuation.upper);
+    await expect.poll(async () => (await raster()).lower).toBe(0);
+  } finally {
+    await cdp.detach();
+  }
+  // Independent taps must be separated from rapid CDP gesture injection.
+  await page.waitForTimeout(2000);
+  await canvas.tap({ position: { x: box.width / 2, y: box.height * 0.75 } });
+  await expect.poll(async () => (await raster()).lower).toBeGreaterThan(0);
+  await page.getByRole('button', { name: 'Undo', exact: true }).tap();
+  await expect.poll(async () => (await raster()).lower).toBe(0);
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Undo', exact: true }).tap();
+  await expect.poll(raster).toEqual({ upper: 0, lower: 0 });
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+});
+
 test('real CDP pen produces pressure-sensitive pixels and saves', async ({
   page,
   browserName
