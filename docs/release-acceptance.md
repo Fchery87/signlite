@@ -54,6 +54,8 @@ Evidence under `$JCODE_SCRATCH_DIR`: `security-reaudit-browser.log`, `security-r
 
 Three new UI unit cases verify standalone launch suppresses iOS installation guidance, a rejected native prompt is consumed with an honest error and a fresh browser offer can recover, and `appinstalled` removes a pending offer without invoking it. The existing dismissal case now also verifies the consumed prompt disappears without a false error. The focused drawing/PWA group passed **27 tests across five files**, followed sequentially by passing typecheck, lint and whitespace checks. These are synthetic browser-event/UI-state tests, not actual OS installation or standalone-window acceptance. The preceding complete 386-test run predates these three additions, so it is not described as a complete 389-test run. No production changes were needed. Evidence: `$JCODE_SCRATCH_DIR/install-control-edges.log`.
 
+A subsequent complete regression from `1973c9d7612bf8cd33864da516fe174070975935` passed **389 tests across all 46 files** using `npm test -- --maxWorkers=2`, without overlapping validation jobs. The read-only receipt checker then verified all 213 original artifact files, and the production-source comparison against `d38e04e60ca0e31f9e131646fa44509ec32cb628` was empty. No software failure or production change resulted. Evidence: `$JCODE_SCRATCH_DIR/current-complete-unit.log` and background task `403001ol83`. This supplements, rather than rewrites, the earlier 386-test and focused 27-test results.
+
 ## Browser hardening qualification, 2026-11-01
 
 ### Additional failure-boundary qualification
