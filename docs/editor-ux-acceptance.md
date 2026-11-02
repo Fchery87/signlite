@@ -45,6 +45,18 @@ After all implementation and test corrections, the complete feedback loop was ru
 
 The initial combined shell command reached the environment's ten-minute execution deadline during its browser phase, after units/types/lint/build had passed. The browser phase was restarted in full as a standalone command against the same unchanged source and fresh artifact, and all 23 cases passed. The interrupted browser attempt is not counted as a pass. This supersedes the need to combine the earlier 19-of-20 browser run with a separate text rerun. It is still scoped editor acceptance, not the complete repository browser suite or live-deployment acceptance.
 
+## Expanded integration validation
+
+The remaining existing browser specs were then exercised without changing application code. An initial 16-case workflow run passed 15 cases and exposed a stale test assumption that Download still lived inside the PDF canvas's `main` element. The same obsolete selector was found in offline and PWA coverage. All three tests now target the named **Document editor** region; the cyclic-export refusal test also targets its persistent alert rather than duplicate toast text.
+
+After those test-only migrations:
+
+- The 22-case offline/security/resource/pressure/failure-delivery group passed.
+- **The complete existing Playwright suite passed in one invocation: 59 passed**, including desktop Chromium and both configured phone-emulation projects. This supersedes the earlier scoped-browser-only limitation.
+- No application source changed after the final 402-test unit pass and fresh production build. The follow-up changes are limited to three existing browser test selectors and this evidence record.
+
+Offline failure tests intentionally log blocked-resource errors. Chromium also warns that `frame-ancestors` in a meta CSP is ignored; the served framing-header contract is checked separately by the passing headers tests. These logs are not being represented as a clean console assertion.
+
 ## Acceptance boundaries
 
 This evidence covers local production-server behavior and browser emulation. It does not establish physical phone/tablet, real stylus, palm rejection, OS-level installation, assistive-technology user testing, or live-deployment acceptance. No production deployment was performed. Existing jsdom canvas and React act warnings remain visible in unit logs and did not prevent the final suite from passing.

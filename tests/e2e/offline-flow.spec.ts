@@ -83,7 +83,7 @@ test('complete signing flow works offline once ready', async ({ page }) => {
   await page.getByRole('button', { name: 'offline-a.pdf', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'offline-a.pdf' })).toBeVisible();
   const singleDownload = page.waitForEvent('download');
-  await page.getByRole('main').getByRole('button', { name: 'Download', exact: true }).click();
+  await page.getByRole('region', { name: 'Document editor' }).getByRole('button', { name: 'Download', exact: true }).click();
   const single = await singleDownload;
   await single.saveAs('artifacts/readiness/R09/offline-single.pdf');
   await expect(single.suggestedFilename()).toBe('offline-a-signed.pdf');

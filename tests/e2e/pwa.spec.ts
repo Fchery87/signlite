@@ -52,7 +52,7 @@ test('public app precache supports offline relaunch and a fresh PDF without cach
   await page.getByRole('button', {name: 'Save', exact: true}).click();
   await page.getByRole('button', {name: 'Place on page 1'}).first().click();
   const download = page.waitForEvent('download');
-  await page.getByRole('main').getByRole('button', {name: 'Download', exact: true}).click();
+  await page.getByRole('region', { name: 'Document editor' }).getByRole('button', {name: 'Download', exact: true}).click();
   expect((await download).suggestedFilename()).toBe('private-fresh-signed.pdf');
   const after = await page.evaluate(async () => (await Promise.all((await caches.keys()).filter(key => key.startsWith('signlite-app-')).map(async key => (await (await caches.open(key)).keys()).map(req => new URL(req.url).pathname)))).flat());
   expect(after.sort()).toEqual(resources.sort());

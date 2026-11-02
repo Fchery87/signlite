@@ -53,8 +53,8 @@ test('cyclic supported action graph refuses export without download or signed st
   await page.locator('input[accept="application/pdf"]').setInputFiles({ name: 'cyclic.pdf', mimeType: 'application/pdf', buffer: source });
   await openQueuedDocument(page, 'cyclic.pdf');
   await page.getByRole('button', { name: 'Text', exact: true }).click();
-  await page.getByRole('main').getByRole('button', { name: 'Download', exact: true }).click();
-  await expect(page.getByText('Cannot safely apply PDF export policy: cyclic action chain.')).toBeVisible();
+  await page.getByRole('region', { name: 'Document editor' }).getByRole('button', { name: 'Download', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Cannot safely apply PDF export policy: cyclic action chain.' })).toBeVisible();
   await expect(page.getByTestId('durability-status')).toHaveText('Saved.');
   const stored = await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve) => { const r = indexedDB.open('signlite', 1); r.onsuccess = () => resolve(r.result); });
