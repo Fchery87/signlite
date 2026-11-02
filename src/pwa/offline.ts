@@ -1,4 +1,4 @@
-export type OfflineStatus = 'preparing' | 'ready' | 'failed' | 'unsupported';
+export type OfflineStatus = 'preparing' | 'ready' | 'update-ready' | 'failed' | 'unsupported';
 
 function cacheReady(worker: ServiceWorker): Promise<boolean> {
   return new Promise((resolve) => {
@@ -24,18 +24,19 @@ export function prepareOffline(onStatus: (status: OfflineStatus) => void): () =>
   }
   publish('preparing');
   const timer = window.setTimeout(() => publish('failed'), 90000);
-  const check = async (worker: ServiceWorker) => {
+  const check = async (worker: ServiceWorker, registration: ServiceWorkerRegistration) => {
     const ready = await cacheReady(worker);
     window.clearTimeout(timer);
-    publish(ready ? 'ready' : 'failed');
+    publish(ready ? (registration.waiting ? 'update-ready' : 'ready') : 'failed');
   };
   void navigator.serviceWorker.register('/sw.js', {scope: '/', updateViaCache: 'none'}).then((registration) => {
     if (cancelled) return;
-    if (registration.active) void check(registration.active);
+    if (registration.active) void check(registration.active, registration);
     const watch = (worker: ServiceWorker | null) => {
       if (!worker) return;
       const changed = () => {
-        if (worker.state === 'activated') void check(worker);
+        if (worker.state === 'activated') void check(worker, registration);
+        if (worker.state === 'installed' && registration.active) void check(registration.active, registration);
         if (worker.state === 'redundant' && !registration.active) {
           window.clearTimeout(timer);
           publish('failed');

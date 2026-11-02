@@ -39,6 +39,14 @@ it('ignores private, cross-origin, blob, query and non-GET requests', () => {
   }
   expect(sw.caches.open).not.toHaveBeenCalled();
 });
+it('removes an incomplete cache when public precache installation fails', async () => {
+  const sw = worker();
+  sw.addAll.mockRejectedValueOnce(new Error('storage full'));
+  let done: Promise<unknown> = Promise.resolve();
+  sw.handlers.get('install')!({waitUntil: (promise: Promise<unknown>) => {done = promise;}});
+  await expect(done).rejects.toThrow('storage full');
+  expect(sw.remove).toHaveBeenCalledExactlyOnceWith('signlite-app-new');
+});
 it('serves the public shell from its own version cache without a runtime write', async () => {
   const sw = worker();
   let response: Promise<Response> | undefined;

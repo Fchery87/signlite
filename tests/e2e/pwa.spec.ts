@@ -19,6 +19,7 @@ test('public app precache supports offline relaunch and a fresh PDF without cach
   expect(resources.some(path => path.includes('pdf-flatten'))).toBe(true);
   expect(resources.some(path => path.includes('pdf-worker-source'))).toBe(true);
   expect(resources.some(path => path.endsWith('.mjs'))).toBe(true);
+  expect(resources.some(path => /^\/(?:cmaps|standard_fonts)\//.test(path))).toBe(false);
   expect(resources.every(path => /^\/(?:index\.html|manifest\.webmanifest|favicon\.svg|icons\/|assets\/|fonts\/|cmaps\/|standard_fonts\/)/.test(path))).toBe(true);
   await context.setOffline(true);
   await page.reload();

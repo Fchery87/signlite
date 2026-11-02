@@ -10,7 +10,7 @@ describe('public app precache', () => {
       ['uploads/private.pdf', 'private'], ['sw.js', 'old worker']
     ]);
     const result = createPrecacheManifest(files);
-    expect(result.urls).toEqual(['/assets/lazy-abc.js', '/assets/pdf.worker.mjs', '/cmaps/abc.bcmap', '/fonts/font.ttf', '/index.html', '/standard_fonts/a.pfb']);
+    expect(result.urls).toEqual(['/assets/lazy-abc.js', '/assets/pdf.worker.mjs', '/fonts/font.ttf', '/index.html']);
     expect(createPrecacheManifest(new Map([...files, ['assets/lazy-abc.js', 'changed']])).version).not.toBe(result.version);
   });
   it('worker only serves exact allowlisted GETs and never caches runtime requests or forces activation', () => {

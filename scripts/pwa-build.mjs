@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 
-const publicAsset = /^(?:index\.html|manifest\.webmanifest|favicon\.svg|icons\/[\w.-]+\.(?:png|svg)|(?:assets|fonts|cmaps|standard_fonts)\/[\w./-]+\.(?:m?js|css|ttf|woff2?|bcmap|pfb|otf|png|svg))$/;
+const publicAsset = /^(?:index\.html|manifest\.webmanifest|favicon\.svg|icons\/[\w.-]+\.(?:png|svg)|(?:assets|fonts)\/[\w./-]+\.(?:m?js|css|ttf|woff2?|otf|png|svg))$/;
 export function createPrecacheManifest(files) {
   const hash = createHash('sha256');
   const urls = [...files.keys()].filter((name) => publicAsset.test(name)).sort();

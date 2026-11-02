@@ -9,6 +9,7 @@ type InstallPrompt = Event & {
 const labels: Record<OfflineStatus, string> = {
   preparing: 'Preparing offline launch…',
   ready: 'Ready to launch offline',
+  'update-ready': 'Offline app update ready. Finish your work, close all SignLite tabs, then reopen to use it.',
   failed: 'Offline launch preparation failed',
   unsupported: 'Offline launch unavailable in this browser or development mode'
 };
