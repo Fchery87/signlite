@@ -65,22 +65,25 @@ export function PageCanvas({
     const element = wrapperRef.current;
     if (!element) return;
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        const ratio = entry?.intersectionRatio ?? 0;
-        setIsNearViewport(entry?.isIntersecting ?? false);
-        onVisibilityChange(pageIndex, ratio);
-      },
-      {
-        root: scrollRootRef.current,
-        rootMargin: '100% 0px',
-        threshold: [0, 0.1, 0.25, 0.5, 0.75, 1]
-      }
+    const root = scrollRootRef.current;
+    // Rendering starts a viewport ahead, so this observer pads the root by 100%.
+    const nearObserver = new IntersectionObserver(
+      ([entry]) => setIsNearViewport(entry?.isIntersecting ?? false),
+      { root, rootMargin: '100% 0px', threshold: 0 }
+    );
+    // The active page must come from what is actually on screen. Measured
+    // against the padded root, several small pages (Fit page) would all read
+    // as fully visible and the target page would depend on timing.
+    const visibilityObserver = new IntersectionObserver(
+      ([entry]) => onVisibilityChange(pageIndex, entry?.intersectionRatio ?? 0),
+      { root, threshold: [0, 0.1, 0.25, 0.5, 0.75, 1] }
     );
 
-    observer.observe(element);
+    nearObserver.observe(element);
+    visibilityObserver.observe(element);
     return () => {
-      observer.disconnect();
+      nearObserver.disconnect();
+      visibilityObserver.disconnect();
     };
   }, [onVisibilityChange, pageIndex, scrollRootRef]);
 

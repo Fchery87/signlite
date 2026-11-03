@@ -37,13 +37,14 @@ vi.mock('../../src/pdf/flatten', () => ({
 type ObserverRecord = {
   callback: IntersectionObserverCallback;
   observer: IntersectionObserver;
+  options?: IntersectionObserverInit;
 };
 
 const intersectionObservers: ObserverRecord[] = [];
 
 class FakeIntersectionObserver {
-  constructor(callback: IntersectionObserverCallback) {
-    intersectionObservers.push({ callback, observer: this as unknown as IntersectionObserver });
+  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+    intersectionObservers.push({ callback, observer: this as unknown as IntersectionObserver, options });
   }
   observe() {}
   unobserve() {}
@@ -59,8 +60,10 @@ class FakeResizeObserver {
   disconnect() {}
 }
 
-function emitVisibility(observerIndex: number, ratio: number) {
-  const record = intersectionObservers[observerIndex];
+/** Reports on-screen visibility for one page. Pages also own a padded
+ *  pre-render observer (rootMargin set), which does not drive the active page. */
+function emitVisibility(pageIndex: number, ratio: number) {
+  const record = intersectionObservers.filter((entry) => entry.options?.rootMargin === undefined)[pageIndex];
   record?.callback(
     [{ intersectionRatio: ratio, isIntersecting: ratio > 0 } as IntersectionObserverEntry],
     record.observer
