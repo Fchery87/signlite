@@ -6,7 +6,7 @@ Product commit: `b0a86b57df3fa2a741f79fc7d8e6c9bd9b1ff9cf`
 
 ## Scope
 
-Editor-only warm-neutral redesign: document hierarchy, toolbar, compact thumbnails and navigation, signature/initials/date/text tools, selected-element actions, mobile dialogs, and loading/error/download guidance. Queue, intake, the global shell, local-data controls, and PWA behavior were not redesigned.
+Editor-only warm-neutral redesign: document hierarchy, toolbar, compact thumbnails and navigation, signature/initials/date/text tools, selected-element actions, mobile dialogs, and loading/error/download guidance. Queue, intake, local-data controls, and PWA behavior were not redesigned. A later correction changed only the global shell's page-height behavior, documented below.
 
 ## Verification
 
@@ -62,6 +62,25 @@ Offline failure tests intentionally log blocked-resource errors. Chromium also w
 Two additional production-browser tests passed after the 59-case full-suite run. These verify text and date control reachability at 320px, editing and date-format cycling, 150% PDF zoom without document overflow, keyboard focus trapped in a dialog above the portal toolbar, focus restoration, page-two insertion, and cancelling an armed preview without changing existing content or undo history. The 320px text-controls screenshot was reviewed. Typecheck, lint and whitespace checks passed again. These are two targeted additions, not a claim that a new 61-case full-suite invocation was run. Application source remained unchanged.
 
 The same two boundary cases were also run with `hasTouch: true` in Chromium and WebKit through a temporary supplemental configuration: **4 of 4 passed**. This checks coarse-pointer layout and cross-engine dialog/arming behavior. Interactions in these cases still use Playwright click and keyboard APIs, so they do not replace the separate native touch-flow coverage or establish physical touch-device acceptance. No project configuration or application source changed for this supplemental run.
+
+## Page-height correction
+
+Product commit: `5fb39f255a5686add8dee2e458a12dae660e7b50`
+
+The previous shell combined `min-h-screen` content below a variable-height header with fixed offsets: the queue assumed a 73px header, the drop zone nested another viewport-height block, and the desktop editor subtracted a hard-coded 245px. At 1440×900 the page measured 972px, putting the local-data footer below the fold. A tall or wrapped header made the mismatch larger.
+
+The shell is now one flex column. The header and local-data footer do not shrink, the view fills the remaining space, and the desktop editor owns its internal PDF scrolling. No viewport offset is hard-coded. Queue and drop-zone content fill short viewports and scroll naturally when longer. The phone editor keeps document scrolling with the footer in flow.
+
+| Check | Result |
+| --- | --- |
+| Complete unit suite, `npm test` | 402 tests across 48 files passed. |
+| Typecheck and ESLint | Passed. |
+| Fresh production build | Passed; existing chunk-size warnings remain. |
+| New page-height coverage | 2 browser cases passed. Drop zone, queue and editor each measured no page overflow at 1440×900 and 1280×800, including an injected 220px header. The PDF viewer still had internal scroll. Phone coverage checked horizontal containment and footer reachability. |
+| Complete existing browser suite | **63 passed in one invocation**, including desktop Chromium and both configured phone-emulation projects. |
+| Visual inspection | Reviewed production drop zone, queue and editor at 1440×900, plus phone layouts at 390×844 and 320×640. The footer sits on the viewport edge on desktop; phone pages scroll naturally. |
+
+During the full browser run, the existing WebKit touch case exposed a pre-existing timing hazard: the placement was under the four-second status toasts and the fixed selected-element toolbar, so a synthetic pointer hit the overlay instead of the resize handle. The test now waits for the transient toasts and scrolls the page until the placement is clear of the fixed toolbar. No gesture, placement, or export code changed. The same test passes in Chromium and WebKit.
 
 ## Acceptance boundaries
 
