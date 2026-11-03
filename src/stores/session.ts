@@ -46,7 +46,7 @@ export type { ApplyToAllPreview };
 export type ViewState = 'dropzone' | 'queue' | 'editor';
 
 /** Outcome of committing an intake result. Non-'ok' values are surfaced to the user. */
-export type IntakeCommitOutcome = 'ok' | 'lease' | 'session-changed' | 'budget';
+export type IntakeCommitOutcome = 'ok' | 'lease' | 'read-only' | 'session-changed' | 'budget';
 
 export type ApplyTemplatePlacementsResult = {
   ok: boolean;
@@ -73,6 +73,11 @@ type SessionState = {
   contentRevision: number;
   mutationLease: MutationLease | null;
   mutationLock: Readonly<{ owner: string }> | null;
+  /** True while another tab holds this Work Session's editing lock. A read-only
+   *  tab never saves, so every content mutation is refused rather than kept
+   *  in memory only to vanish on reload. */
+  readOnly: boolean;
+  setReadOnly: (readOnly: boolean) => void;
   /** Transient: the saved signature armed for click placement in the editor. */
   armedSignature: SignatureAsset | null;
   addDocuments: (docs: SessionDocument[], expectedSessionId?: string) => IntakeCommitOutcome;
@@ -115,6 +120,16 @@ type SessionState = {
   resetSession: () => void;
 };
 
+/** Content mutations are refused while a batch holds the lease or while another
+ *  tab owns this Work Session. */
+function editingBlocked(state: Pick<SessionState, 'mutationLease' | 'readOnly'>) {
+  return state.mutationLease !== null || state.readOnly;
+}
+
+/** UI-facing twin of editingBlocked: true while edits would be refused. */
+export const selectEditingBlocked = (state: Pick<SessionState, 'mutationLock' | 'readOnly'>) =>
+  state.mutationLock !== null || state.readOnly;
+
 function toEditorState(state: SessionState): WorkSessionEditorState {
   return {
     session: state.session,
@@ -145,10 +160,16 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
   contentRevision: 0,
   mutationLease: null,
   mutationLock: null,
+  readOnly: false,
   armedSignature: null,
+
+  setReadOnly: (readOnly) => {
+    if (get().readOnly !== readOnly) set({ readOnly });
+  },
 
   addDocuments: (docs, expectedSessionId) => {
     if (get().mutationLease) return 'lease';
+    if (get().readOnly) return 'read-only';
     if (expectedSessionId !== undefined && get().session.id !== expectedSessionId) return 'session-changed';
     const result = editorAddDocuments(toEditorState(get()), docs);
     if (!result.ok) {
@@ -168,7 +189,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
   },
 
   removeDocument: (docId) => {
-    if (get().mutationLease) return;
+    if (editingBlocked(get())) return;
     const result = editorRemoveDocument(toEditorState(get()), docId);
     if (!result.ok) return;
     set({
@@ -184,7 +205,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
   },
 
   reorderDocuments: (docIds) => {
-    if (get().mutationLease) return;
+    if (editingBlocked(get())) return;
     const result = editorReorderDocuments(toEditorState(get()), docIds);
     if (!result.ok) return;
     set({
@@ -198,7 +219,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
   },
 
   addTextPlacement: (docId, placement) => {
-    if (get().mutationLease) return;
+    if (editingBlocked(get())) return;
     const result = editorAddTextPlacement(get().session, get().history, { docId, placement });
     if (!result.ok) return;
     set({
@@ -212,16 +233,16 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
   },
 
   addSignaturePlacement: async (docId, asset, placement) => {
-    if (get().mutationLease) return null;
+    if (editingBlocked(get())) return null;
     const ownershipRevision = get().ownershipRevision;
     // Snapshot hashing is asynchronous. Retry against the latest state if another
     // complete action commits while hashing so stale state can never be restored.
     while (true) {
       const state = get();
-      if (state.ownershipRevision !== ownershipRevision || state.mutationLease) return null;
+      if (state.ownershipRevision !== ownershipRevision || editingBlocked(state)) return null;
       const result = await editorAddSignaturePlacement(state.session, state.history, { docId, asset, placement });
       if (!result.ok) return null;
-      if (get().ownershipRevision !== ownershipRevision || get().mutationLease) return null;
+      if (get().ownershipRevision !== ownershipRevision || editingBlocked(get())) return null;
       if (get().session !== state.session || get().history !== state.history) continue;
 
       set({
@@ -238,13 +259,13 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
 
   applySignatureToDocuments: async (asset, docIds, options) => {
     const rejected: ApplySavedSignatureOutcome = { ok: false, appliedDocIds: [], skipped: [], error: 'rejected' };
-    if (get().mutationLease) return rejected;
+    if (editingBlocked(get())) return rejected;
     const ownershipRevision = get().ownershipRevision;
     // The snapshot hash is asynchronous. Re-read the session after it settles,
     // and never overwrite a mutation that landed in between.
     while (true) {
       const state = get();
-      if (state.ownershipRevision !== ownershipRevision || state.mutationLease) return rejected;
+      if (state.ownershipRevision !== ownershipRevision || editingBlocked(state)) return rejected;
       const result = await editorApplySignatureToDocuments(state.session, state.history, { asset, docIds, options });
       if (!result.ok) {
         return {
@@ -254,7 +275,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
           error: result.error.reason === 'nothing-to-apply' ? 'nothing-to-apply' : 'rejected'
         };
       }
-      if (get().ownershipRevision !== ownershipRevision || get().mutationLease) return rejected;
+      if (get().ownershipRevision !== ownershipRevision || editingBlocked(get())) return rejected;
       if (get().session !== state.session || get().history !== state.history) continue;
 
       set({
@@ -276,14 +297,14 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
     editorPreviewSavedSignatureApply(get().session.documents, docIds, kind, options),
 
   updatePlacement: (docId, placementId, next, coalesceKey, historyMode) => {
-    if (get().mutationLease) return;
+    if (editingBlocked(get())) return;
     const result = editorUpdatePlacement(get().session, get().history, { docId, placementId, changes: next, coalesceKey, historyMode });
     if (!result.ok) return;
     set({ session: result.session, history: result.history, contentRevision: get().contentRevision + 1 });
   },
 
   removePlacement: (docId, placementId) => {
-    if (get().mutationLease) return;
+    if (editingBlocked(get())) return;
     const state = get();
     const result = editorRemovePlacement(state.session, state.history, docId, placementId, state.selectedPlacementId);
     if (!result.ok) return;
@@ -296,7 +317,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
   },
 
   duplicatePlacement: (docId, placementId) => {
-    if (get().mutationLease) return;
+    if (editingBlocked(get())) return;
     const result = editorDuplicatePlacement(get().session, get().history, docId, placementId);
     if (!result.ok) return;
     set({
@@ -314,7 +335,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
   },
 
   pastePlacement: (docId, pageIndex) => {
-    if (get().mutationLease) return null;
+    if (editingBlocked(get())) return null;
     const state = get();
     const result = editorPastePlacement(state.session, state.history, docId, pageIndex, state.copiedPlacement);
     if (!result.ok) return null;
@@ -331,7 +352,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
   },
 
   undo: () => {
-    if (get().mutationLease) return;
+    if (editingBlocked(get())) return;
     const state = get();
     const result = editorUndo(state.session, state.history, state.selectedPlacementId, state.selectedDocumentId);
     if (!result.changed) return;
@@ -345,7 +366,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
   },
 
   redo: () => {
-    if (get().mutationLease) return;
+    if (editingBlocked(get())) return;
     const state = get();
     const result = editorRedo(state.session, state.history, state.selectedPlacementId, state.selectedDocumentId);
     if (!result.changed) return;
@@ -381,6 +402,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
 
   acquireMutationLease: (owner) => {
     const state = get();
+    if (state.readOnly) return null;
     const lease = editorAcquireMutationLease(state.mutationLease, owner);
     if (!lease) return null;
     set({ mutationLease: lease, mutationLock: { owner: lease.owner }, ownershipRevision: state.ownershipRevision + 1 });
@@ -396,7 +418,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
   previewApplyTemplatePlacements: (sourceDocId) => editorPreviewApplyToAll(get().session, get().contentRevision, sourceDocId),
 
   applyTemplatePlacements: (sourceDocId, preview) => {
-    if (get().mutationLease) return { ok: false, appliedDocIds: [], needsReviewDocIds: [], error: 'rejected' };
+    if (editingBlocked(get())) return { ok: false, appliedDocIds: [], needsReviewDocIds: [], error: 'rejected' };
     const state = get();
     const result = editorConfirmApplyToAll(toEditorState(state), state.contentRevision, sourceDocId, preview);
     if (!result.ok) {
@@ -438,7 +460,7 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
 
 
   stampPlacementOnEveryPage: (docId, placementId) => {
-    if (get().mutationLease) return { ok: false, added: 0 };
+    if (editingBlocked(get())) return { ok: false, added: 0 };
     const state = get();
     const result = editorStampPlacementOnEveryPage(state.session, state.history, docId, placementId);
     if (!result.ok) return { ok: false, added: 0 };
@@ -455,6 +477,8 @@ const internalUseSessionStore = create<SessionState>((set, get) => ({
 
   setSelection: (docId, placementId) => set({ selectedDocumentId: docId, selectedPlacementId: placementId }),
 
+  // Resume and Start Fresh switch session identity, which is how a read-only
+  // tab gets a session of its own, so only a batch lease blocks them.
   restoreSession: async (candidate) => {
     if (get().mutationLease) return false;
     const ownershipRevision = get().ownershipRevision;

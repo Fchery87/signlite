@@ -22,9 +22,15 @@ export default function App() {
   const resetSession = useSessionStore((state) => state.resetSession);
   const mutationLock = useSessionStore((state) => state.mutationLock);
   const openQueue = useSessionStore((state) => state.openQueue);
+  const setReadOnly = useSessionStore((state) => state.setReadOnly);
   const [toasts, setToasts] = useState<Array<{ id: string; message: string }>>([]);
   const lifecycle = useSessionLifecycle({ session, contentRevision, resetSession });
   const runtime = useRuntimeReadiness();
+  // Another tab owns this Work Session: this tab never saves, so the store
+  // refuses edits instead of keeping changes that vanish on reload.
+  useEffect(() => {
+    setReadOnly(lifecycle.authority === 'read-only');
+  }, [lifecycle.authority, setReadOnly]);
   useEffect(() => {
     void ensureRuntimeReady().catch(() => undefined);
   }, []);

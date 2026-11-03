@@ -32,7 +32,8 @@ function resetStore() {
     ownershipRevision: 0,
     contentRevision: 0,
     mutationLease: null,
-    mutationLock: null
+    mutationLock: null,
+    readOnly: false
   });
 }
 
@@ -125,6 +126,24 @@ describe('session store', () => {
 
     expect(sessionStoreTestHarness.getState().addDocuments([makeDocument('doc-1')])).toBe('lease');
     expect(sessionStoreTestHarness.getState().session.documents).toHaveLength(0);
+  });
+
+  it('refuses content edits while another tab owns the Work Session, but still allows Start Fresh', () => {
+    sessionStoreTestHarness.getState().addDocuments([makeDocument('doc-1')]);
+    sessionStoreTestHarness.getState().setReadOnly(true);
+    const before = sessionStoreTestHarness.getState().contentRevision;
+
+    expect(sessionStoreTestHarness.getState().addDocuments([makeDocument('doc-2')])).toBe('read-only');
+    sessionStoreTestHarness.getState().addTextPlacement('doc-1', { ...basePlacement });
+    sessionStoreTestHarness.getState().removeDocument('doc-1');
+    expect(sessionStoreTestHarness.getState().acquireMutationLease('batch')).toBeNull();
+    expect(sessionStoreTestHarness.getState().session.documents.map((doc) => doc.docId)).toEqual(['doc-1']);
+    expect(sessionStoreTestHarness.getState().session.documents[0]?.placements).toHaveLength(0);
+    expect(sessionStoreTestHarness.getState().contentRevision).toBe(before);
+
+    // Start Fresh moves the tab to a new session id, which it can own.
+    sessionStoreTestHarness.getState().resetSession();
+    expect(sessionStoreTestHarness.getState().session.id).not.toBe('session-1');
   });
 
   it('atomically inserts and deduplicates immutable signature snapshots', async () => {

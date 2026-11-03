@@ -1,7 +1,7 @@
 import type { Placement, SessionDocument } from '../../db/schema';
 import { placementLabel, placementSummary } from '../../lib/placements';
 import { STRINGS } from '../../lib/strings';
-import { useSessionStore } from '../../stores/session';
+import { selectEditingBlocked, useSessionStore } from '../../stores/session';
 
 type ElementsPanelProps = {
   document: SessionDocument;
@@ -11,7 +11,7 @@ type ElementsPanelProps = {
 
 export function ElementsPanel({ document, selectedPlacementId, onSelect }: ElementsPanelProps) {
   const removePlacement = useSessionStore((state) => state.removePlacement);
-  const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
+  const mutationLocked = useSessionStore(selectEditingBlocked);
 
   return (
     <div className="min-h-0 shrink-0 rounded-lg border border-line bg-surface p-3">

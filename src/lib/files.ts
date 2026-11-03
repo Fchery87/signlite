@@ -31,6 +31,7 @@ export const REJECTION_REASONS: Record<FileValidationError, (fileName: string) =
 
 export const COMMIT_REFUSALS: Record<Exclude<IntakeCommitOutcome, 'ok'>, string> = {
   lease: STRINGS.errors['intake-lease-refused'],
+  'read-only': STRINGS.errors['intake-read-only-refused'],
   'session-changed': STRINGS.errors['intake-session-changed'],
   budget: STRINGS.errors['intake-budget-refused']
 };

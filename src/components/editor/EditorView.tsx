@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Button, Modal, isAnyModalOpen } from '../ui';
-import { useSessionStore } from '../../stores/session';
+import { selectEditingBlocked, useSessionStore } from '../../stores/session';
 import { STRINGS } from '../../lib/strings';
 import { EXPORT_POLICY_DISCLOSURE, VISUAL_SIGNATURE_DISCLOSURE } from '../../lib/productPolicy';
 import { loadDocument, type LoadedPdf } from '../../pdf/render';
@@ -107,7 +107,7 @@ export function EditorView({ onToast, appBrand, appUtilities }: EditorViewProps)
   const openDocument = useSessionStore((state) => state.openDocument);
   const armedSignature = useSessionStore((state) => state.armedSignature);
   const disarmSignature = useSessionStore((state) => state.disarmSignature);
-  const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
+  const mutationLocked = useSessionStore(selectEditingBlocked);
   const sessionId = useSessionStore((state) => state.session.id);
   const selectedDocument = documents.find((document) => document.docId === selectedDocumentId) ?? documents[0] ?? null;
 

@@ -6,7 +6,7 @@ import { getAsset, getDateFormat, setDateFormat } from '../../db/signatures';
 import { bufferToObjectUrl } from '../library/canvas';
 import { clampRect, normalizedToScreen, screenToNormalized } from '../../pdf/coords';
 import { ensureTextFontFamily, layoutText, TEXT_PADDING, type TextLayout } from '../../pdf/textLayout';
-import { useSessionStore } from '../../stores/session';
+import { selectEditingBlocked, useSessionStore } from '../../stores/session';
 import { placementLabel } from '../../lib/placements';
 import { STRINGS } from '../../lib/strings';
 
@@ -107,7 +107,7 @@ export function PlacedElement({ documentId, pageSize, placement, scale, selected
   const duplicatePlacement = useSessionStore((state) => state.duplicatePlacement);
   const copyPlacement = useSessionStore((state) => state.copyPlacement);
   const setSelection = useSessionStore((state) => state.setSelection);
-  const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
+  const mutationLocked = useSessionStore(selectEditingBlocked);
   const [src, setSrc] = useState('');
   const [dateFormatValue, setDateFormatValue] = useState(() => getDateFormat());
   const [isEditingText, setIsEditingText] = useState(false);

@@ -13,6 +13,7 @@ export type SignliteErrorCode =
   | 'session-page-limit'
   | 'session-byte-limit'
   | 'intake-lease-refused'
+  | 'intake-read-only-refused'
   | 'intake-session-changed'
   | 'intake-budget-refused'
   | 'upload-invalid'
@@ -290,6 +291,7 @@ export const STRINGS = {
     'session-page-limit': 'Session limit is 500 pages total.',
     'session-byte-limit': 'Session limit is 500 MB of PDFs total.',
     'intake-lease-refused': 'Not added — signing is in progress.',
+    'intake-read-only-refused': 'Not added — another tab is editing this Work Session. Use that tab, or close it and reload this one.',
     'intake-session-changed': 'That import no longer matches this session.',
     'intake-budget-refused': 'Not added — session limits reached.',
     'upload-invalid': 'PNG or JPEG only, up to 10 MB.',

@@ -1,5 +1,5 @@
 import { STRINGS } from '../../lib/strings';
-import { useSessionStore } from '../../stores/session';
+import { selectEditingBlocked, useSessionStore } from '../../stores/session';
 import { Button, Modal } from '../ui';
 
 type TemplateApplyDialogProps = {
@@ -12,7 +12,7 @@ type TemplateApplyDialogProps = {
 export function TemplateApplyDialog({ sourceDocId, sourceFileName, onClose, onToast }: TemplateApplyDialogProps) {
   const previewApplyTemplatePlacements = useSessionStore((state) => state.previewApplyTemplatePlacements);
   const applyTemplatePlacements = useSessionStore((state) => state.applyTemplatePlacements);
-  const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
+  const mutationLocked = useSessionStore(selectEditingBlocked);
   const preview = sourceDocId ? previewApplyTemplatePlacements(sourceDocId) : null;
   const overwriteCount = preview?.targets.filter((target) => target.overwritesPlacements || target.endsSignedState).length ?? 0;
 

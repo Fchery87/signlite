@@ -4,7 +4,7 @@ import type { Placement, SignatureAsset } from '../../db/schema';
 import { getAsset, touchAsset } from '../../db/signatures';
 import { clampRect, screenToNormalized } from '../../pdf/coords';
 import { placementLabel } from '../../lib/placements';
-import { useSessionStore } from '../../stores/session';
+import { selectEditingBlocked, useSessionStore } from '../../stores/session';
 import { PlacedElement } from './PlacedElement';
 import { STRINGS } from '../../lib/strings';
 
@@ -78,7 +78,7 @@ export function PlacementLayer({
   const duplicatePlacement = useSessionStore((state) => state.duplicatePlacement);
   const copyPlacement = useSessionStore((state) => state.copyPlacement);
   const setSelection = useSessionStore((state) => state.setSelection);
-  const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
+  const mutationLocked = useSessionStore(selectEditingBlocked);
   const touchTapRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
 
   useEffect(() => {

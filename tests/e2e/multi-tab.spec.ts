@@ -36,6 +36,19 @@ test('a second tab opens the saved session read-only while the first tab keeps s
     await observer.getByRole('button', { name: 'Resume', exact: true }).click();
     await openQueuedDocument(observer, 'owned.pdf');
     await expect(observer.getByTestId('read-only-banner')).toBeVisible();
+
+    // The read-only tab never saves, so it must not accept edits that would
+    // silently vanish on reload.
+    const observerEditor = observer.getByRole('region', { name: 'Document editor' });
+    await expect(observerEditor.getByRole('button', { name: 'Add PDFs', exact: true })).toBeDisabled();
+    await expect(observer.getByRole('complementary').filter({ has: observer.getByRole('heading', { name: 'Library', exact: true }) }).getByRole('button', { name: 'Text', exact: true })).toBeDisabled();
+    await observer.getByRole('button', { name: 'All documents' }).click();
+    await observer.getByRole('button', { name: 'Add PDFs', exact: true }).click();
+    await observer.locator('input[accept="application/pdf"]').setInputFiles({ name: 'observer.pdf', mimeType: 'application/pdf', buffer: await createSamplePdf() });
+    await expect(observer.getByText(/Not added — another tab is editing this Work Session/)).toBeVisible({ timeout: 15000 });
+    await observer.getByRole('button', { name: 'Back to documents' }).click();
+    await expect(observer.getByText('observer.pdf')).toHaveCount(0);
+
     await place(260);
     await expect(owner.getByRole('main').getByRole('button', { name: 'Signature', exact: true })).toHaveCount(2);
     await expect(owner.getByTestId('durability-status')).toHaveText('Saved.', { timeout: 15000 });

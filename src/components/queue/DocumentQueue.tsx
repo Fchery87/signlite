@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionDocument } from '../../db/schema';
 import { STRINGS } from '../../lib/strings';
 import { EXPORT_POLICY_DISCLOSURE } from '../../lib/productPolicy';
-import { useSessionStore } from '../../stores/session';
+import { selectEditingBlocked, useSessionStore } from '../../stores/session';
 import { useBatchDownload } from '../batch/useBatchDownload';
 import { Button, Modal, isAnyModalOpen } from '../ui';
 import { SignatureDock } from './SignatureDock';
@@ -54,7 +54,7 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
   const previewSavedSignatureApply = useSessionStore((state) => state.previewSavedSignatureApply);
   const reorderDocuments = useSessionStore((state) => state.reorderDocuments);
   const removeDocument = useSessionStore((state) => state.removeDocument);
-  const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
+  const mutationLocked = useSessionStore(selectEditingBlocked);
   const { assets, selected: signature, select: selectSignature, refresh: refreshSignatures } = useSignatureAssets();
   const batch = useBatchDownload(onToast);
 
