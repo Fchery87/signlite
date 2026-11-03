@@ -561,6 +561,27 @@ describe('guarded persistence and ownership', () => {
     expect(h.commit).not.toHaveBeenCalled();
   });
 
+  it('never contends with itself when StrictMode mounts, disposes and remounts mid-acquire', async () => {
+    // A real Web Lock: held until released, contended for every other request.
+    let held = false;
+    const h = harness({
+      acquireOwnership: async () => {
+        await Promise.resolve();
+        if (held) return { status: 'contended' };
+        held = true;
+        return { status: 'owned', release: async () => { held = false; } };
+      }
+    });
+    await h.lifecycle.startup();
+    const first = h.lifecycle.assumeSession('same');
+    h.lifecycle.dispose();
+    void h.lifecycle.startup();
+    const second = h.lifecycle.assumeSession('same');
+    await Promise.all([first, second]);
+    expect(h.lifecycle.getState().authority).toBe('owner');
+    expect(held).toBe(true);
+  });
+
   it('keeps editing optimistically when Web Locks are unavailable', async () => {
     const h = harness({
       acquireOwnership: async () => ({ status: 'unavailable' })

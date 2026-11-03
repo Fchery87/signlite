@@ -134,6 +134,8 @@ export class ActiveSessionLifecycle {
   private originParticipationRelease: (() => Promise<void>) | null = null;
   private authorityFor: string | null = null;
   private ownershipAssumed = false;
+  /** Tail of the assumeSession queue; see assumeSession. */
+  private assumeQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly deps: LifecycleDependencies) {
     this.coordinator = deps.coordinator ?? new DurabilityCoordinator();
@@ -182,8 +184,19 @@ export class ActiveSessionLifecycle {
   }
 
   /** Takes responsibility for one session id: acquires its editing lock, and
-   *  on contention downgrades this tab to read-only for that session. */
-  async assumeSession(id: string) {
+   *  on contention downgrades this tab to read-only for that session.
+   *
+   *  Calls run one at a time. Overlapping calls (React StrictMode runs the
+   *  mount effect twice; a fast session switch) would otherwise each see no
+   *  held lock, and the later one would find the earlier one's lock taken and
+   *  mark this tab read-only against itself. */
+  assumeSession(id: string): Promise<void> {
+    const next = this.assumeQueue.then(() => this.assumeSessionNow(id));
+    this.assumeQueue = next.catch(() => undefined);
+    return next;
+  }
+
+  private async assumeSessionNow(id: string) {
     if (this.disposed) return;
     // Ownership change invalidates queued writes from the previous identity:
     // cancel the pending debounce and let generation guards drop stale ops.
@@ -199,6 +212,10 @@ export class ActiveSessionLifecycle {
     }
     if (!this.originParticipationRelease) {
       const participation = await acquireOriginParticipation();
+      if (this.disposed) {
+        if (participation.status === 'owned') await participation.release();
+        return;
+      }
       if (participation.status === 'owned') this.originParticipationRelease = participation.release;
       else if (participation.status === 'contended') {
         this.update({ authority: 'read-only' });
