@@ -14,7 +14,7 @@ export function ElementsPanel({ document, selectedPlacementId, onSelect }: Eleme
   const mutationLocked = useSessionStore((state) => state.mutationLock !== null);
 
   return (
-    <div className="min-h-0 rounded-lg border border-line bg-surface p-3">
+    <div className="min-h-0 shrink-0 rounded-lg border border-line bg-surface p-3">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-h2 text-ink">{STRINGS.editor.elementsTitle}</h2>
         <span className="text-caption text-quiet">{document.placements.length}</span>

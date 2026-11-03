@@ -158,6 +158,17 @@ At 1280px and above, the editor uses a 184px pages/elements rail, a flexible PDF
 
 The library groups saved signatures and initials, date/text insertion, and signature creation. Repeat-on-every-page, asset maintenance, and backup controls use disclosures so they do not compete with ordinary placement. **Place** still inserts immediately on the active page. Choosing the preview arms click/tap-to-place instead. A viewport-level selected-element toolbar identifies the type, groups editing/copy/duplicate actions, and separates **Deselect** and **Delete**. It wraps within the viewport and remains above page layers on desktop and mobile. Signature/export policy remains available in a disclosure below the editor.
 
+## Page height and scrolling
+
+The app shell is a viewport-height flex column, not a stack of viewport-sized blocks. The header and the local-data footer do not shrink; the view between them owns the remaining space. This replaces the old arithmetic that added `100vh` content below a variable-height header and pushed the footer below the fold.
+
+- The drop zone and queue fill the available height. Short content leaves the local-data footer at the viewport edge; long content scrolls normally instead of overflowing a fixed block.
+- At 1280px and above, the editor fills the remaining height and scrolls the PDF viewer internally. The workspace derives its height from flex layout rather than a hard-coded header offset, so wrapped headers, resume prompts, lock banners, and PWA controls cannot push the page past the viewport.
+- Below 1280px, the editor keeps normal document scrolling and the footer in flow, so phone browser chrome and a wrapped header do not trap the canvas above a pinned maintenance bar.
+- The pages rail scrolls its thumbnails independently at 1280px and above; the elements list stays visible.
+
+The fixed selected-element toolbar and transient toasts can cover a placement near the bottom of a phone viewport. Scrolling the page brings the placement clear; the touch gesture coverage does this before targeting a resize handle.
+
 ## Controls, dialogs, depth, and motion
 
 | Component | Current contract |

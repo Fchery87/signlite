@@ -72,7 +72,7 @@ export function LocalDataControls({ lifecycle, onToast }: LocalDataControlsProps
 
   return (
     <>
-      <div className="flex flex-wrap gap-2 border-t border-line px-6 py-3">
+      <div className="flex shrink-0 flex-wrap gap-2 border-t border-line bg-mist px-6 py-3">
         <Button variant="secondary" onClick={() => openConfirm('history')} data-testid="clear-history">
           {STRINGS.localData.clearHistoryButton}
         </Button>

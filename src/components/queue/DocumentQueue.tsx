@@ -184,7 +184,7 @@ export function DocumentQueue({ onToast }: { onToast: (message: string) => void 
   }, [batch, downloadableCount, mutationLocked]);
 
   return (
-    <section className="min-h-[calc(100vh-73px)] px-4 py-4 pb-24 sm:px-6">
+    <section className="flex-1 px-4 py-4 pb-24 sm:px-6">
       <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_296px]">
         <main className="surface-card min-w-0">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">

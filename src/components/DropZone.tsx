@@ -114,7 +114,7 @@ export function DropZone({ currentDocumentCount, currentPageCount, currentByteCo
 
   return (
     <section
-      className="flex min-h-screen items-center justify-center p-6"
+      className="flex flex-1 items-center justify-center p-6"
       onDragEnter={(event) => {
         event.preventDefault();
         setIsDragging(true);

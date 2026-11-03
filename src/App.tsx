@@ -41,8 +41,8 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-mist text-ink">
-      <header className="border-b border-line bg-surface">
+    <div className={`flex min-h-dvh flex-col bg-mist text-ink ${view === 'editor' ? 'xl:h-dvh' : ''}`}>
+      <header className="shrink-0 border-b border-line bg-surface">
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex flex-wrap items-center gap-3">
             <span className="grid size-7 place-items-center rounded-[7px] bg-ink text-caption font-bold text-white" aria-hidden="true">S</span>
@@ -87,44 +87,46 @@ export default function App() {
         ) : null}
         {historyWarning ? <div className="border-t border-warning/30 bg-warning/10 px-6 py-3 text-body text-warning">{historyWarning}</div> : null}
       </header>
-      {view === 'dropzone' ? (
-        <>
-          {documents.length > 0 ? (
-            <div className="border-b border-line bg-surface px-6 py-2">
-              <Button variant="secondary" onClick={openQueue}>{STRINGS.queue.backToDocuments}</Button>
-            </div>
-          ) : null}
-          <div role="status" aria-live="polite" className="border-b border-line bg-surface px-6 py-2 text-caption text-quiet" data-testid="runtime-readiness">
-            {runtime.state.status === 'loading'
-              ? STRINGS.readiness.preparing
-              : runtime.state.status === 'ready'
-                ? STRINGS.readiness.ready
-                : `${STRINGS.readiness.failed} ${runtime.state.message}`}
-            {runtime.state.status === 'failed' ? (
-              <Button variant="secondary" className="ml-3" onClick={runtime.retry} data-testid="runtime-retry">
-                {STRINGS.readiness.retry}
-              </Button>
+      <div className={`flex min-h-0 flex-1 flex-col ${view === 'editor' ? 'xl:overflow-y-auto xl:overscroll-contain' : ''}`}>
+        {view === 'dropzone' ? (
+          <>
+            {documents.length > 0 ? (
+              <div className="border-b border-line bg-surface px-6 py-2">
+                <Button variant="secondary" onClick={openQueue}>{STRINGS.queue.backToDocuments}</Button>
+              </div>
             ) : null}
-          </div>
-          <DropZone
-            currentDocumentCount={documentCount}
-            currentPageCount={currentPageCount}
-            currentByteCount={currentByteCount}
-            sessionId={session?.id}
-            intakeDisabled={runtime.state.status !== 'ready'}
-            onDocumentsAccepted={addDocuments}
-            onToast={pushToast}
-          />
-        </>
-      ) : view === 'queue' ? (
-        <DocumentQueue onToast={pushToast} />
-      ) : (
-        <Suspense
-          fallback={<div className="px-6 py-10 text-body text-quiet" role="status">{STRINGS.loading.editor}</div>}
-        >
-          <EditorView onToast={pushToast} />
-        </Suspense>
-      )}
+            <div role="status" aria-live="polite" className="border-b border-line bg-surface px-6 py-2 text-caption text-quiet" data-testid="runtime-readiness">
+              {runtime.state.status === 'loading'
+                ? STRINGS.readiness.preparing
+                : runtime.state.status === 'ready'
+                  ? STRINGS.readiness.ready
+                  : `${STRINGS.readiness.failed} ${runtime.state.message}`}
+              {runtime.state.status === 'failed' ? (
+                <Button variant="secondary" className="ml-3" onClick={runtime.retry} data-testid="runtime-retry">
+                  {STRINGS.readiness.retry}
+                </Button>
+              ) : null}
+            </div>
+            <DropZone
+              currentDocumentCount={documentCount}
+              currentPageCount={currentPageCount}
+              currentByteCount={currentByteCount}
+              sessionId={session?.id}
+              intakeDisabled={runtime.state.status !== 'ready'}
+              onDocumentsAccepted={addDocuments}
+              onToast={pushToast}
+            />
+          </>
+        ) : view === 'queue' ? (
+          <DocumentQueue onToast={pushToast} />
+        ) : (
+          <Suspense
+            fallback={<div className="px-6 py-10 text-body text-quiet" role="status">{STRINGS.loading.editor}</div>}
+          >
+            <EditorView onToast={pushToast} />
+          </Suspense>
+        )}
+      </div>
       <LocalDataControls lifecycle={lifecycle} onToast={pushToast} />
       <div className="pointer-events-none fixed bottom-24 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 space-y-3 [&>*]:pointer-events-auto">
         {toasts.map((toast) => (

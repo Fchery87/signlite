@@ -390,7 +390,7 @@ export function EditorView({ onToast }: EditorViewProps) {
           : 'Review your placements, then download your PDF.';
 
   return (
-    <section className="editor-workspace p-2 pb-32 sm:p-4 xl:pb-4" aria-label="Document editor">
+    <section className="editor-workspace flex flex-1 flex-col p-2 pb-32 sm:p-4 xl:min-h-0 xl:pb-4" aria-label="Document editor">
       <div aria-live="polite" aria-label={STRINGS.liveRegionLabel} className="sr-only-live">
         {announcement}
       </div>
@@ -414,16 +414,16 @@ export function EditorView({ onToast }: EditorViewProps) {
           </Button>
         </div>
       </header>
-      <div className="grid min-h-[70dvh] grid-cols-1 gap-4 xl:h-[calc(100dvh-245px)] xl:min-h-[480px] xl:grid-cols-[184px_minmax(0,1fr)_288px]">
+      <div className="grid min-h-[70dvh] grid-cols-1 gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[184px_minmax(0,1fr)_288px]">
         <EditorPanel open={pagesOpen} title={STRINGS.editor.pagesTitle} onClose={() => setPagesOpen(false)}>
-          <div className="min-h-0 overflow-auto rounded-lg border border-line bg-surface p-3">
-            <div className="flex items-center justify-between gap-3">
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface p-3 xl:flex-1">
+            <div className="flex shrink-0 items-center justify-between gap-3">
               <div>
                 <h2 className="text-h2 text-ink">{STRINGS.editor.pagesTitle}</h2>
                 <p className="mt-1 text-caption text-quiet">{STRINGS.editor.pagesTotal(selectedDocument.pageCount)}</p>
               </div>
             </div>
-            <div className="mt-4">
+            <div className="mt-4 min-h-0 overflow-auto">
               <PageThumbnails
                 activePage={activePage}
                 documentId={selectedDocument.docId}

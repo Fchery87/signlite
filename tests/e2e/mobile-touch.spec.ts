@@ -44,6 +44,21 @@ async function touchDrag(page: Page, from: { x: number; y: number }, to: { x: nu
   }
 }
 
+/**
+ * Toasts and the fixed selected-element toolbar can cover a placement that
+ * sits near the bottom of the viewport. A user scrolls the page to bring it
+ * clear; do the same before reading gesture coordinates so the test targets
+ * the placement rather than the overlay.
+ */
+async function revealAboveToolbar(page: Page, box: { x: number; y: number; width: number; height: number }) {
+  const toolbar = await page.getByRole('toolbar', { name: 'Selected element' }).boundingBox();
+  if (!toolbar) return;
+  const overlap = box.y + box.height + 12 - toolbar.y;
+  if (overlap <= 0) return;
+  await page.evaluate((distance) => window.scrollBy(0, distance), overlap);
+  await page.waitForTimeout(100);
+}
+
 test('touch draw, place, move, resize, edit, navigate and download after offline relaunch', async ({ page, context }) => {
   test.setTimeout(180000);
   await page.goto('/');
@@ -79,12 +94,19 @@ test('touch draw, place, move, resize, edit, navigate and download after offline
   await page.touchscreen.tap(box.x + box.width * 0.4, box.y + Math.min(120, box.height * 0.25));
   const signature = layer.getByRole('button', { name: 'Signature', exact: true });
   await expect(signature).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: /Signature saved\.|Signature placed on page 1\./ })).toHaveCount(0, { timeout: 8000 });
   await signature.tap();
+  const signatureBox = await signature.boundingBox();
+  if (!signatureBox) throw new Error('Missing signature');
+  await revealAboveToolbar(page, signatureBox);
   const before = await signature.boundingBox();
   if (!before) throw new Error('Missing signature');
   await touchDrag(page, { x: before.x + before.width / 2, y: before.y + before.height / 2 }, { x: before.x + before.width / 2 + 25, y: before.y + before.height / 2 + 35 });
   await expect.poll(async () => (await signature.boundingBox())?.x).toBeGreaterThan(before.x + 15);
   const handle = layer.getByRole('button', { name: 'Resize se' });
+  const handleBox = await handle.boundingBox();
+  if (!handleBox) throw new Error('Missing resize handle');
+  await revealAboveToolbar(page, handleBox);
   const resize = await handle.boundingBox();
   if (!resize) throw new Error('Missing resize handle');
   await touchDrag(page, { x: resize.x + resize.width / 2, y: resize.y + resize.height / 2 }, { x: resize.x + resize.width / 2 + 20, y: resize.y + resize.height / 2 + 10 });
