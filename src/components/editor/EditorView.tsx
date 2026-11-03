@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Button, Modal, isAnyModalOpen } from '../ui';
 import { useSessionStore } from '../../stores/session';
 import { STRINGS } from '../../lib/strings';
@@ -9,13 +9,14 @@ import { PageThumbnails } from './PageThumbnails';
 import { ElementsPanel } from './ElementsPanel';
 import { EditorPanel } from './EditorPanel';
 import { useActivePage } from './useActivePage';
+import { useWideLayout } from './useWideLayout';
 import { placementLabel } from '../../lib/placements';
 import { LibraryTray } from '../library/LibraryTray';
 import { getDateFormat, hydrateSignaturePrefs } from '../../db/signatures';
 import { COMMIT_REFUSALS, createSessionDocument, downloadBlob, getFileValidationError, REJECTION_REASONS, signedPdfFileName } from '../../lib/files';
 import type { SessionDocument, SignatureAsset } from '../../db/schema';
 
-type ZoomOption = 'fit' | 1 | 1.5;
+type ZoomOption = 'fit' | 'width' | 1 | 1.5;
 
 type PdfState =
   | { status: 'loading' }
@@ -24,11 +25,16 @@ type PdfState =
 
 const zoomOptions: { value: ZoomOption; label: string }[] = [
   { value: 'fit', label: 'Fit' },
+  { value: 'width', label: 'Width' },
   { value: 1, label: '100%' },
   { value: 1.5, label: '150%' }
 ];
 
 const MIN_PLACEMENT_HEIGHT = 0.08;
+
+/** Vertical space a page needs besides the page itself: its "Page N" label
+ *  (caption line + margin) and the frame border. */
+const PAGE_CHROME_HEIGHT = 28;
 
 const shortcutRows = [
   { key: 'Cmd/Ctrl+S', action: STRINGS.shortcuts.currentDownload },
@@ -45,6 +51,10 @@ const shortcutRows = [
 
 type EditorViewProps = {
   onToast: (message: string) => void;
+  /** App identity and status, shown at the start of the editor's single top bar. */
+  appBrand?: ReactNode;
+  /** App-wide utilities (offline status, local data), shown at the end of the top bar. */
+  appUtilities?: ReactNode;
 };
 
 /**
@@ -75,7 +85,7 @@ function isEditableTarget(target: EventTarget | null) {
   return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
 }
 
-export function EditorView({ onToast }: EditorViewProps) {
+export function EditorView({ onToast, appBrand, appUtilities }: EditorViewProps) {
   const documents = useSessionStore((state) => state.session.documents);
   const selectedDocumentId = useSessionStore((state) => state.selectedDocumentId);
   const selectedPlacementId = useSessionStore((state) => state.selectedPlacementId);
@@ -107,6 +117,8 @@ export function EditorView({ onToast }: EditorViewProps) {
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [zoom, setZoom] = useState<ZoomOption>('fit');
   const [viewerWidth, setViewerWidth] = useState(0);
+  const [viewerHeight, setViewerHeight] = useState(0);
+  const wide = useWideLayout();
   const [dateFormat, setDateFormat] = useState(() => getDateFormat());
   const [shortcutOpen, setShortcutOpen] = useState(false);
   // Narrow screens hide the sidebars behind toggles; desktop keeps them fixed.
@@ -178,13 +190,38 @@ export function EditorView({ onToast }: EditorViewProps) {
     };
   }, []);
 
-  const fitScale = useMemo(() => {
+  useEffect(() => {
+    const element = scrollRootRef.current;
+    if (!element) return;
+
+    const updateHeight = () => {
+      const style = getComputedStyle(element);
+      const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+      setViewerHeight(Math.max(0, element.clientHeight - padding));
+    };
+
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  const fitWidthScale = useMemo(() => {
     if (!selectedDocument || viewerWidth === 0) return 1;
     const widestPage = Math.max(...selectedDocument.pageSizes.map((page) => page.w));
     return Math.max(0.05, (viewerWidth - 2) / widestPage);
   }, [selectedDocument, viewerWidth]);
 
-  const scale = zoom === 'fit' ? fitScale : zoom;
+  // "Fit" shows a whole page: the smaller of the width fit and the height fit.
+  const fitPageScale = useMemo(() => {
+    if (!selectedDocument || viewerHeight <= PAGE_CHROME_HEIGHT) return fitWidthScale;
+    const tallestPage = Math.max(...selectedDocument.pageSizes.map((page) => page.h));
+    return Math.max(0.05, Math.min(fitWidthScale, (viewerHeight - PAGE_CHROME_HEIGHT) / tallestPage));
+  }, [selectedDocument, viewerHeight, fitWidthScale]);
+
+  const scale = zoom === 'fit' ? fitPageScale : zoom === 'width' ? fitWidthScale : zoom;
   const hasPlacements = (selectedDocument?.placements.length ?? 0) > 0;
 
   const announcePlacement = useCallback((type: SignatureAsset['kind'] | 'date' | 'text', pageIndex: number) => {
@@ -389,18 +426,29 @@ export function EditorView({ onToast }: EditorViewProps) {
           ? 'Choose a signature, initials, date or text to begin.'
           : 'Review your placements, then download your PDF.';
 
+  // Shown before download: docked under the library on wide screens, below the
+  // workspace on narrow ones (where the library is a dialog).
+  const policyDisclosure = (
+    <details className="shrink-0 px-1 text-caption text-quiet">
+      <summary className="focus-ring w-fit cursor-pointer rounded py-1">Signature and export policy</summary>
+      <p className="mt-2 max-w-3xl">{VISUAL_SIGNATURE_DISCLOSURE}</p>
+      <p className="mt-1 max-w-3xl">{EXPORT_POLICY_DISCLOSURE}</p>
+    </details>
+  );
+
   return (
-    <section className="editor-workspace flex flex-1 flex-col p-2 pb-32 sm:p-4 xl:min-h-0 xl:pb-4" aria-label="Document editor">
+    <section className="editor-workspace flex flex-1 flex-col lg:min-h-0" aria-label="Document editor">
       <div aria-live="polite" aria-label={STRINGS.liveRegionLabel} className="sr-only-live">
         {announcement}
       </div>
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
-        <div className="min-w-0 flex-1 basis-48">
-          <Button variant="ghost" className="mb-1 -ml-2 px-2 text-caption" onClick={openQueue}>
-            <span aria-hidden="true" className="mr-2">←</span>{STRINGS.queue.allDocuments}
+      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-surface px-4 py-2 sm:px-6">
+        {appBrand}
+        <div className="flex min-w-0 flex-1 basis-56 items-center gap-2">
+          <Button variant="ghost" className="-ml-2 shrink-0 px-2 text-caption" onClick={openQueue}>
+            <span aria-hidden="true" className="mr-1">←</span>{STRINGS.queue.allDocuments}
           </Button>
-          <h1 className="truncate text-h1 text-ink sm:text-display" title={selectedDocument.fileName}>{selectedDocument.fileName}</h1>
-          <p className="mt-1 text-caption text-quiet">Document editor · {selectedDocument.pageCount} {selectedDocument.pageCount === 1 ? 'page' : 'pages'}</p>
+          <h1 className="min-w-0 truncate text-h2 text-ink" title={selectedDocument.fileName}>{selectedDocument.fileName}</h1>
+          <p className="shrink-0 whitespace-nowrap text-caption text-quiet">{selectedDocument.pageCount} {selectedDocument.pageCount === 1 ? 'page' : 'pages'}</p>
         </div>
         <div className="flex items-center gap-2">
           <input ref={addPdfsRef} hidden type="file" accept="application/pdf" multiple onChange={(event) => { void handleAddPdfs(event.target.files); }} />
@@ -413,10 +461,12 @@ export function EditorView({ onToast }: EditorViewProps) {
             {isDownloading ? STRINGS.editor.downloading : STRINGS.buttons.download}
           </Button>
         </div>
+        {appUtilities ? <div className="flex shrink-0 items-center gap-3">{appUtilities}</div> : null}
       </header>
-      <div className="grid min-h-[70dvh] grid-cols-1 gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[184px_minmax(0,1fr)_288px]">
+      <div className="flex flex-1 flex-col p-2 pb-32 sm:p-3 lg:min-h-0 lg:pb-3">
+      <div className="grid grid-cols-1 gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[168px_minmax(0,1fr)_256px] xl:grid-cols-[184px_minmax(0,1fr)_288px]">
         <EditorPanel open={pagesOpen} title={STRINGS.editor.pagesTitle} onClose={() => setPagesOpen(false)}>
-          <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface p-3 xl:flex-1">
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface p-3 lg:flex-1">
             <div className="flex shrink-0 items-center justify-between gap-3">
               <div>
                 <h2 className="text-h2 text-ink">{STRINGS.editor.pagesTitle}</h2>
@@ -445,9 +495,9 @@ export function EditorView({ onToast }: EditorViewProps) {
         </EditorPanel>
 
         <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-line bg-surface">
-          <div role="toolbar" aria-label="Document navigation" className="flex flex-wrap items-center justify-between gap-2 border-b border-line p-2 sm:px-3">
-            <div className="flex flex-wrap items-center gap-1">
-              <Button variant="ghost" className="px-2 xl:hidden"
+          <div role="toolbar" aria-label="Document navigation" className="flex flex-wrap items-center justify-between gap-2 border-b border-line p-2 sm:px-3 lg:flex-nowrap">
+            <div className="flex flex-wrap items-center gap-1 lg:shrink-0">
+              <Button variant="ghost" className="px-2 lg:hidden"
                 aria-expanded={pagesOpen}
                 onClick={() => setPagesOpen((open) => !open)}
               >
@@ -457,7 +507,11 @@ export function EditorView({ onToast }: EditorViewProps) {
               <span className="whitespace-nowrap text-caption text-quiet" aria-live="polite">{STRINGS.editor.pageOf(activePage + 1, selectedDocument.pageCount)}</span>
               <Button variant="ghost" className="px-2" aria-label="Next page" disabled={activePage >= selectedDocument.pageCount - 1} onClick={() => selectPage(activePage + 1)}>›</Button>
             </div>
-            <div className="flex flex-wrap items-center gap-1">
+            <div role="status" className={`flex min-w-0 flex-1 basis-28 items-center lg:basis-0 justify-between gap-2 rounded-md px-2 text-caption ${armedSignature ? 'bg-accent-subtle py-0.5 text-ink' : 'text-quiet'}`}>
+              <p className="min-w-0 truncate" title={editorHint}>{editorHint}</p>
+              {armedSignature ? <Button variant="ghost" className="shrink-0 px-2 py-0 text-caption" onClick={disarmSignature}>{STRINGS.buttons.cancel}</Button> : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-1 lg:shrink-0">
               <div className="mr-1 flex items-center gap-0.5 border-r border-line pr-2">
                 <Button variant="ghost" className="size-8 shrink-0 px-0" aria-label={STRINGS.buttons.undo} title={STRINGS.buttons.undo} onClick={undo} disabled={!canUndo || mutationLocked}><HistoryIcon /></Button>
                 <Button variant="ghost" className="size-8 shrink-0 px-0" aria-label={STRINGS.buttons.redo} title={STRINGS.buttons.redo} onClick={redo} disabled={!canRedo || mutationLocked}><HistoryIcon mirrored /></Button>
@@ -470,7 +524,7 @@ export function EditorView({ onToast }: EditorViewProps) {
                 ))}
               </div>
               <Button variant="ghost" className="size-8 shrink-0 px-0" aria-label={STRINGS.shortcuts.open} onClick={() => setShortcutOpen(true)}>?</Button>
-              <Button variant="secondary" className="ml-1 px-2 xl:hidden"
+              <Button variant="secondary" className="ml-1 px-2 lg:hidden"
                 aria-expanded={libraryOpen}
                 onClick={() => setLibraryOpen((open) => !open)}
               >
@@ -478,12 +532,8 @@ export function EditorView({ onToast }: EditorViewProps) {
               </Button>
             </div>
           </div>
-          <div role="status" className={`flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2 text-caption ${armedSignature ? 'bg-accent-subtle text-ink' : 'bg-mist/50 text-quiet'}`}>
-            <p>{editorHint}</p>
-            {armedSignature ? <Button variant="ghost" className="px-2 py-0 text-caption" onClick={disarmSignature}>{STRINGS.buttons.cancel}</Button> : null}
-          </div>
           {downloadError ? <div role="alert" className="border-b border-danger/20 bg-danger/5 px-3 py-2 text-body text-danger"><p>{downloadError}</p><p className="mt-1 text-caption">Your work is still here. Review the document and try Download again.</p></div> : null}
-          <div ref={scrollRootRef} data-testid="editor-scroll" tabIndex={0} aria-label="PDF pages" className="focus-ring max-h-[65dvh] min-h-[40dvh] overflow-auto bg-sunken px-3 py-5 xl:max-h-none xl:min-h-0 xl:flex-1 xl:px-6 xl:py-6">
+          <div ref={scrollRootRef} data-testid="editor-scroll" tabIndex={0} aria-label="PDF pages" className="focus-ring h-[65dvh] min-h-[220px] overflow-auto bg-sunken px-3 py-4 lg:h-auto lg:min-h-0 lg:flex-1 lg:px-6">
             <div ref={viewerRef} className="mx-auto max-w-full space-y-6">
               {pdfState.status === 'loading' && <p role="status" className="text-center text-body text-quiet">Opening your PDF…</p>}
               {pdfState.status === 'error' && (
@@ -540,13 +590,11 @@ export function EditorView({ onToast }: EditorViewProps) {
               placementDisabled={mutationLocked}
             />
           </div>
+          {wide ? policyDisclosure : null}
         </EditorPanel>
       </div>
-      <details className="mt-3 px-1 text-caption text-quiet">
-        <summary className="focus-ring w-fit cursor-pointer rounded py-1">Signature and export policy</summary>
-        <p className="mt-2 max-w-3xl">{VISUAL_SIGNATURE_DISCLOSURE}</p>
-        <p className="mt-1 max-w-3xl">{EXPORT_POLICY_DISCLOSURE}</p>
-      </details>
+      {wide ? null : policyDisclosure}
+      </div>
       <Modal open={shortcutOpen} title={STRINGS.shortcuts.open} onClose={() => setShortcutOpen(false)}>
         <div className="space-y-3">
           <p className="text-body text-quiet">{STRINGS.shortcuts.hint}</p>

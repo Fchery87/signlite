@@ -7,7 +7,7 @@ async function pageOverflow(page: Page) {
 
 async function expectFillsViewport(page: Page) {
   await expect.poll(() => pageOverflow(page)).toBeLessThanOrEqual(1);
-  await expect(page.getByTestId('clear-history')).toBeInViewport();
+  await expect(page.getByTestId('local-data-menu')).toBeInViewport();
 }
 
 async function expectContainedHorizontally(page: Page) {
@@ -17,7 +17,7 @@ async function expectContainedHorizontally(page: Page) {
 test('desktop shell fills the viewport without page scrolling on every view', async ({ page }) => {
   test.setTimeout(120000);
 
-  for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }, { width: 1024, height: 768 }, { width: 1422, height: 730 }]) {
     await page.setViewportSize(viewport);
     await page.goto('/');
     await waitForRuntimeReady(page);
@@ -47,6 +47,14 @@ test('desktop shell fills the viewport without page scrolling on every view', as
     await expect(scroll).toBeInViewport();
     expect(await scroll.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);
 
+    // The PDF owns most of the height, and the default Fit shows a whole page.
+    const viewerShare = await scroll.evaluate((node) => node.clientHeight / innerHeight);
+    expect(viewerShare).toBeGreaterThan(0.6);
+    const firstPage = page.getByTestId('placement-layer').first();
+    await expect(firstPage).toBeVisible();
+    const [pageBox, scrollBox] = [await firstPage.boundingBox(), await scroll.boundingBox()];
+    expect(pageBox && scrollBox && pageBox.y + pageBox.height <= scrollBox.y + scrollBox.height + 1).toBe(true);
+
     await page.addStyleTag({ content: 'header { min-height: 220px; }' });
     await expectFillsViewport(page);
     await expectContainedHorizontally(page);
@@ -72,9 +80,9 @@ test('phone editor scrolls naturally and keeps horizontal containment', async ({
   const scroll = page.getByTestId('editor-scroll');
   await expect(scroll).toBeInViewport();
 
-  // The maintenance footer is part of the page, not an overlay on the canvas.
-  await page.getByTestId('clear-history').scrollIntoViewIfNeeded();
-  await expect(page.getByTestId('clear-history')).toBeInViewport();
+  // Local data maintenance lives in the top bar menu, not a footer over the canvas.
+  await page.getByTestId('local-data-menu').scrollIntoViewIfNeeded();
+  await expect(page.getByTestId('local-data-menu')).toBeInViewport();
   await expect(page.getByRole('button', { name: 'Download', exact: true })).toBeVisible();
   await expectContainedHorizontally(page);
 });

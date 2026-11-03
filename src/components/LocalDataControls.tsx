@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { type LocalDataClearKind } from '../db/localData';
 import { clearAllLocalDataSafely, clearHistorySafely } from '../lib/localDataMaintenance';
 import { exportLibrary } from '../db/signatures';
@@ -22,6 +22,32 @@ export function LocalDataControls({ lifecycle, onToast }: LocalDataControlsProps
   const mutationLocked = useSessionStore((state: PublicSessionState) => state.mutationLock !== null);
   const [confirmKind, setConfirmKind] = useState<LocalDataClearKind | null>(null);
   const [busy, setBusy] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // The menu item unmounts when the menu closes, so hand focus to the menu button
+  // first: the confirmation dialog then returns focus there when it closes.
+  const choose = (kind: LocalDataClearKind) => {
+    menuRef.current?.querySelector<HTMLButtonElement>('[data-testid="local-data-menu"]')?.focus();
+    setMenuOpen(false);
+    openConfirm(kind);
+  };
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [menuOpen]);
 
   const openConfirm = (kind: LocalDataClearKind) => {
     if (mutationLocked) {
@@ -72,13 +98,32 @@ export function LocalDataControls({ lifecycle, onToast }: LocalDataControlsProps
 
   return (
     <>
-      <div className="flex shrink-0 flex-wrap gap-2 border-t border-line bg-mist px-6 py-3">
-        <Button variant="secondary" onClick={() => openConfirm('history')} data-testid="clear-history">
-          {STRINGS.localData.clearHistoryButton}
+      <div ref={menuRef} className="relative">
+        <Button
+          variant="ghost"
+          className="px-2 text-caption"
+          aria-haspopup="true"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+          data-testid="local-data-menu"
+        >
+          {STRINGS.localData.menuButton}
         </Button>
-        <Button variant="secondary" onClick={() => openConfirm('all')} data-testid="clear-all-data">
-          {STRINGS.localData.clearAllButton}
-        </Button>
+        {menuOpen ? (
+          <div
+            role="group"
+            aria-label={STRINGS.localData.menuButton}
+            className="absolute right-0 top-full z-40 mt-1 flex w-60 flex-col gap-2 rounded-lg border border-line bg-surface p-3 shadow-modal"
+          >
+            <p className="text-caption text-quiet">{STRINGS.localData.menuNote}</p>
+            <Button variant="secondary" onClick={() => choose('history')} data-testid="clear-history">
+              {STRINGS.localData.clearHistoryButton}
+            </Button>
+            <Button variant="secondary" className="text-danger" onClick={() => choose('all')} data-testid="clear-all-data">
+              {STRINGS.localData.clearAllButton}
+            </Button>
+          </div>
+        ) : null}
       </div>
       <Modal open={confirmKind !== null} title={title} onClose={cancel}>
         <div className="space-y-4">

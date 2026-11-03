@@ -12,6 +12,7 @@ test('full clear succeeds in a single tab and removes sessions and signatures', 
     await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
     db.close();
   });
+  await page.getByTestId('local-data-menu').click();
   await page.getByTestId('clear-all-data').click();
   await page.getByTestId('confirm-clear').click();
   await expect(page.getByText('All local data cleared.')).toBeVisible();

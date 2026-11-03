@@ -27,6 +27,7 @@ test('history clear preserves a record held by another tab and reports partial c
     });
     await cleaner.goto('/');
     await waitForRuntimeReady(cleaner);
+    await cleaner.getByTestId('local-data-menu').click();
     await cleaner.getByTestId('clear-history').click();
     await cleaner.getByTestId('confirm-clear').click();
     await expect(cleaner.getByText(/Kept 1 active or changed sessions/)).toBeVisible();
@@ -54,6 +55,7 @@ test('full clear refuses another active tab without discarding current work', as
     await openQueuedDocument(cleaner, 'preserved.pdf');
     await cleaner.getByRole('complementary').filter({ has: cleaner.getByRole('heading', { name: 'Library', exact: true }) }).getByRole('button', { name: 'Text', exact: true }).click();
     await expect(cleaner.getByTestId('durability-status')).toHaveText('Saved.');
+    await cleaner.getByTestId('local-data-menu').click();
     await cleaner.getByTestId('clear-all-data').click();
     await cleaner.getByTestId('confirm-clear').click();
     await expect(cleaner.getByText('Local data could not be cleared. Your current work has not been reset.')).toBeVisible();

@@ -251,6 +251,8 @@ export const STRINGS = {
     backupReminderCount: 'Back up your signatures. 10 or more new items were added since the last export offer.'
   },
   localData: {
+    menuButton: 'Local data',
+    menuNote: 'Everything SignLite saves stays in this browser.',
     clearHistoryButton: 'Clear document history',
     clearAllButton: 'Clear all local data',
     clearHistoryTitle: 'Clear document history?',

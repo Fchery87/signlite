@@ -40,27 +40,46 @@ export default function App() {
     setToasts((items) => [...items, { id: crypto.randomUUID(), message }]);
   };
 
-  return (
-    <div className={`flex min-h-dvh flex-col bg-mist text-ink ${view === 'editor' ? 'xl:h-dvh' : ''}`}>
-      <header className="shrink-0 border-b border-line bg-surface">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="grid size-7 place-items-center rounded-[7px] bg-ink text-caption font-bold text-white" aria-hidden="true">S</span>
-            <p className="text-[15px] font-semibold tracking-[-0.025em] text-ink">{STRINGS.appName}</p>
-            <div className="flex flex-wrap items-center gap-3 border-l border-line pl-3">
-              {footerText ? <p className="text-body text-quiet">{footerText}</p> : null}
-              {lifecycle.status && lifecycle.status !== 'initializing' ? (
-                <p className="text-caption text-quiet" data-testid="durability-status">{STRINGS.durability[lifecycle.status]}</p>
-              ) : null}
-              {lifecycle.authority === 'read-only' ? (
-                <p className="text-caption text-warning" data-testid="read-only-banner">{STRINGS.readOnly}</p>
-              ) : null}
-            </div>
-          </div>
-          <p className="shrink-0 whitespace-nowrap text-caption text-quiet">{STRINGS.queue.localOnly}</p>
+  // The editor bar already names the document, so the count only shows elsewhere.
+  const documentSummary = view === 'editor' ? null : footerText;
+  const appBrand = (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+      <span className="grid size-7 shrink-0 place-items-center rounded-[7px] bg-ink text-caption font-bold text-white" aria-hidden="true">S</span>
+      <p className="text-[15px] font-semibold tracking-[-0.025em] text-ink">{STRINGS.appName}</p>
+      {documentSummary || (lifecycle.status && lifecycle.status !== 'initializing') || lifecycle.authority === 'read-only' ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-l border-line pl-3">
+          {documentSummary ? <p className="text-body text-quiet">{documentSummary}</p> : null}
+          {lifecycle.status && lifecycle.status !== 'initializing' ? (
+            <p className="text-caption text-quiet" data-testid="durability-status">{STRINGS.durability[lifecycle.status]}</p>
+          ) : null}
+          {lifecycle.authority === 'read-only' ? (
+            <p className="text-caption text-warning" data-testid="read-only-banner">{STRINGS.readOnly}</p>
+          ) : null}
         </div>
-        <div className="border-t border-line px-4 py-1 sm:px-6"><PwaControls /></div>
-        {resumeSession && view === 'dropzone' && documents.length === 0 ? (
+      ) : null}
+    </div>
+  );
+  const appUtilities = (
+    <>
+      <PwaControls />
+      <p className="hidden shrink-0 whitespace-nowrap text-caption text-quiet sm:block">{STRINGS.queue.localOnly}</p>
+      <LocalDataControls lifecycle={lifecycle} onToast={pushToast} />
+    </>
+  );
+  const showResume = Boolean(resumeSession && view === 'dropzone' && documents.length === 0);
+  const hasBanners = showResume || Boolean(mutationLock) || Boolean(historyWarning);
+
+  return (
+    <div className="flex min-h-dvh flex-col bg-mist text-ink lg:h-dvh">
+      {view !== 'editor' || hasBanners ? (
+      <header className="shrink-0 border-b border-line bg-surface">
+        {view !== 'editor' ? (
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:px-6">
+            {appBrand}
+            <div className="flex shrink-0 flex-wrap items-center gap-3">{appUtilities}</div>
+          </div>
+        ) : null}
+        {showResume && resumeSession ? (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-3">
             <p className="text-body text-ink">{STRINGS.resumePrompt}</p>
             <div className="flex gap-2">
@@ -87,7 +106,8 @@ export default function App() {
         ) : null}
         {historyWarning ? <div className="border-t border-warning/30 bg-warning/10 px-6 py-3 text-body text-warning">{historyWarning}</div> : null}
       </header>
-      <div className={`flex min-h-0 flex-1 flex-col ${view === 'editor' ? 'xl:overflow-y-auto xl:overscroll-contain' : ''}`}>
+      ) : null}
+      <div className="flex min-h-0 flex-1 flex-col lg:overflow-y-auto lg:overscroll-contain">
         {view === 'dropzone' ? (
           <>
             {documents.length > 0 ? (
@@ -123,11 +143,10 @@ export default function App() {
           <Suspense
             fallback={<div className="px-6 py-10 text-body text-quiet" role="status">{STRINGS.loading.editor}</div>}
           >
-            <EditorView onToast={pushToast} />
+            <EditorView onToast={pushToast} appBrand={appBrand} appUtilities={appUtilities} />
           </Suspense>
         )}
       </div>
-      <LocalDataControls lifecycle={lifecycle} onToast={pushToast} />
       <div className="pointer-events-none fixed bottom-24 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 space-y-3 [&>*]:pointer-events-auto">
         {toasts.map((toast) => (
           <Toast

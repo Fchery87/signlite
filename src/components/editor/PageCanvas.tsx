@@ -150,7 +150,7 @@ export function PageCanvas({
   }, [isNearViewport, loading, pageIndex, pdf, scale, renderAttempt]);
 
   return (
-    <div ref={wrapperRef} className="mx-auto w-full">
+    <div ref={wrapperRef} className="mx-auto w-fit max-w-full">
       <div className="mb-2 text-caption font-medium text-quiet">{STRINGS.editor.pageLabel(pageIndex + 1)}</div>
       <div className="relative flex items-center justify-center overflow-visible border border-line bg-surface shadow-page" style={frameStyle}>
         <canvas ref={canvasRef} className="block max-w-full" aria-hidden="true" />

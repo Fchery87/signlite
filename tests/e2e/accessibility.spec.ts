@@ -35,8 +35,9 @@ test('keyboard users open and dismiss narrow tool dialogs and retain desktop pan
 test('a clear confirmation traps Tab and returns focus when cancelled', async ({ page }) => {
   await page.goto('/');
   await waitForRuntimeReady(page);
-  const opener = page.getByTestId('clear-history');
+  const opener = page.getByTestId('local-data-menu');
   await opener.click();
+  await page.getByTestId('clear-history').click();
   const dialog = page.getByRole('dialog', { name: 'Clear document history?' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('older than 7 days')).toBeVisible();

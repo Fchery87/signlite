@@ -61,15 +61,18 @@ test('clearing history keeps signatures and clearing all removes them', async ({
     db.close();
   });
 
+  await page.getByTestId('local-data-menu').click();
   await page.getByTestId('clear-history').click();
   await page.getByRole('button', { name: 'Cancel' }).click();
   expect(await storeCounts(page)).toEqual({ sessions: 1, signatures: 1 });
 
+  await page.getByTestId('local-data-menu').click();
   await page.getByTestId('clear-history').click();
   await page.getByTestId('confirm-clear').click();
   await expect(page.getByText('Document history cleared. Signatures and preferences kept.')).toBeVisible();
   expect(await storeCounts(page)).toEqual({ sessions: 0, signatures: 1 });
 
+  await page.getByTestId('local-data-menu').click();
   await page.getByTestId('clear-all-data').click();
   await page.getByTestId('confirm-clear').click();
   await expect(page.getByText('All local data cleared.')).toBeVisible();

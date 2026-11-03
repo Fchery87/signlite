@@ -41,11 +41,13 @@ export function PwaControls() {
     finally { setPrompt(null); }
   };
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-      <span role="status" title="App resources only. Your PDFs still need to be opened or restored separately. Browser storage can be cleared or evicted.">{labels[status]}</span>
-      {status === 'failed' && <button type="button" className="min-h-11 underline" onClick={() => setAttempt((value) => value + 1)}>Retry offline setup</button>}
-      {!installed && prompt && <button type="button" className="min-h-11 underline" onClick={() => void install()}>Install app</button>}
-      {!installed && ios && !prompt && <button type="button" className="min-h-11 underline" onClick={() => setInstructions(true)}>How to install</button>}
+    <div className="flex flex-wrap items-center gap-x-2 text-caption text-quiet">
+      {/* Development builds and unsupported browsers cannot launch offline; keep that
+          announced for assistive tech without spending a visible header line on it. */}
+      <span role="status" className={status === 'unsupported' ? 'sr-only' : status === 'failed' || status === 'update-ready' ? 'text-warning' : undefined} title="App resources only. Your PDFs still need to be opened or restored separately. Browser storage can be cleared or evicted.">{labels[status]}</span>
+      {status === 'failed' && <button type="button" className="underline" onClick={() => setAttempt((value) => value + 1)}>Retry offline setup</button>}
+      {!installed && prompt && <button type="button" className="underline" onClick={() => void install()}>Install app</button>}
+      {!installed && ios && !prompt && <button type="button" className="underline" onClick={() => setInstructions(true)}>How to install</button>}
       {installError && <span role="alert">Installation was not available. Try your browser menu.</span>}
       <Modal open={instructions} title="Install SignLite on iPhone or iPad" onClose={() => setInstructions(false)}>
         <ol className="list-decimal space-y-3 pl-5">
